@@ -1,0 +1,3 @@
+ALTER TABLE "Contact"
+  DROP COLUMN IF EXISTS "categories",
+  DROP COLUMN IF EXISTS "tags";

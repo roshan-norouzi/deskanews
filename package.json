@@ -1,0 +1,28 @@
+{
+  "name": "deska-news",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "dev": "pnpm --filter @deska/shared build && pnpm --filter @deska/api build && pnpm --filter @deska/api --filter @deska/web --parallel dev",
+    "start": "powershell -ExecutionPolicy Bypass -File ./scripts/start-dev.ps1 -SkipMigrate -SkipSeed",
+    "dev:api": "pnpm --filter @deska/api dev",
+    "dev:web": "pnpm --filter @deska/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r --if-present test",
+    "db:migrate": "pnpm --filter @deska/api db:migrate",
+    "db:sync": "pnpm --filter @deska/api db:sync",
+    "db:seed": "pnpm --filter @deska/api db:seed",
+    "db:audit": "node scripts/audit-db-integrity.cjs",
+    "verify": "powershell -ExecutionPolicy Bypass -File ./scripts/verify.ps1",
+    "verify:live": "powershell -ExecutionPolicy Bypass -File ./scripts/verify.ps1 -LiveOnly",
+    "restart:web": "powershell -ExecutionPolicy Bypass -File ./scripts/restart-web.ps1",
+    "dev:clean": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-clean.ps1",
+    "db:studio": "pnpm --filter @deska/api db:studio",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

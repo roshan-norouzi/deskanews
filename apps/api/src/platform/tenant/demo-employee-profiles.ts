@@ -1,0 +1,77 @@
+import type { EmployeeProfileInput } from '@deska/shared';
+
+export interface DemoEmployeeSeed extends EmployeeProfileInput {
+  employeeCode?: string;
+  jobTitle?: string;
+  departmentId?: string;
+}
+
+/** Demo profiles keyed by user email — used by seed and optional backfill. */
+export const DEMO_EMPLOYEE_PROFILES: Record<string, DemoEmployeeSeed> = {
+  'admin@deska.local': {
+    firstName: 'مدیر',
+    lastName: 'سیستم',
+    nationalId: '0499370899',
+    fatherName: 'احمد',
+    motherName: 'فاطمه',
+    birthCertificateNumber: '12345',
+    birthCertificateDate: '1985-03-21',
+    birthDate: '1985-03-15',
+    maritalStatus: 'married',
+    address: 'تهران، خیابان ولیعصر، کوچه ۱۲، پلاک ۵، واحد ۳',
+    postalCode: '1415813114',
+    mobilePhone: '09121234567',
+    landlinePhone: '02188776655',
+    bankAccountNumber: '123456789012',
+    bankCardNumber: '6037997000000001',
+    iban: 'IR120170000000103030030015',
+    bankName: 'بانک ملت',
+    insuranceNumber: '12345678901',
+    employeeCode: 'EMP-1001',
+    jobTitle: 'مدیر ارشد منابع انسانی',
+  },
+  'sara.karimi@deska.local': {
+    firstName: 'سارا',
+    lastName: 'کریمی',
+    nationalId: '0067749828',
+    fatherName: 'محمد',
+    motherName: 'زهرا',
+    birthCertificateNumber: '54321',
+    birthCertificateDate: '1992-07-10',
+    birthDate: '1992-07-08',
+    maritalStatus: 'single',
+    address: 'تهران، سعادت‌آباد، بلوار دریا، پلاک ۲۲',
+    postalCode: '1998812345',
+    mobilePhone: '09123456789',
+    landlinePhone: '02144001234',
+    bankAccountNumber: '987654321098',
+    bankCardNumber: '6037997000000001',
+    iban: 'IR120170000000103030030112',
+    bankName: 'بانک ملی',
+    insuranceNumber: '98765432109',
+    employeeCode: 'EMP-1002',
+    jobTitle: 'کارشناس منابع انسانی',
+  },
+  'ali.ahmadi@deska.local': {
+    firstName: 'علی',
+    lastName: 'احمدی',
+    nationalId: '0013542419',
+    fatherName: 'رضا',
+    motherName: 'مریم',
+    birthCertificateNumber: '67890',
+    birthCertificateDate: '1990-01-05',
+    birthDate: '1990-01-03',
+    maritalStatus: 'married',
+    address: 'تهران، پاسداران، بوستان ۸، پلاک ۱۵',
+    postalCode: '1955643210',
+    mobilePhone: '09131112233',
+    landlinePhone: '02122556677',
+    bankAccountNumber: '112233445566',
+    bankCardNumber: '6037997000000001',
+    iban: 'IR120170000000103030030209',
+    bankName: 'بانک صادرات',
+    insuranceNumber: '11223344556',
+    employeeCode: 'EMP-1003',
+    jobTitle: 'کارشناس فروش',
+  },
+};

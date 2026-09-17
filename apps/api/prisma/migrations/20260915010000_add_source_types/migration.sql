@@ -1,0 +1,11 @@
+ALTER TABLE "NewsFeed"
+  ADD COLUMN IF NOT EXISTS "sourceType" TEXT NOT NULL DEFAULT 'rss',
+  ADD COLUMN IF NOT EXISTS "category" TEXT NOT NULL DEFAULT 'عمومی',
+  ADD COLUMN IF NOT EXISTS "pollIntervalMinutes" INTEGER,
+  ADD COLUMN IF NOT EXISTS "autoPoll" BOOLEAN,
+  ADD COLUMN IF NOT EXISTS "autoPrepare" BOOLEAN,
+  ADD COLUMN IF NOT EXISTS "autoPublish" BOOLEAN,
+  ADD COLUMN IF NOT EXISTS "autoSendSocial" BOOLEAN;
+
+CREATE INDEX IF NOT EXISTS "NewsFeed_tenantId_sourceType_idx"
+  ON "NewsFeed"("tenantId", "sourceType");

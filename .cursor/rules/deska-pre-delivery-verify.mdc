@@ -1,0 +1,29 @@
+---
+description: قبل از تحویل هر تسک، کل پروژه DESKA ERP را چک و دیباگ کن
+alwaysApply: true
+---
+
+# DESKA ERP — بررسی قبل از تحویل
+
+قبل از تحویل **هر تسک** به کاربر، این مراحل اجباری است:
+
+1. **اجرای verify**: `pnpm verify` (یا `pnpm verify:live` اگر dev server در حال اجراست)
+2. **رفع خطاها**: هیچ خطای build، typecheck، API 500، یا Web 500 نباید باقی بماند
+3. **تست runtime**: login، health API، و صفحه `/login` باید 200 برگردانند
+4. **گزارش**: در پایان تحویل، خلاصه بررسی و باگ‌های رفع‌شده را بنویس
+
+## نکات دیباگ رایج
+
+- **Web 500**: معمولاً process قدیمی Next.js روی پورت 3000 یا cache خراب `.next` — `pnpm restart:web` یا `pnpm dev:clean`
+- **اجرای `next build` همراه dev server**: cache dev را خراب می‌کند؛ از `pnpm verify:live` استفاده کن
+- **API MODULE_NOT_FOUND**: `pnpm --filter @deska/api build` قبل از start
+- **DB**: PostgreSQL روی پورت 5433 — `docker compose up postgres -d`
+
+## اسکریپت‌ها
+
+| دستور | کاربرد |
+|-------|--------|
+| `pnpm verify` | typecheck + build کامل + runtime |
+| `pnpm verify:live` | فقط runtime (dev روشن) |
+| `pnpm restart:web` | ریستارت Next.js با cache تمیز |
+| `pnpm dev:clean` | kill پورت‌ها + build + dev |

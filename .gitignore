@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+.next-dev/
+.env
+.env.local
+*.log
+.deska-dev-processes.json
+.DS_Store
+coverage/
+test-results/
+playwright-report/
+.turbo/
+uploads/
+*.tsbuildinfo
+.data/
+deploy/config.local.json

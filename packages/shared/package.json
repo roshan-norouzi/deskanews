@@ -1,0 +1,19 @@
+{
+  "name": "@deska/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo ok"
+  },
+  "devDependencies": {
+    "@types/jalaali-js": "^1.2.0",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "jalaali-js": "^2.0.1"
+  }
+}

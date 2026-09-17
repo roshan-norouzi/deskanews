@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@media (min-width: 1024px) {
+  [role='dialog'][aria-labelledby='social-publish-title'] > div {
+    width: 70vw;
+    max-width: none;
+  }
+}
+
+@layer base {
+  html {
+    direction: rtl;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    overflow-x: hidden;
+    font-feature-settings: 'ss01' on;
+    font-variant-numeric: proportional-nums;
+  }
+
+  input,
+  textarea,
+  select {
+    @apply transition-colors duration-150;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    @apply border-blue-400 outline-none ring-2 ring-blue-100;
+  }
+
+  input[inputmode='numeric'],
+  input[type='tel'],
+  input[type='time'] {
+    direction: ltr;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+
+  ::selection {
+    @apply bg-primary-200 text-primary-900;
+  }
+
+  * {
+    @apply border-slate-200;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
