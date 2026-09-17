@@ -1,11 +1,17 @@
-import { IsEmail, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()
-  @MinLength(2, { message: 'نام باید حداقل ۲ کاراکتر باشد' })
-  @MaxLength(120, { message: 'نام حداکثر ۱۲۰ کاراکتر است' })
-  name?: string;
+  @MinLength(1, { message: 'نام الزامی است' })
+  @MaxLength(60, { message: 'نام حداکثر ۶۰ کاراکتر است' })
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1, { message: 'نام خانوادگی الزامی است' })
+  @MaxLength(60, { message: 'نام خانوادگی حداکثر ۶۰ کاراکتر است' })
+  lastName?: string;
 
   @IsOptional()
   @IsEmail({}, { message: 'ایمیل معتبر نیست' })
@@ -18,12 +24,8 @@ export class UpdateProfileDto {
   phone?: string | null;
 
   @IsOptional()
-  @IsUrl({ protocols: ['https'], require_protocol: true }, { message: 'آدرس تصویر باید HTTPS معتبر باشد' })
-  @MaxLength(1000)
-  avatarUrl?: string | null;
-
-  @IsOptional()
   @IsString()
-  @MaxLength(128)
-  currentPassword?: string;
+  @MinLength(12, { message: 'رمز عبور باید حداقل ۱۲ کاراکتر باشد' })
+  @MaxLength(128, { message: 'رمز عبور حداکثر ۱۲۸ کاراکتر است' })
+  password?: string;
 }

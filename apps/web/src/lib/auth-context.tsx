@@ -22,8 +22,9 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  firstName?: string | null;
+  lastName?: string | null;
   role: string;
-  avatarUrl?: string | null;
   phone?: string | null;
   isActive?: boolean;
   tenants?: TenantMembership[];

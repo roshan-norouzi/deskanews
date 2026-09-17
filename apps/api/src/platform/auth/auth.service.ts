@@ -2,29 +2,20 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomUUID } from 'crypto';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { normalizeDigits, normalizeEmployeeProfile, pickProvidedProfileFields, type EmployeeProfileInput } from '@deska/shared';
+import { normalizeDigits } from '@deska/shared';
 import { Prisma } from '@prisma/client';
-import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto';
-import {
-  applyEmployeeProfileToUpdate,
-  assertUniqueNationalId,
-  assertValidEmployeeProfile,
-} from './profile.helper';
 
 interface JwtPayload {
   sub: string;
@@ -81,8 +72,10 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
-        avatarUrl: user.avatarUrl,
+        phone: user.phone,
       },
       ...tokens,
     };
@@ -168,8 +161,10 @@ export class AuthService {
         id: stored.user.id,
         email: stored.user.email,
         name: stored.user.name,
+        firstName: stored.user.firstName,
+        lastName: stored.user.lastName,
         role: stored.user.role,
-        avatarUrl: stored.user.avatarUrl,
+        phone: stored.user.phone,
       },
       ...tokenPair.response,
     };
@@ -190,8 +185,9 @@ export class AuthService {
         id: true,
         email: true,
         name: true,
+        firstName: true,
+        lastName: true,
         role: true,
-        avatarUrl: true,
         phone: true,
         status: true,
         lastLoginAt: true,
@@ -241,8 +237,9 @@ export class AuthService {
       id: user.id,
       email: user.email,
       name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
       role: user.role,
-      avatarUrl: user.avatarUrl,
       phone: user.phone,
       status: user.status,
       lastLoginAt: user.lastLoginAt,
@@ -278,11 +275,15 @@ export class AuthService {
         ? undefined
         : this.normalizePhone(dto.phone);
     const phoneVariants = phone ? this.phoneVariants(phone) : [];
+    const firstName = dto.firstName?.trim();
+    const lastName = dto.lastName?.trim();
+    const passwordChanged = Boolean(dto.password?.trim());
 
-    if (emailChanged) {
-      if (!dto.currentPassword || !(await bcrypt.compare(dto.currentPassword, current.passwordHash))) {
-        throw new UnauthorizedException('برای تغییر ایمیل، رمز عبور فعلی صحیح الزامی است');
-      }
+    if (firstName !== undefined && !firstName) {
+      throw new BadRequestException('نام الزامی است');
+    }
+    if (lastName !== undefined && !lastName) {
+      throw new BadRequestException('نام خانوادگی الزامی است');
     }
 
     const conflicts = email || phoneVariants.length
@@ -304,17 +305,28 @@ export class AuthService {
       throw new ConflictException('این شماره موبایل قبلاً ثبت شده است');
     }
 
+    const nextFirstName = firstName ?? current.firstName ?? current.name.split(/\s+/)[0] ?? '';
+    const nextLastName = lastName ?? current.lastName ?? current.name.split(/\s+/).slice(1).join(' ');
+    const nextName = [nextFirstName, nextLastName].filter(Boolean).join(' ').trim() || current.name;
+
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         const user = await tx.user.update({
           where: { id: userId },
           data: {
-            ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+            ...(firstName !== undefined || lastName !== undefined ? {
+              firstName: nextFirstName,
+              lastName: nextLastName,
+              name: nextName,
+            } : {}),
             ...(email !== undefined ? { email } : {}),
             ...(phone !== undefined ? { phone } : {}),
-            ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl?.trim() || null } : {}),
-            ...(emailChanged ? {
-              emailVerifiedAt: null,
+            ...(passwordChanged ? {
+              passwordHash: await bcrypt.hash(dto.password!.trim(), 12),
+              passwordChangedAt: new Date(),
+            } : {}),
+            ...(emailChanged || passwordChanged ? {
+              ...(emailChanged ? { emailVerifiedAt: null } : {}),
               sessionsInvalidatedAt: new Date(),
             } : {}),
           },
@@ -323,15 +335,18 @@ export class AuthService {
             email: true,
             phone: true,
             name: true,
+            firstName: true,
+            lastName: true,
             role: true,
-            avatarUrl: true,
             status: true,
             isActive: true,
           },
         });
-        if (emailChanged) {
+        if (emailChanged || passwordChanged) {
           await tx.refreshToken.deleteMany({ where: { userId } });
-          await tx.passwordResetToken.deleteMany({ where: { userId, usedAt: null } });
+          if (emailChanged) {
+            await tx.passwordResetToken.deleteMany({ where: { userId, usedAt: null } });
+          }
         }
         await tx.auditLog.create({
           data: {
@@ -341,16 +356,16 @@ export class AuthService {
             entityType: 'User',
             entityId: userId,
             changes: {
-              nameChanged: dto.name !== undefined && dto.name.trim() !== current.name,
+              nameChanged: nextName !== current.name,
               emailChanged,
               phoneChanged: phone !== undefined && phone !== current.phone,
-              avatarChanged: dto.avatarUrl !== undefined && dto.avatarUrl !== current.avatarUrl,
+              passwordChanged,
             },
           },
         });
         return user;
       });
-      return { user: updated, requiresReauthentication: emailChanged };
+      return { user: updated, requiresReauthentication: emailChanged || passwordChanged };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('ایمیل یا شماره موبایل قبلاً ثبت شده است');
@@ -389,309 +404,6 @@ export class AuthService {
     return digits.startsWith('+') ? digits : `+${digits}`;
   }
 
-  async employeeProfiles(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        firstName: true, lastName: true, nationalId: true, fatherName: true, motherName: true,
-        birthCertificateNumber: true, birthCertificateDate: true, birthDate: true, maritalStatus: true,
-        address: true, postalCode: true, mobilePhone: true, landlinePhone: true, bankAccountNumber: true,
-        bankCardNumber: true, iban: true, bankName: true, insuranceNumber: true,
-        tenantMembers: {
-          where: { status: 'active', tenant: { isActive: true, status: 'active' } },
-          select: { tenant: { select: { id: true, name: true, slug: true } } },
-          orderBy: { joinedAt: 'asc' },
-        },
-      },
-    });
-    if (!user) throw new UnauthorizedException('کاربر یافت نشد');
-    const { tenantMembers, ...profile } = user;
-    return {
-      profile: {
-        ...profile,
-        birthCertificateDate: profile.birthCertificateDate?.toISOString() ?? null,
-        birthDate: profile.birthDate?.toISOString() ?? null,
-      },
-      organizations: tenantMembers.map((member) => member.tenant),
-    };
-  }
-
-  async updateOwnEmployeeProfile(userId: string, dto: UpdateEmployeeProfileDto) {
-    const current = await this.prisma.user.findFirst({
-      where: { id: userId, isActive: true, status: 'active' },
-      select: { id: true },
-    });
-    if (!current) throw new UnauthorizedException('حساب کاربری فعال نیست');
-
-    const provided = pickProvidedProfileFields(dto as unknown as EmployeeProfileInput);
-    assertValidEmployeeProfile(provided, { requireAll: false });
-    const normalized = normalizeEmployeeProfile(provided);
-    await assertUniqueNationalId(this.prisma, '', normalized.nationalId, userId);
-
-    const update: Prisma.UserUpdateInput = {};
-    applyEmployeeProfileToUpdate(provided, update);
-    if (Object.keys(update).length > 0) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.user.update({ where: { id: userId }, data: update });
-        await tx.auditLog.create({
-          data: {
-            tenantId: null, userId, action: 'account.employee_profile_updated', entityType: 'User', entityId: userId,
-            changes: { fields: Object.keys(update) },
-          },
-        });
-      });
-    }
-
-    return this.employeeProfiles(userId);
-  }
-
-  async uploadProfileAvatar(userId: string, file?: Express.Multer.File) {
-    if (!file?.buffer?.length) throw new BadRequestException('تصویر پروفایل انتخاب نشده است');
-
-    const mimeTypes: Record<string, { extension: string; signature: (buffer: Buffer) => boolean }> = {
-      'image/jpeg': { extension: 'jpg', signature: (buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
-      'image/png': { extension: 'png', signature: (buffer) => buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
-      'image/webp': { extension: 'webp', signature: (buffer) => buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP' },
-    };
-    const image = mimeTypes[file.mimetype];
-    if (!image || !image.signature(file.buffer)) {
-      throw new BadRequestException('فرمت تصویر فقط باید JPG، PNG یا WebP باشد');
-    }
-
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, isActive: true, status: 'active' },
-      select: { id: true, avatarUrl: true },
-    });
-    if (!user) throw new UnauthorizedException('حساب کاربری فعال نیست');
-
-    const filename = `${randomUUID()}.${image.extension}`;
-    const directory = this.profileStorageDirectory(userId);
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    const targetPath = path.join(directory, filename);
-    await fs.writeFile(targetPath, file.buffer, { mode: 0o600 });
-
-    const avatarUrl = `/auth/profile/avatar/${userId}/${filename}`;
-    await this.prisma.user.update({ where: { id: userId }, data: { avatarUrl } });
-    await this.removePreviousAvatar(user.avatarUrl, userId, filename);
-    return { avatarUrl };
-  }
-
-  async getProfileAvatar(requesterId: string, userId: string, filename: string) {
-    if (!/^[a-f0-9-]{20,80}\.(?:jpg|png|webp)$/iu.test(filename)) {
-      throw new NotFoundException('تصویر پروفایل یافت نشد');
-    }
-    const requester = await this.prisma.user.findFirst({
-      where: { id: requesterId, isActive: true, status: 'active' },
-      select: { id: true },
-    });
-    if (!requester) throw new UnauthorizedException('حساب کاربری فعال نیست');
-
-    const expectedUrl = `/auth/profile/avatar/${userId}/${filename}`;
-    const target = await this.prisma.user.findFirst({
-      where: { id: userId, avatarUrl: expectedUrl, isActive: true, status: 'active' },
-      select: { id: true },
-    });
-    if (!target) throw new NotFoundException('تصویر پروفایل یافت نشد');
-
-    const filePath = path.join(this.profileStorageDirectory(userId), filename);
-    try {
-      await fs.access(filePath);
-    } catch {
-      throw new NotFoundException('تصویر پروفایل یافت نشد');
-    }
-    return {
-      path: filePath,
-      contentType: filename.endsWith('.png') ? 'image/png' : filename.endsWith('.webp') ? 'image/webp' : 'image/jpeg',
-    };
-  }
-
-  async listUserDocuments(userId: string) {
-    await this.assertActiveUser(userId);
-    const documents = await this.prisma.userDocument.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        kind: true,
-        originalName: true,
-        mimeType: true,
-        size: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return { documents };
-  }
-
-  async uploadNationalCard(userId: string, file?: Express.Multer.File) {
-    if (!file?.buffer?.length) throw new BadRequestException('تصویر کارت ملی انتخاب نشده است');
-
-    const imageTypes: Record<string, { extension: string; signature: (buffer: Buffer) => boolean }> = {
-      'image/jpeg': {
-        extension: 'jpg',
-        signature: (buffer) => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
-      },
-      'image/png': {
-        extension: 'png',
-        signature: (buffer) => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
-      },
-      'image/webp': {
-        extension: 'webp',
-        signature: (buffer) => buffer.length >= 12 && buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP',
-      },
-    };
-    const image = imageTypes[file.mimetype];
-    if (!image || file.size > 5 * 1024 * 1024 || !image.signature(file.buffer)) {
-      throw new BadRequestException('فرمت تصویر فقط باید JPG، PNG یا WebP و حداکثر ۵ مگابایت باشد');
-    }
-
-    await this.assertActiveUser(userId);
-    const filename = `${randomUUID()}.${image.extension}`;
-    const directory = this.userDocumentStorageDirectory(userId);
-    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-    const targetPath = this.userDocumentPath(userId, filename);
-    await fs.writeFile(targetPath, file.buffer, { mode: 0o600 });
-
-    const originalName = path.basename(file.originalname || 'تصویر کارت ملی').trim().slice(0, 255) || 'تصویر کارت ملی';
-    let previousPath: string | null = null;
-    let document;
-    try {
-      document = await this.prisma.$transaction(async (tx) => {
-        const previous = await tx.userDocument.findUnique({
-          where: { userId_kind: { userId, kind: 'national_card' } },
-          select: { name: true },
-        });
-        previousPath = previous ? this.userDocumentPath(userId, previous.name) : null;
-
-        const saved = await tx.userDocument.upsert({
-          where: { userId_kind: { userId, kind: 'national_card' } },
-          create: {
-            userId,
-            kind: 'national_card',
-            name: filename,
-            originalName,
-            mimeType: image.extension === 'jpg' ? 'image/jpeg' : file.mimetype,
-            size: file.size,
-            path: filename,
-          },
-          update: {
-            name: filename,
-            originalName,
-            mimeType: image.extension === 'jpg' ? 'image/jpeg' : file.mimetype,
-            size: file.size,
-          },
-          select: {
-            id: true,
-            kind: true,
-            originalName: true,
-            mimeType: true,
-            size: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            tenantId: null,
-            userId,
-            action: 'account.user_document_uploaded',
-            entityType: 'UserDocument',
-            entityId: saved.id,
-            changes: { kind: 'national_card', replaced: Boolean(previous) },
-          },
-        });
-        return saved;
-      });
-
-    } catch (error) {
-      await fs.rm(targetPath, { force: true });
-      throw error;
-    }
-
-    // A cleanup failure must not remove the newly committed file or leave the
-    // database pointing to a missing document. Orphan cleanup can be retried
-    // later without affecting the user's current document.
-    if (previousPath && previousPath !== targetPath) {
-      await fs.rm(previousPath, { force: true }).catch(() => undefined);
-    }
-    return document;
-  }
-
-  async getUserDocument(userId: string, documentId: string) {
-    await this.assertActiveUser(userId);
-    const document = await this.prisma.userDocument.findFirst({
-      where: { id: documentId, userId },
-      select: { name: true, mimeType: true, originalName: true },
-    });
-    if (!document) throw new NotFoundException('سند کاربر یافت نشد');
-
-    const filePath = this.userDocumentPath(userId, document.name);
-    try {
-      await fs.access(filePath);
-    } catch {
-      throw new NotFoundException('فایل سند کاربر یافت نشد');
-    }
-    return { path: filePath, contentType: document.mimeType, originalName: document.originalName };
-  }
-
-  async removeUserDocument(userId: string, documentId: string) {
-    await this.assertActiveUser(userId);
-    const document = await this.prisma.userDocument.findFirst({
-      where: { id: documentId, userId },
-      select: { id: true, name: true, kind: true },
-    });
-    if (!document) throw new NotFoundException('سند کاربر یافت نشد');
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.userDocument.delete({ where: { id: document.id } });
-      await tx.auditLog.create({
-        data: {
-          tenantId: null,
-          userId,
-          action: 'account.user_document_deleted',
-          entityType: 'UserDocument',
-          entityId: document.id,
-          changes: { kind: document.kind },
-        },
-      });
-    });
-    await fs.rm(this.userDocumentPath(userId, document.name), { force: true });
-    return { success: true };
-  }
-
-  private async assertActiveUser(userId: string) {
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, isActive: true, status: 'active' },
-      select: { id: true },
-    });
-    if (!user) throw new UnauthorizedException('حساب کاربری فعال نیست');
-  }
-
-  private userDocumentStorageDirectory(userId: string) {
-    return path.resolve(process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'), 'user-documents', userId);
-  }
-
-  private userDocumentPath(userId: string, filename: string) {
-    const directory = path.resolve(this.userDocumentStorageDirectory(userId));
-    const safeFilename = path.basename(filename);
-    const resolved = path.resolve(directory, safeFilename);
-    if (path.dirname(resolved) !== directory || safeFilename !== filename) {
-      throw new NotFoundException('مسیر سند کاربر نامعتبر است');
-    }
-    return resolved;
-  }
-
-  private profileStorageDirectory(userId: string) {
-    return path.resolve(process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'), 'profiles', userId);
-  }
-
-  private async removePreviousAvatar(avatarUrl: string | null, userId: string, currentFilename: string) {
-    const prefix = `/auth/profile/avatar/${userId}/`;
-    if (!avatarUrl?.startsWith(prefix)) return;
-    const previousFilename = path.basename(avatarUrl.slice(prefix.length));
-    if (!previousFilename || previousFilename === currentFilename || previousFilename.includes('..')) return;
-    await fs.rm(path.join(this.profileStorageDirectory(userId), previousFilename), { force: true });
-  }
 
   private phoneVariants(canonicalPhone: string): string[] {
     const variants = new Set([canonicalPhone]);
