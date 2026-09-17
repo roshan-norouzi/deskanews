@@ -10,6 +10,7 @@ import type { SocialNetwork } from './social-network-publisher.service';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
+import { DistributedLockService, SCHEDULER_LOCK_IDS } from '../../common/services/distributed-lock.service';
 
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -78,6 +79,7 @@ export class SocialStudioService {
     private readonly jobs: AutomationJobService,
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
+    private readonly locks: DistributedLockService,
   ) {}
 
   private recordWorkflow(params: {
@@ -528,7 +530,8 @@ export class SocialStudioService {
     if (this.maintenanceRunning) return;
     this.maintenanceRunning = true;
     try {
-      const activeTenants = await this.prisma.tenant.findMany({
+      await this.locks.runExclusive(SCHEDULER_LOCK_IDS.socialMaintenance, async () => {
+        const activeTenants = await this.prisma.tenant.findMany({
         where: { isActive: true, status: 'active' },
         select: { id: true },
       });
@@ -557,6 +560,7 @@ export class SocialStudioService {
         }
       }
       for (const tenantId of enabledTenantIds) await this.queueAutomation(tenantId, 25);
+      });
     } catch (error) {
       this.logger.error(`Social studio maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {

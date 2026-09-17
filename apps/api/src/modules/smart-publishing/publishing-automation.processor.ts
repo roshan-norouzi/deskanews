@@ -5,6 +5,7 @@ import { hostname } from 'node:os';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { NotificationService } from '../../common/services/audit.service';
+import { DistributedLockService, SCHEDULER_LOCK_IDS } from '../../common/services/distributed-lock.service';
 import { NewsroomService } from './newsroom.service';
 import { PublishingSettingsService } from './publishing-settings.service';
 import { SocialCoverRendererService } from './social-cover-renderer.service';
@@ -38,6 +39,7 @@ export class PublishingAutomationProcessor {
     private readonly socialPublisher: SocialNetworkPublisherService,
     private readonly integrations: IntegrationHealthService,
     private readonly notifications: NotificationService,
+    private readonly locks: DistributedLockService,
   ) {}
 
   @Interval('publishing-durable-job-worker', 2_000)
@@ -77,8 +79,10 @@ export class PublishingAutomationProcessor {
     if (this.maintaining) return;
     this.maintaining = true;
     try {
-      await this.jobs.recoverStale();
-      if (new Date().getMinutes() === 0) await this.jobs.prune(14);
+      await this.locks.runExclusive(SCHEDULER_LOCK_IDS.automationMaintenance, async () => {
+        await this.jobs.recoverStale();
+        if (new Date().getMinutes() === 0) await this.jobs.prune(14);
+      });
     } catch (error) {
       this.logger.error(`Automation queue maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {

@@ -3,11 +3,13 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { Public, RequirePermission } from '../../common/decorators/metadata.decorator';
-import { TenantCtx } from '../../common/decorators/params.decorator';
-import type { TenantContext } from '../../common/decorators/params.decorator';
+import { TenantCtx, User } from '../../common/decorators/params.decorator';
+import type { AuthUser, TenantContext } from '../../common/decorators/params.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { AssetAccessService } from '../../common/services/asset-access.service';
+import { SignedUrlService } from '../../common/services/signed-url.service';
 import { CreateFeedDto, UpdateFeedDto, TogglePlatformFeedDto } from './dto/feed.dto';
 import { UpdateNewsArticleDto } from './dto/news-article.dto';
 import { TestGapGptConnectionDto, TestWordPressConnectionDto, UpdatePublishingSettingsDto } from './dto/publishing-settings.dto';
@@ -146,36 +148,66 @@ export class SmartPublishingController {
 
 @Public()
 @Controller('publishing/settings/fonts/file')
+@UseGuards(JwtAuthGuard)
 export class PublishingFontFileController {
-  constructor(private readonly settingsService: PublishingSettingsService) {}
-  @Get(':tenantId/:filename') async tenantFile(@Param('tenantId') tenantId: string, @Param('filename') filename: string, @Res() response: Response) {
+  constructor(
+    private readonly settingsService: PublishingSettingsService,
+    private readonly assetAccess: AssetAccessService,
+  ) {}
+
+  @Get(':tenantId/:filename')
+  async tenantFile(
+    @User() user: AuthUser,
+    @Param('tenantId') tenantId: string,
+    @Param('filename') filename: string,
+    @Res() response: Response,
+  ) {
+    await this.assetAccess.assertTenantAssetAccess(user.id, user.role, tenantId);
     const result = await this.settingsService.fontFile(tenantId, filename);
     response.setHeader('Content-Type', result.contentType);
-    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    response.setHeader('Cache-Control', 'private, max-age=86400');
     return response.send(result.buffer);
   }
-  @Get(':filename') async file(@Param('filename') filename: string, @Res() response: Response) {
+
+  @Get(':filename')
+  async file(@User() user: AuthUser, @Param('filename') filename: string, @Res() response: Response) {
+    void user;
     const result = await this.settingsService.legacyFontFile(filename);
     response.setHeader('Content-Type', result.contentType);
-    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    response.setHeader('Cache-Control', 'private, max-age=86400');
     return response.send(result.buffer);
   }
 }
 
 @Public()
 @Controller('publishing/settings/images/file')
+@UseGuards(JwtAuthGuard)
 export class PublishingImageFileController {
-  constructor(private readonly settingsService: PublishingSettingsService) {}
-  @Get(':tenantId/:filename') async tenantFile(@Param('tenantId') tenantId: string, @Param('filename') filename: string, @Res() response: Response) {
+  constructor(
+    private readonly settingsService: PublishingSettingsService,
+    private readonly assetAccess: AssetAccessService,
+  ) {}
+
+  @Get(':tenantId/:filename')
+  async tenantFile(
+    @User() user: AuthUser,
+    @Param('tenantId') tenantId: string,
+    @Param('filename') filename: string,
+    @Res() response: Response,
+  ) {
+    await this.assetAccess.assertTenantAssetAccess(user.id, user.role, tenantId);
     const result = await this.settingsService.imageFile(tenantId, filename);
     response.setHeader('Content-Type', result.contentType);
-    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    response.setHeader('Cache-Control', 'private, max-age=86400');
     return response.send(result.buffer);
   }
-  @Get(':filename') async file(@Param('filename') filename: string, @Res() response: Response) {
+
+  @Get(':filename')
+  async file(@User() user: AuthUser, @Param('filename') filename: string, @Res() response: Response) {
+    void user;
     const result = await this.settingsService.legacyImageFile(filename);
     response.setHeader('Content-Type', result.contentType);
-    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    response.setHeader('Cache-Control', 'private, max-age=86400');
     return response.send(result.buffer);
   }
 }
@@ -183,10 +215,20 @@ export class PublishingImageFileController {
 @Public()
 @Controller('publishing/social/media')
 export class SocialPublishingMediaController {
-  constructor(private readonly socialPublisher: SocialNetworkPublisherService) {}
+  constructor(
+    private readonly socialPublisher: SocialNetworkPublisherService,
+    private readonly signedUrls: SignedUrlService,
+  ) {}
 
   @Get(':filename')
-  async file(@Param('filename') filename: string, @Res() response: Response) {
+  async file(
+    @Param('filename') filename: string,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
+    @Res() response: Response,
+  ) {
+    const path = `/api/publishing/social/media/${filename}`;
+    this.signedUrls.assertValid(path, exp, sig);
     const result = await this.socialPublisher.publicMedia(filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=300');

@@ -9,6 +9,8 @@ import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
+import { LocalStorageService } from '../../common/services/local-storage.service';
+import { SignedUrlService } from '../../common/services/signed-url.service';
 
 export type SocialNetwork = 'telegram' | 'instagram' | 'linkedin' | 'facebook';
 type ImagePayload = { buffer: Buffer; contentType: string; extension: string };
@@ -111,9 +113,11 @@ export class SocialNetworkPublisherService {
     private readonly outbound: SourceReaderService,
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
+    private readonly storage: LocalStorageService,
+    private readonly signedUrls: SignedUrlService,
   ) {}
 
-  private storagePath() { return path.join(process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'), 'social-publishing'); }
+  private storagePath() { return this.storage.directory('social-publishing'); }
 
   async storePublicMedia(image: ImagePayload): Promise<{ filename: string }> {
     return this.storeMedia(image, true);
@@ -122,7 +126,8 @@ export class SocialNetworkPublisherService {
   async storeGeneratedMedia(buffer: Buffer): Promise<{ filename: string; url: string }> {
     const image = remoteImagePayload(buffer, 'image/png');
     const stored = await this.storeMedia(image, false);
-    return { ...stored, url: `/api/publishing/social/media/${stored.filename}` };
+    const path = `/api/publishing/social/media/${stored.filename}`;
+    return { ...stored, url: this.signedUrls.sign(path, 7 * 24 * 3600) };
   }
 
   private async storeMedia(image: ImagePayload, temporary: boolean): Promise<{ filename: string }> {
@@ -420,7 +425,8 @@ export class SocialNetworkPublisherService {
     if (!settings.social_public_media_base_url) throw new BadRequestException('برای اینستاگرام ابتدا آدرس عمومی API رسانه را تنظیم کنید');
     const stored = await this.storePublicMedia(image);
     const version = graphVersion(settings.social_instagram_api_version, 'v23.0');
-    const mediaUrl = `${settings.social_public_media_base_url.replace(/\/$/u, '')}/api/publishing/social/media/${stored.filename}`;
+    const mediaPath = `/api/publishing/social/media/${stored.filename}`;
+    const mediaUrl = `${settings.social_public_media_base_url.replace(/\/$/u, '')}${this.signedUrls.sign(mediaPath, 3600)}`;
     const create = new URLSearchParams({ image_url: mediaUrl, caption, access_token: settings.social_instagram_access_token });
     const containerResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(settings.social_instagram_account_id)}/media`, { method: 'POST', body: create, signal: AbortSignal.timeout(30_000) });
     if (!containerResponse.ok) throw new BadRequestException(`اینستاگرام ساخت محفظه انتشار را با خطای ${containerResponse.status} رد کرد`);

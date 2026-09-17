@@ -7,6 +7,7 @@ import { PublishingSettingsService } from './publishing-settings.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
 import type { CreatePlatformFeedDto, UpdatePlatformFeedDto } from '../../platform/admin/dto/platform-feed.dto';
 import type { SourceType } from './dto/feed.dto';
+import { DistributedLockService, SCHEDULER_LOCK_IDS } from '../../common/services/distributed-lock.service';
 
 const PLATFORM_ARTICLE_MAX_AGE_DAYS = 10;
 
@@ -42,6 +43,7 @@ export class PlatformFeedService {
     private readonly sourceReader: SourceReaderService,
     private readonly gapGpt: GapGptClient,
     private readonly settings: PublishingSettingsService,
+    private readonly locks: DistributedLockService,
   ) {}
 
   listAll() {
@@ -384,7 +386,8 @@ export class PlatformFeedService {
     if (this.maintenanceRunning) return;
     this.maintenanceRunning = true;
     try {
-      const feeds = await this.prisma.platformFeed.findMany({
+      await this.locks.runExclusive(SCHEDULER_LOCK_IDS.platformFeedMaintenance, async () => {
+        const feeds = await this.prisma.platformFeed.findMany({
         where: { enabled: true },
         orderBy: { lastFetchedAt: 'asc' },
       });
@@ -396,6 +399,7 @@ export class PlatformFeedService {
           });
         }
       }
+      });
     } catch (error) {
       this.logger.error(`Platform feed maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {

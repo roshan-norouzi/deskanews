@@ -447,6 +447,87 @@ test('refresh tokens are stored as SHA-256 hashes', async () => {
   assert.equal(result.refreshToken.length, 36);
 });
 
+test('login keeps bearer tokens out of the public response envelope', async () => {
+  const user = {
+    id: 'user-a',
+    email: 'user@example.com',
+    name: 'User',
+    role: 'user',
+    firstName: 'User',
+    lastName: 'Example',
+    phone: null,
+    passwordHash: await require('bcrypt').hash('Correct-password-123', 4),
+    isActive: true,
+    status: 'active',
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  };
+  const prisma = {
+    user: {
+      findUnique: async () => user,
+      update: async () => user,
+    },
+    refreshToken: { create: async ({ data }) => data },
+  };
+  const jwtService = { sign: () => 'signed-access-token' };
+  const config = {
+    get: (key, fallback) => (
+      key === 'JWT_ACCESS_EXPIRES' ? '15m'
+        : key === 'JWT_REFRESH_EXPIRES' ? '7d'
+          : fallback
+    ),
+  };
+  const service = new AuthService(prisma, jwtService, config);
+
+  const result = await service.login({
+    email: user.email,
+    password: 'Correct-password-123',
+  });
+
+  assert.equal(Object.hasOwn(result, 'accessToken'), false);
+  assert.equal(Object.hasOwn(result, 'refreshToken'), false);
+  assert.match(result.tokens.accessToken, /.+/);
+  assert.match(result.tokens.refreshToken, /.+/);
+});
+
+test('changePassword invalidates existing sessions immediately', async () => {
+  const bcrypt = require('bcrypt');
+  const passwordHash = await bcrypt.hash('Current@12345678', 4);
+  let updatedData;
+  const prisma = {
+    user: {
+      findUnique: async () => ({ id: 'user-a', isActive: true, passwordHash }),
+      update: async ({ data }) => {
+        updatedData = data;
+        return data;
+      },
+    },
+    refreshToken: { deleteMany: async () => ({ count: 1 }) },
+    $transaction: async (ops) => Promise.all(ops.map((op) => op)),
+  };
+  const service = new AuthService(prisma, {}, {});
+
+  await service.changePassword('user-a', {
+    currentPassword: 'Current@12345678',
+    newPassword: 'New-secure-password-123!',
+  });
+
+  assert.equal(updatedData.sessionsInvalidatedAt instanceof Date, true);
+  assert.equal(updatedData.passwordChangedAt instanceof Date, true);
+});
+
+test('signed media URLs reject tampered signatures', () => {
+  const { SignedUrlService } = require('../dist/common/services/signed-url.service');
+  const service = new SignedUrlService({ get: () => 'test-signing-secret-with-enough-length' });
+  const signed = service.sign('/api/publishing/social/media/example.png', 600);
+  const url = new URL(`http://localhost${signed}`);
+  service.assertValid(url.pathname, url.searchParams.get('exp'), url.searchParams.get('sig'));
+  assert.throws(
+    () => service.assertValid(url.pathname, url.searchParams.get('exp'), `${url.searchParams.get('sig')}ff`),
+    /لینک رسانه منقضی یا نامعتبر است/,
+  );
+});
+
 test('parallel failed logins increment atomically and lock the account', async () => {
   const state = { failedLoginAttempts: 0, lockedUntil: null };
   const user = {

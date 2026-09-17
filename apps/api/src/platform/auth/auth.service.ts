@@ -77,7 +77,7 @@ export class AuthService {
         role: user.role,
         phone: user.phone,
       },
-      ...tokens,
+      tokens,
     };
   }
 
@@ -110,10 +110,6 @@ export class AuthService {
     const tokenHash = this.hashRefreshToken(dto.refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
-      include: { user: true },
-    }) ?? await this.prisma.refreshToken.findUnique({
-      // Compatibility with refresh tokens issued before token hashing was enabled.
-      where: { token: dto.refreshToken },
       include: { user: true },
     });
 
@@ -166,15 +162,13 @@ export class AuthService {
         role: stored.user.role,
         phone: stored.user.phone,
       },
-      ...tokenPair.response,
+      tokens: tokenPair.response,
     };
   }
 
   async logout(dto: { refreshToken: string }) {
     const tokenHash = this.hashRefreshToken(dto.refreshToken);
-    await this.prisma.refreshToken.deleteMany({
-      where: { token: { in: [tokenHash, dto.refreshToken] } },
-    });
+    await this.prisma.refreshToken.deleteMany({ where: { token: tokenHash } });
     return { success: true };
   }
 
@@ -386,10 +380,17 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const changedAt = new Date();
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: userId },
-        data: { passwordHash, passwordChangedAt: new Date() },
+        data: {
+          passwordHash,
+          passwordChangedAt: changedAt,
+          sessionsInvalidatedAt: changedAt,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
       }),
       this.prisma.refreshToken.deleteMany({ where: { userId } }),
     ]);

@@ -15,7 +15,7 @@ Set-Location $projectRoot
 $configPath = Join-Path $PSScriptRoot 'config.local.json'
 $branch = 'main'
 $owner = 'roshan-norouzi'
-$repository = 'deska'
+$repository = 'deskanews'
 if (Test-Path $configPath) {
   $config = Get-Content $configPath -Raw | ConvertFrom-Json
   if ($config.branch) { $branch = [string]$config.branch }
@@ -85,6 +85,9 @@ if (-not $SkipSystemExport) {
   $prismaPath = Join-Path $projectRoot 'apps/api/prisma'
   $exportScriptPath = Join-Path $prismaPath 'export-system-observances.cjs'
   $snapshotPath = Join-Path $prismaPath 'system-observances.json'
+  if (-not (Test-Path -LiteralPath $exportScriptPath -PathType Leaf)) {
+    Write-Warning 'System observance export script is not part of Deska News; skipping export.'
+  } else {
   try {
     if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
       if (Test-SystemObservanceSnapshot $snapshotPath) {
@@ -131,6 +134,7 @@ if (-not $SkipSystemExport) {
     }
   } catch {
     throw "System observance export failed: $($_.Exception.Message)"
+  }
   }
 }
 

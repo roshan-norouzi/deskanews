@@ -1,13 +1,14 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
-import { access, mkdir } from 'node:fs/promises';
-import { constants } from 'node:fs';
-import * as path from 'node:path';
 import { Public } from '../../common/decorators/metadata.decorator';
+import { LocalStorageService } from '../../common/services/local-storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('health')
 export class HealthController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private storage: LocalStorageService,
+  ) {}
 
   @Public()
   @Get('live')
@@ -43,20 +44,52 @@ export class HealthController {
       throw new ServiceUnavailableException('سرویس هنوز آماده نیست');
     }
 
-    if ((process.env.STORAGE_TYPE || 'local') === 'local') {
-      const storagePath = path.resolve(process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'));
-      try {
-        await mkdir(storagePath, { recursive: true });
-        await access(storagePath, constants.R_OK | constants.W_OK);
-      } catch {
-        throw new ServiceUnavailableException('سرویس هنوز آماده نیست');
-      }
+    try {
+      await this.storage.ensureWritable();
+    } catch {
+      throw new ServiceUnavailableException('سرویس هنوز آماده نیست');
     }
 
     return {
       status: 'ok',
       ready: true,
       version: process.env.APP_VERSION ?? '1.0.0',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Public()
+  @Get('metrics')
+  async metrics() {
+    const [
+      users,
+      tenants,
+      queuedJobs,
+      runningJobs,
+      deadJobs,
+    ] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.tenant.count({ where: { isActive: true, status: 'active' } }),
+      this.prisma.automationJob.count({ where: { status: 'queued' } }),
+      this.prisma.automationJob.count({ where: { status: 'running' } }),
+      this.prisma.automationJob.count({ where: { status: 'dead' } }),
+    ]);
+
+    const memory = process.memoryUsage();
+    return {
+      status: 'ok',
+      version: process.env.APP_VERSION ?? '1.0.0',
+      uptimeSeconds: Math.floor(process.uptime()),
+      memory: {
+        rss: memory.rss,
+        heapUsed: memory.heapUsed,
+        heapTotal: memory.heapTotal,
+      },
+      counts: {
+        users,
+        activeTenants: tenants,
+        automationJobs: { queued: queuedJobs, running: runningJobs, dead: deadJobs },
+      },
       timestamp: new Date().toISOString(),
     };
   }

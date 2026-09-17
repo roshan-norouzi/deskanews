@@ -12,6 +12,7 @@ import { parseWordPressCategories } from './wordpress-category';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
+import { DistributedLockService, SCHEDULER_LOCK_IDS } from '../../common/services/distributed-lock.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
 import { PlatformFeedService } from './platform-feed.service';
 
@@ -132,6 +133,7 @@ export class NewsroomService {
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
     private readonly platformFeeds: PlatformFeedService,
+    private readonly locks: DistributedLockService,
   ) {}
 
   private recordWorkflow(params: {
@@ -624,7 +626,8 @@ export class NewsroomService {
     if (this.maintenanceRunning) return;
     this.maintenanceRunning = true;
     try {
-      const activeTenants = await this.prisma.tenant.findMany({
+      await this.locks.runExclusive(SCHEDULER_LOCK_IDS.newsroomMaintenance, async () => {
+        const activeTenants = await this.prisma.tenant.findMany({
         where: { isActive: true, status: 'active' },
         select: { id: true },
       });
@@ -654,6 +657,7 @@ export class NewsroomService {
         }
       }
       for (const tenantId of enabledTenantIds) await this.queueAutomation(tenantId, 25);
+      });
     } catch (error) {
       this.logger.error(`Newsroom maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {

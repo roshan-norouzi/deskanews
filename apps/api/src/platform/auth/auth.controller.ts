@@ -42,8 +42,8 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.authService.login(dto);
-    this.setAuthCookies(response, result.accessToken, result.refreshToken);
-    return result;
+    this.setAuthCookies(response, result.tokens.accessToken, result.tokens.refreshToken);
+    return { user: result.user, expiresIn: result.tokens.expiresIn };
   }
 
   @Public()
@@ -62,8 +62,8 @@ export class AuthController {
 
     try {
       const result = await this.authService.refresh({ refreshToken });
-      this.setAuthCookies(response, result.accessToken, result.refreshToken);
-      return result;
+      this.setAuthCookies(response, result.tokens.accessToken, result.tokens.refreshToken);
+      return { user: result.user, expiresIn: result.tokens.expiresIn };
     } catch (error) {
       this.clearAuthCookies(response);
       throw error;

@@ -152,7 +152,5 @@ export function getPermissionsForModule(moduleId: string) {
 }
 
 export * from './persian-calendar';
-export * from './iran-locations';
-export * from './iran-banks';
-export * from './employee-profile';
-export * from './employee';
+export * from './user-name';
+export * from './digits';

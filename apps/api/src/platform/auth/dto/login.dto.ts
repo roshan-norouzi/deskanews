@@ -7,7 +7,7 @@ export class LoginDto {
 
   @IsString({ message: 'رمز عبور باید متن باشد' })
   @IsNotEmpty({ message: 'رمز عبور الزامی است' })
-  @MinLength(6, { message: 'رمز عبور باید حداقل ۶ کاراکتر باشد' })
+  @MinLength(8, { message: 'رمز عبور باید حداقل ۸ کاراکتر باشد' })
   @MaxLength(128, { message: 'رمز عبور حداکثر ۱۲۸ کاراکتر است' })
   password!: string;
 }
