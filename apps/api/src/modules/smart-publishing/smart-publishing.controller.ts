@@ -8,7 +8,7 @@ import type { TenantContext } from '../../common/decorators/params.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
-import { CreateFeedDto, UpdateFeedDto } from './dto/feed.dto';
+import { CreateFeedDto, UpdateFeedDto, TogglePlatformFeedDto } from './dto/feed.dto';
 import { UpdateNewsArticleDto } from './dto/news-article.dto';
 import { TestGapGptConnectionDto, TestWordPressConnectionDto, UpdatePublishingSettingsDto } from './dto/publishing-settings.dto';
 import { GapGptClient } from './gapgpt.client';
@@ -95,6 +95,9 @@ export class SmartPublishingController {
   @Delete('feeds/:id') @RequirePermission('publishing.manage') deleteFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.deleteFeed(tenant.tenantId, id); }
   @Post('feeds/:id/fetch') @RequirePermission('publishing.manage') fetchFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.fetchFeed(tenant.tenantId, id); }
   @Post('feeds/:id/test') @RequirePermission('publishing.manage') testFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.testFeed(tenant.tenantId, id); }
+  @Post('platform-feeds/:id/toggle') @RequirePermission('publishing.manage') togglePlatformFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: TogglePlatformFeedDto) {
+    return this.newsroom.togglePlatformFeed(tenant.tenantId, id, tenant.memberRole === 'owner', body.enabled);
+  }
 
   @Get('news/feeds') newsFeeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId, 'news-room'); }
   @Post('news/feeds') @RequirePermission('publishing.manage') addNewsFeed(@TenantCtx() tenant: TenantContext, @Body() body: CreateFeedDto) { return this.newsroom.addFeed(tenant.tenantId, { ...body, purpose: 'news-room' }); }

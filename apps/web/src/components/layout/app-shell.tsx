@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, LogOut, Menu, Search, X } from 'lucide-react';
+import { LogOut, Menu, Search, X } from 'lucide-react';
 import { PLATFORM_NAME } from '@deska/shared';
 import { cn, withBasePath } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
-import { filterNavGroups, NAV_GROUPS } from '@/lib/navigation';
+import { filterNavGroups, filterNavItems } from '@/lib/navigation';
 import { TenantSwitcher } from './tenant-switcher';
 import { CommandPalette } from './command-palette';
 import { Button } from '@/components/ui/button';
@@ -25,23 +25,10 @@ export function AppShell({ children, title }: AppShellProps) {
   const { activeTenant } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
+  const navItems = filterNavItems(isSuperAdmin, activeTenant?.memberRole === 'owner');
   const navGroups = filterNavGroups(isSuperAdmin, activeTenant?.memberRole === 'owner');
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? '1.0.0';
-
-  useEffect(() => {
-    setExpandedGroups((prev) => {
-      const next = { ...prev };
-      for (const group of NAV_GROUPS) {
-        const isActive = group.items.some(
-          (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-        );
-        if (isActive) next[group.id] = true;
-      }
-      return next;
-    });
-  }, [pathname]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -53,10 +40,6 @@ export function AppShell({ children, title }: AppShellProps) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -97,66 +80,22 @@ export function AppShell({ children, title }: AppShellProps) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {navGroups.map((group) => {
-            const isExpanded = expandedGroups[group.id] ?? (
-              group.id === 'dashboard' || group.id === 'publishing'
-            );
-            const hasActiveItem = group.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-
-            if (group.items.length === 1 && group.id === 'dashboard') {
-              const item = group.items[0];
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'mb-2 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
-                    pathname === item.href ? 'bg-sidebar-active text-white' : 'text-slate-300 hover:bg-sidebar-hover hover:text-white',
-                  )}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            }
-
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <div key={group.id} className="mb-1">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.id)}
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    hasActiveItem ? 'text-white' : 'text-slate-400 hover:text-white',
-                  )}
-                >
-                  <span>{group.label}</span>
-                  <ChevronDown className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-180')} />
-                </button>
-                {isExpanded && (
-                  <div className="mr-2 mt-1 space-y-0.5 border-r border-white/10 pr-2">
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          onClick={() => setSidebarOpen(false)}
-                          className={cn(
-                            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                            isActive ? 'bg-sidebar-active text-white' : 'text-slate-300 hover:bg-sidebar-hover hover:text-white',
-                          )}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          {item.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setSidebarOpen(false)}
+                className={cn(
+                  'mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
+                  isActive ? 'bg-sidebar-active text-white' : 'text-slate-300 hover:bg-sidebar-hover hover:text-white',
                 )}
-              </div>
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                {item.label}
+              </Link>
             );
           })}
         </nav>

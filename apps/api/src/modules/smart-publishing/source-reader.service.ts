@@ -365,13 +365,29 @@ export class SourceReaderService {
     }
   }
 
-  private async readWebsiteSource(sourceUrl: string): Promise<FeedEntry[]> {
+  /**
+   * Attempts to locate a standard RSS/Atom/JSON feed URL for a website homepage.
+   */
+  async discoverFeedUrl(sourceUrl: string): Promise<string | null> {
     const html = await this.safeFetchText(sourceUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
     const $ = load(html);
     const discoveredFeed = $('link[rel="alternate"]').map((_, node) => {
+      const rel = String($(node).attr('rel') || '').toLowerCase();
+      if (rel && rel !== 'alternate') return '';
       const type = String($(node).attr('type') || '').toLowerCase();
       return /rss|atom|json/u.test(type) ? normalizeUrl($(node).attr('href') || '', sourceUrl) : '';
     }).get().find(Boolean);
+    if (!discoveredFeed) return null;
+    try {
+      const entries = await this.readFeed(discoveredFeed);
+      return entries.length ? discoveredFeed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async readWebsiteSource(sourceUrl: string): Promise<FeedEntry[]> {
+    const discoveredFeed = await this.discoverFeedUrl(sourceUrl).catch(() => null);
     if (discoveredFeed) {
       try {
         const entries = await this.readFeed(discoveredFeed);
@@ -382,6 +398,8 @@ export class SourceReaderService {
       }
     }
 
+    const html = await this.safeFetchText(sourceUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
+    const $ = load(html);
     const candidates = new Map<string, { title: string; score: number }>();
     $('article a[href], main a[href], [itemprop="itemListElement"] a[href], a[href]').each((_, node) => {
       const href = normalizeUrl($(node).attr('href') || '', sourceUrl);

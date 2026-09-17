@@ -35,6 +35,31 @@ async function main() {
     where: { id: tenant.id },
     data: { status: 'active', isActive: true, createdByUserId: admin.id, primaryOwnerUserId: admin.id },
   });
+
+  const defaultPlatformFeeds = [
+    { name: 'خبرگزاری فارس', url: 'https://www.farsnews.ir/rss', sourceType: 'rss' },
+    { name: 'خبرگزاری مهر', url: 'https://www.mehrnews.com/rss', sourceType: 'rss' },
+    { name: 'خبرگزاری ایسنا', url: 'https://www.isna.ir', sourceType: 'website' },
+  ];
+  for (const feed of defaultPlatformFeeds) {
+    const createdFeed = await prisma.platformFeed.upsert({
+      where: { url: feed.url },
+      create: {
+        name: feed.name,
+        url: feed.url,
+        sourceType: feed.sourceType,
+        pollIntervalMinutes: 240,
+        enabled: true,
+      },
+      update: { name: feed.name, sourceType: feed.sourceType },
+    });
+    await prisma.tenantPlatformFeed.upsert({
+      where: { tenantId_platformFeedId: { tenantId: tenant.id, platformFeedId: createdFeed.id } },
+      create: { tenantId: tenant.id, platformFeedId: createdFeed.id, enabled: false },
+      update: {},
+    });
+  }
+
   console.log('DESKA seed completed');
 }
 

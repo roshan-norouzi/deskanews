@@ -5,6 +5,7 @@ import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
+import { entryFilterText, matchesWordFilters } from './feed-word-filter';
 import type { SocialNetwork } from './social-network-publisher.service';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
@@ -148,8 +149,11 @@ export class SocialStudioService {
       const settings = await this.settings.getRaw(tenantId);
       const maxAgeDays = Number(settings.social_max_age_days || 10);
       const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
-      const entries = (await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url))
-        .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
+      const readUrl = feed.sourceType === 'website' && feed.resolvedFeedUrl ? feed.resolvedFeedUrl : feed.url;
+      const readType = feed.sourceType === 'website' && feed.resolvedFeedUrl ? 'rss' : (feed.sourceType || 'rss');
+      const entries = (await this.sourceReader.readSource(readType, readUrl))
+        .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
+          && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const enrichedEntries = await Promise.all(entries.map(async (entry) => ({
         ...entry,
         authorImageUrl: entry.authorImageUrl || await this.sourceReader.readAuthorImage(entry.canonicalUrl),

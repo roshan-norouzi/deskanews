@@ -18,50 +18,38 @@ export interface NavItem {
   ownerOnly?: boolean;
 }
 
+export const NAV_ITEMS: NavItem[] = [
+  { href: '/dashboard', label: 'داشبورد', icon: LayoutDashboard },
+  { href: '/publishing/feeds', label: 'منابع محتوا', icon: Rss },
+  { href: '/publishing/operations', label: 'مرکز عملیات', icon: Activity },
+  { href: '/publishing/news', label: 'اتاق خبر', icon: Send },
+  { href: '/publishing/social', label: 'استودیوی اجتماعی', icon: Send },
+  { href: '/publishing/settings', label: 'تنظیمات نشر هوشمند', icon: Settings, ownerOnly: true },
+  { href: '/settings', label: 'تنظیمات سازمان', icon: Settings, ownerOnly: true },
+  { href: '/settings/account', label: 'حساب کاربری', icon: User },
+  { href: '/settings/users', label: 'کاربران', icon: Users, ownerOnly: true },
+  { href: '/platform', label: 'مدیریت پلتفرم', icon: Building2, superAdminOnly: true },
+  { href: '/platform/feeds', label: 'منابع پیش‌فرض', icon: Rss, superAdminOnly: true },
+];
+
+/** @deprecated Use NAV_ITEMS directly */
 export interface NavGroup {
   id: string;
   label: string;
   items: NavItem[];
 }
 
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    id: 'dashboard',
-    label: 'داشبورد',
-    items: [{ href: '/dashboard', label: 'داشبورد', icon: LayoutDashboard }],
-  },
-  {
-    id: 'publishing',
-    label: 'نشر هوشمند',
-    items: [
-      { href: '/publishing/feeds', label: 'منابع محتوا', icon: Rss },
-      { href: '/publishing/operations', label: 'مرکز عملیات', icon: Activity },
-      { href: '/publishing/news', label: 'اتاق خبر', icon: Send },
-      { href: '/publishing/social', label: 'استودیوی اجتماعی', icon: Send },
-      { href: '/publishing/settings', label: 'تنظیمات نشر هوشمند', icon: Settings, ownerOnly: true },
-    ],
-  },
-  {
-    id: 'settings',
-    label: 'تنظیمات',
-    items: [
-      { href: '/settings', label: 'تنظیمات سازمان', icon: Settings, ownerOnly: true },
-      { href: '/settings/account', label: 'حساب کاربری', icon: User },
-      { href: '/settings/users', label: 'کاربران', icon: Users, ownerOnly: true },
-      { href: '/platform', label: 'مدیریت پلتفرم', icon: Building2, superAdminOnly: true },
-    ],
-  },
-];
+/** @deprecated Flat navigation only */
+export const NAV_GROUPS: NavGroup[] = [{ id: 'main', label: 'منو', items: NAV_ITEMS }];
+
+export function filterNavItems(isSuperAdmin: boolean, isOwner: boolean): NavItem[] {
+  return NAV_ITEMS.filter((item) => {
+    if (item.superAdminOnly && !isSuperAdmin) return false;
+    if (item.ownerOnly && !isSuperAdmin && !isOwner) return false;
+    return true;
+  });
+}
 
 export function filterNavGroups(isSuperAdmin: boolean, isOwner: boolean): NavGroup[] {
-  return NAV_GROUPS
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => {
-        if (item.superAdminOnly && !isSuperAdmin) return false;
-        if (item.ownerOnly && !isSuperAdmin && !isOwner) return false;
-        return true;
-      }),
-    }))
-    .filter((group) => group.items.length > 0);
+  return [{ id: 'main', label: 'منو', items: filterNavItems(isSuperAdmin, isOwner) }];
 }

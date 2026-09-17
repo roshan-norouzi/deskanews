@@ -3,7 +3,7 @@ import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min }
 export const FEED_PURPOSES = ['news-room', 'social-studio'] as const;
 export type FeedPurpose = (typeof FEED_PURPOSES)[number];
 
-export const SOURCE_TYPES = ['rss', 'website', 'blog', 'telegram', 'twitter'] as const;
+export const SOURCE_TYPES = ['rss', 'website'] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export class CreateFeedDto {
@@ -18,8 +18,11 @@ export class CreateFeedDto {
   @IsIn(SOURCE_TYPES)
   sourceType?: SourceType;
 
-  @IsOptional() @IsString() @Length(2, 100)
-  category?: string;
+  @IsOptional()
+  includeWords?: string | string[];
+
+  @IsOptional()
+  excludeWords?: string | string[];
 
   @IsOptional() @IsInt() @Min(5) @Max(1440)
   pollIntervalMinutes?: number;
@@ -51,8 +54,11 @@ export class UpdateFeedDto {
   @IsIn(SOURCE_TYPES)
   sourceType?: SourceType;
 
-  @IsOptional() @IsString() @Length(2, 100)
-  category?: string;
+  @IsOptional()
+  includeWords?: string | string[];
+
+  @IsOptional()
+  excludeWords?: string | string[];
 
   @IsOptional() @IsInt() @Min(5) @Max(1440)
   pollIntervalMinutes?: number;
@@ -65,4 +71,10 @@ export class UpdateFeedDto {
   @IsOptional()
   @IsIn(FEED_PURPOSES)
   purpose?: FeedPurpose;
+}
+
+export class TogglePlatformFeedDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
 }

@@ -15,7 +15,9 @@ model NewsFeed {
   name                String
   url                 String
   sourceType          String          @default("rss")
-  category            String          @default("عمومی")
+  resolvedFeedUrl     String          @default("")
+  includeWords        String[]        @default([])
+  excludeWords        String[]        @default([])
   pollIntervalMinutes Int?
   autoPoll            Boolean?
   autoPrepare         Boolean?
@@ -35,10 +37,70 @@ model NewsFeed {
   @@index([tenantId, purpose])
 }
 
+model PlatformFeed {
+  id                  String                 @id @default(cuid())
+  name                String
+  url                 String                 @unique
+  sourceType          String                 @default("rss")
+  resolvedFeedUrl     String                 @default("")
+  includeWords        String[]               @default([])
+  excludeWords        String[]               @default([])
+  pollIntervalMinutes Int                    @default(240)
+  enabled             Boolean                @default(true)
+  lastFetchedAt       DateTime?
+  lastError           String                 @default("")
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  articles            PlatformFeedArticle[]
+  subscriptions       TenantPlatformFeed[]
+}
+
+model TenantPlatformFeed {
+  id             String       @id @default(cuid())
+  tenantId       String
+  platformFeedId String
+  enabled        Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  platformFeed   PlatformFeed @relation(fields: [platformFeedId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, platformFeedId])
+  @@index([tenantId, enabled])
+}
+
+model PlatformFeedArticle {
+  id                    String              @id @default(cuid())
+  platformFeedId        String
+  canonicalUrl          String
+  originalUrl           String              @default("")
+  guid                  String              @default("")
+  originalTitle         String              @default("")
+  originalSummary       String              @default("")
+  originalContent       String              @default("")
+  originalContentIsFull Boolean             @default(false)
+  featuredImageUrl      String              @default("")
+  sourceName            String              @default("")
+  publishedAtSource     DateTime?
+  titleFa               String              @default("")
+  summaryFa             String              @default("")
+  prepStatus            String              @default("new")
+  prepLastError         String              @default("")
+  preparedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  platformFeed          PlatformFeed        @relation(fields: [platformFeedId], references: [id], onDelete: Cascade)
+  tenantArticles        NewsArticle[]
+
+  @@unique([platformFeedId, canonicalUrl])
+  @@index([platformFeedId, prepStatus])
+}
+
 model NewsArticle {
-  id                    String    @id @default(cuid())
+  id                    String               @id @default(cuid())
   tenantId              String
   feedId                String?
+  platformFeedArticleId String?
   canonicalUrl          String
   originalUrl           String    @default("")
   guid                  String    @default("")
@@ -62,10 +124,12 @@ model NewsArticle {
   lastError             String    @default("")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
-  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  feed                  NewsFeed? @relation(fields: [feedId], references: [id], onDelete: SetNull)
+  tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feed                  NewsFeed?            @relation(fields: [feedId], references: [id], onDelete: SetNull)
+  platformFeedArticle   PlatformFeedArticle? @relation(fields: [platformFeedArticleId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, canonicalUrl])
+  @@index([platformFeedArticleId])
   @@index([tenantId, status])
   @@index([status, purgeAfter])
 }
@@ -218,6 +282,7 @@ model Tenant {
   members                  TenantMember[]
   invitations              TenantInvitation[]
   newsFeeds                NewsFeed[]
+  platformFeedSubscriptions TenantPlatformFeed[]
   newsArticles             NewsArticle[]
   socialArticles           SocialArticle[]
   auditLogs                AuditLog[]

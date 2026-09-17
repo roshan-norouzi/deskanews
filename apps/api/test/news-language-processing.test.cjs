@@ -10,6 +10,12 @@ const { SocialCoverRendererService } = require('../dist/modules/smart-publishing
 
 const integrationHealth = { success: async () => ({}), failure: async () => ({}) };
 const workflow = { record: async () => ({}) };
+const platformFeeds = {
+  listForTenant: async () => [],
+  ensureSubscriptions: async () => {},
+  prepareSharedArticle: async () => null,
+  toggleForTenant: async () => ({}),
+};
 const TEST_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 function gapGptResponse(content) {
@@ -103,6 +109,7 @@ test('newsroom preparation fills a missing featured image from article metadata'
     {},
     integrationHealth,
     workflow,
+    platformFeeds,
   );
 
   await newsroom.summarize('tenant-a', article.id);
@@ -118,9 +125,9 @@ test('source health test returns the five latest items without saving them', asy
     canonicalUrl: `https://source.example/${index + 1}`, featuredImageUrl: '', category: 'فناوری',
     publishedAt: publishedAt(index + 9),
   }));
-  const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', category: 'فناوری' }) } };
+  const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '' }) } };
   const sourceReader = { readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 
@@ -132,24 +139,26 @@ test('source health test returns the five latest items without saving them', asy
 test('source settings are stored independently for each source', async () => {
   let created;
   let updated;
-  const feed = { id: 'source-settings-a', tenantId: 'tenant-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'rss', category: 'عمومی', purpose: 'news-room', enabled: true, pollIntervalMinutes: 240, autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false };
+  const feed = { id: 'source-settings-a', tenantId: 'tenant-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'rss', purpose: 'news-room', enabled: true, pollIntervalMinutes: 240, autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false, includeWords: [], excludeWords: [], resolvedFeedUrl: '' };
   const prisma = {
     newsFeed: {
       findFirst: async ({ where }) => where.id ? feed : null,
       create: async ({ data }) => { created = data; return { ...feed, ...data }; },
       update: async ({ data }) => { updated = data; return { ...feed, ...data }; },
     },
+    platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
-  const newsroom = new NewsroomService(prisma, {}, {}, {}, {}, {}, integrationHealth, workflow);
+  const sourceReader = { discoverFeedUrl: async () => 'https://source.example/rss.xml' };
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds);
 
-  await newsroom.addFeed('tenant-a', { name: 'منبع اختصاصی', url: 'https://source.example', purpose: 'news-room', sourceType: 'website', category: 'فناوری', pollIntervalMinutes: 15, autoPoll: true, autoPrepare: false, autoPublish: true, autoSendSocial: false });
-  await newsroom.updateFeed('tenant-a', feed.id, { category: 'اقتصاد', pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
+  await newsroom.addFeed('tenant-a', { name: 'منبع اختصاصی', url: 'https://source.example', purpose: 'news-room', sourceType: 'website', includeWords: ['فناوری'], pollIntervalMinutes: 15, autoPoll: true, autoPrepare: false, autoPublish: true, autoSendSocial: false });
+  await newsroom.updateFeed('tenant-a', feed.id, { includeWords: ['اقتصاد'], pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
 
-  assert.equal(created.category, 'فناوری');
+  assert.deepEqual(created.includeWords, ['فناوری']);
   assert.equal(created.pollIntervalMinutes, 15);
   assert.equal(created.autoPrepare, false);
   assert.equal(created.autoPublish, true);
-  assert.equal(updated.category, 'اقتصاد');
+  assert.deepEqual(updated.includeWords, ['اقتصاد']);
   assert.equal(updated.pollIntervalMinutes, 30);
   assert.equal(updated.autoPoll, false);
   assert.equal(updated.autoSendSocial, true);
@@ -261,7 +270,7 @@ test('newsroom publishes with the category selected from live WordPress categori
     categories: async () => categories,
     publish: async (_settings, input) => { publishInput = input; return { postId: '42', url: 'https://destination.example/post' }; },
   };
-  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow);
+  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds);
 
   await newsroom.publish('tenant-a', article.id);
 
@@ -291,7 +300,7 @@ test('newsroom never publishes an RSS summary as the full WordPress article', as
     readArticleOrFallback: async () => ({ text: article.originalSummary, featuredImageUrl: '', contentSource: 'feed', isFullText: false }),
   };
   const wordpress = { validateSettings: () => undefined, categories: async () => [] };
-  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow);
+  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds);
 
   await assert.rejects(() => newsroom.publish('tenant-a', article.id), /فقط چکیده خبر را ارائه می‌کند/);
 });
@@ -316,7 +325,7 @@ test('news automation durably queues social routing instead of publishing to Wor
       return { created: true, job: { id: 'job-a' } };
     },
   };
-  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow);
+  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds);
 
   const result = await newsroom.queueAutomation('tenant-a', 3);
 

@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { PLATFORM_ROLES } from '@deska/shared';
 import type { AuthUser } from '../../common/decorators/params.decorator';
 import { User } from '../../common/decorators/params.decorator';
+import { PlatformFeedService } from '../../modules/smart-publishing/platform-feed.service';
 import { PlatformAdminService } from './platform-admin.service';
 import { UpdatePlatformUserStatusDto } from './dto/update-platform-user-status.dto';
 import { UpdatePlatformUserRoleDto } from './dto/update-platform-user-role.dto';
@@ -8,10 +10,20 @@ import { UpdateOrganizationStatusDto } from './dto/update-organization-status.dt
 import { PlatformTransferOwnershipDto } from './dto/platform-transfer-ownership.dto';
 import { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
 import { CreatePlatformUserDto } from './dto/create-platform-user.dto';
+import { CreatePlatformFeedDto, UpdatePlatformFeedDto } from './dto/platform-feed.dto';
 
 @Controller('platform')
 export class PlatformAdminController {
-  constructor(private readonly service: PlatformAdminService) {}
+  constructor(
+    private readonly service: PlatformAdminService,
+    private readonly platformFeeds: PlatformFeedService,
+  ) {}
+
+  private assertSuperAdmin(actor: AuthUser) {
+    if (actor.role !== PLATFORM_ROLES.SUPER_ADMIN) {
+      throw new ForbiddenException('فقط مدیر کل می‌تواند منابع پیش‌فرض را مدیریت کند');
+    }
+  }
 
   @Get('overview')
   overview(@User() actor: AuthUser) {
@@ -108,5 +120,41 @@ export class PlatformAdminController {
     @Body() dto: PlatformTransferOwnershipDto,
   ) {
     return this.service.transferOwnership(actor, id, dto.targetUserId);
+  }
+
+  @Get('feeds')
+  listPlatformFeeds(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.listAll();
+  }
+
+  @Post('feeds')
+  createPlatformFeed(@User() actor: AuthUser, @Body() body: CreatePlatformFeedDto) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.create(body);
+  }
+
+  @Patch('feeds/:id')
+  updatePlatformFeed(@User() actor: AuthUser, @Param('id') id: string, @Body() body: UpdatePlatformFeedDto) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.update(id, body);
+  }
+
+  @Delete('feeds/:id')
+  deletePlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.delete(id);
+  }
+
+  @Post('feeds/:id/test')
+  testPlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.test(id);
+  }
+
+  @Post('feeds/:id/fetch')
+  fetchPlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.fetch(id);
   }
 }

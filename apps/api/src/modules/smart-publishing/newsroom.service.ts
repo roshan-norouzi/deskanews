@@ -12,6 +12,8 @@ import { parseWordPressCategories } from './wordpress-category';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
+import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
+import { PlatformFeedService } from './platform-feed.service';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
@@ -36,9 +38,14 @@ function normalizeFeedUrl(value: string): string {
 }
 
 function normalizeSourceType(value: unknown): SourceType {
-  return ['rss', 'website', 'blog', 'telegram', 'twitter'].includes(String(value))
-    ? String(value) as SourceType
-    : 'rss';
+  return value === 'website' ? 'website' : 'rss';
+}
+
+function effectiveReadTarget(feed: { sourceType: string; url: string; resolvedFeedUrl: string }) {
+  if (feed.sourceType === 'website' && feed.resolvedFeedUrl) {
+    return { sourceType: 'rss' as SourceType, url: feed.resolvedFeedUrl };
+  }
+  return { sourceType: (feed.sourceType || 'rss') as SourceType, url: feed.url };
 }
 
 function sourceBoolean(value: boolean | null | undefined, fallback: boolean): boolean {
@@ -124,6 +131,7 @@ export class NewsroomService {
     private readonly jobs: AutomationJobService,
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
+    private readonly platformFeeds: PlatformFeedService,
   ) {}
 
   private recordWorkflow(params: {
@@ -148,23 +156,48 @@ export class NewsroomService {
     }).catch((error) => this.logger.warn(`Workflow history could not be recorded: ${error instanceof Error ? error.message : 'unknown error'}`));
   }
 
-  feeds(tenantId: string, purpose?: FeedPurpose) {
-    return this.prisma.newsFeed.findMany({
+  async feeds(tenantId: string, purpose?: FeedPurpose) {
+    const tenantFeeds = await this.prisma.newsFeed.findMany({
       where: { tenantId, ...(purpose ? { purpose } : {}) },
       orderBy: [{ purpose: 'asc' }, { createdAt: 'desc' }],
     });
+    const scopedTenantFeeds = tenantFeeds.map((feed) => ({ ...feed, scope: 'tenant' as const }));
+    if (purpose && purpose !== 'news-room') return scopedTenantFeeds;
+    const platformFeeds = await this.platformFeeds.listForTenant(tenantId);
+    return [...platformFeeds, ...scopedTenantFeeds];
+  }
+
+  async togglePlatformFeed(tenantId: string, platformFeedId: string, isOwner: boolean, enabled?: boolean) {
+    return this.platformFeeds.toggleForTenant(tenantId, platformFeedId, enabled, isOwner);
   }
 
   async addFeed(tenantId: string, data: CreateFeedDto) {
     const name = data.name.trim();
     const url = normalizeFeedUrl(data.url);
     const sourceType = normalizeSourceType(data.sourceType);
-    const category = String(data.category || 'عمومی').trim() || 'عمومی';
     const purpose = normalizePurpose(data.purpose);
     const duplicate = await this.prisma.newsFeed.findFirst({ where: { tenantId, url } });
     if (duplicate) throw new ConflictException('این فید قبلاً ثبت شده است');
+    const platformDuplicate = await this.prisma.platformFeed.findUnique({ where: { url } });
+    if (platformDuplicate) {
+      throw new ConflictException('این منبع به‌صورت پیش‌فرض پلتفرم موجود است؛ از بخش منابع پیش‌فرض آن را فعال کنید');
+    }
+
+    let resolvedFeedUrl = '';
+    if (sourceType === 'website') {
+      resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
+    }
+
     return this.prisma.newsFeed.create({ data: {
-      tenantId, name, url, sourceType, category, purpose, enabled: data.enabled ?? true,
+      tenantId,
+      name,
+      url,
+      sourceType,
+      resolvedFeedUrl,
+      includeWords: parseWordList(data.includeWords),
+      excludeWords: parseWordList(data.excludeWords),
+      purpose,
+      enabled: data.enabled ?? true,
       pollIntervalMinutes: data.pollIntervalMinutes ?? 240,
       autoPoll: data.autoPoll ?? true,
       autoPrepare: data.autoPrepare ?? purpose === 'news-room',
@@ -178,12 +211,29 @@ export class NewsroomService {
     const name = String(data.name ?? feed.name).trim();
     const url = normalizeFeedUrl(String(data.url ?? feed.url));
     const sourceType = normalizeSourceType(data.sourceType ?? feed.sourceType);
-    const category = String(data.category ?? feed.category ?? 'عمومی').trim() || 'عمومی';
     const purpose = normalizePurpose(data.purpose, normalizePurpose(feed.purpose));
     const duplicate = await this.prisma.newsFeed.findFirst({ where: { tenantId, url, NOT: { id } } });
     if (duplicate) throw new ConflictException('این آدرس قبلاً ثبت شده است');
+    const platformDuplicate = await this.prisma.platformFeed.findFirst({ where: { url, NOT: { url: feed.url } } });
+    if (platformDuplicate && platformDuplicate.url === url) {
+      throw new ConflictException('این منبع به‌صورت پیش‌فرض پلتفرم موجود است');
+    }
+
+    let resolvedFeedUrl = feed.resolvedFeedUrl;
+    if (sourceType === 'website' && (data.url || data.sourceType)) {
+      resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
+    } else if (sourceType === 'rss') {
+      resolvedFeedUrl = '';
+    }
+
     return this.prisma.newsFeed.update({ where: { id }, data: {
-      name, url, sourceType, category, purpose,
+      name,
+      url,
+      sourceType,
+      resolvedFeedUrl,
+      ...(data.includeWords !== undefined ? { includeWords: parseWordList(data.includeWords) } : {}),
+      ...(data.excludeWords !== undefined ? { excludeWords: parseWordList(data.excludeWords) } : {}),
+      purpose,
       ...(data.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: data.pollIntervalMinutes } : {}),
       ...(data.autoPoll !== undefined ? { autoPoll: data.autoPoll } : {}),
       ...(data.autoPrepare !== undefined ? { autoPrepare: data.autoPrepare } : {}),
@@ -212,7 +262,14 @@ export class NewsroomService {
       throw new BadRequestException('وضعیت خبر معتبر نیست');
     }
     return this.prisma.newsArticle.findMany({
-      where: { tenantId, feed: { purpose: 'news-room' }, ...(status ? { status } : {}) },
+      where: {
+        tenantId,
+        OR: [
+          { feed: { purpose: 'news-room' } },
+          { platformFeedArticleId: { not: null } },
+        ],
+        ...(status ? { status } : {}),
+      },
       include: { feed: { select: { id: true, name: true, purpose: true } } },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
       take: 200,
@@ -257,8 +314,10 @@ export class NewsroomService {
       const settings = await this.settings.getRaw(tenantId);
       const maxAgeMs = Number(settings.news_max_age_days || 10) * 24 * 60 * 60 * 1000;
       const cutoff = new Date(Date.now() - maxAgeMs);
-      const entries = (await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url))
-        .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
+      const target = effectiveReadTarget(feed);
+      const entries = (await this.sourceReader.readSource(target.sourceType, target.url))
+        .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
+          && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const result = entries.length ? await this.prisma.newsArticle.createMany({
         skipDuplicates: true,
         data: entries.map((entry) => ({
@@ -307,7 +366,9 @@ export class NewsroomService {
     const feed = await this.findFeed(tenantId, feedId);
     const startedAt = Date.now();
     try {
-      const entries = await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url);
+      const target = effectiveReadTarget(feed);
+      const entries = (await this.sourceReader.readSource(target.sourceType, target.url))
+        .filter((entry) => matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const latest = entries.map((entry, index) => ({ entry, index }))
         .sort((left, right) => {
           const leftTime = left.entry.publishedAt?.getTime() ?? 0;
@@ -321,10 +382,20 @@ export class NewsroomService {
           url: entry.canonicalUrl,
           publishedAt: entry.publishedAt,
           featuredImageUrl: entry.featuredImageUrl,
-          category: entry.category || feed.category,
+          category: entry.category || '',
         }));
       await this.integrationHealth.success({ tenantId, key: `feed:${feed.id}`, type: 'feed', name: feed.name, latencyMs: Date.now() - startedAt, metadata: { operation: 'health-test', sourceType: feed.sourceType || 'rss', items: latest.length } }).catch(() => undefined);
-      return { ok: true, source: { id: feed.id, name: feed.name, url: feed.url, sourceType: feed.sourceType || 'rss', category: feed.category }, items: latest };
+      return {
+        ok: true,
+        source: {
+          id: feed.id,
+          name: feed.name,
+          url: feed.url,
+          sourceType: feed.sourceType || 'rss',
+          resolvedFeedUrl: feed.resolvedFeedUrl,
+        },
+        items: latest,
+      };
     } catch (error) {
       await this.integrationHealth.failure({ tenantId, key: `feed:${feed.id}`, type: 'feed', name: feed.name, latencyMs: Date.now() - startedAt, metadata: { operation: 'health-test', sourceType: feed.sourceType || 'rss' }, error }).catch(() => undefined);
       throw error;
@@ -358,6 +429,31 @@ export class NewsroomService {
   async summarize(tenantId: string, id: string) {
     const article = await this.findArticle(tenantId, id);
     if (['rejected', 'publishing', 'published'].includes(article.status)) throw new BadRequestException('آماده‌سازی خبر در وضعیت فعلی مجاز نیست');
+
+    if (article.platformFeedArticleId) {
+      const shared = await this.prisma.platformFeedArticle.findUnique({ where: { id: article.platformFeedArticleId } });
+      if (shared?.prepStatus === 'ready') {
+        const updated = await this.prisma.newsArticle.update({
+          where: { id },
+          data: {
+            titleFa: shared.titleFa,
+            summaryFa: shared.summaryFa,
+            status: 'ready',
+            processingStartedAt: null,
+            lastError: '',
+          },
+        });
+        await this.recordWorkflow({ tenantId, id, fromStatus: article.status, toStatus: 'ready', action: 'prepared', title: `خبر «${updated.titleFa}» از منبع مشترک آماده شد` });
+        return updated;
+      }
+      await this.platformFeeds.prepareSharedArticle(article.platformFeedArticleId, tenantId);
+      const refreshed = await this.findArticle(tenantId, id);
+      if (refreshed.status === 'ready') {
+        await this.recordWorkflow({ tenantId, id, fromStatus: article.status, toStatus: 'ready', action: 'prepared', title: `خبر «${refreshed.titleFa}» آماده شد` });
+      }
+      return refreshed;
+    }
+
     const claimed = await this.prisma.newsArticle.updateMany({
       where: { id, tenantId, status: { in: ['new', 'ready', 'failed', 'publish_failed'] } },
       data: { status: 'processing', processingStartedAt: new Date(), lastError: '' },
@@ -583,9 +679,21 @@ export class NewsroomService {
   private async enqueuePending(tenantId: string, limit: number, requireSourceAutomation = false) {
     const settings = await this.settings.getRaw(tenantId);
     const fallback = settingEnabled(settings.news_auto_prepare, true);
-    const rows = await this.prisma.newsArticle.findMany({ where: { tenantId, status: 'new', feed: { purpose: 'news-room' } }, orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }], take: Math.max(limit * 4, 100), select: { id: true, feed: { select: { autoPrepare: true } } } });
+    const rows = await this.prisma.newsArticle.findMany({
+      where: {
+        tenantId,
+        status: 'new',
+        OR: [
+          { feed: { purpose: 'news-room' } },
+          { platformFeedArticleId: { not: null } },
+        ],
+      },
+      orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
+      take: Math.max(limit * 4, 100),
+      select: { id: true, platformFeedArticleId: true, feed: { select: { autoPrepare: true } } },
+    });
     let queued = 0;
-    for (const row of rows.filter((item) => !requireSourceAutomation || sourceBoolean(item.feed?.autoPrepare, fallback)).slice(0, limit)) {
+    for (const row of rows.filter((item) => !requireSourceAutomation || item.platformFeedArticleId || sourceBoolean(item.feed?.autoPrepare, fallback)).slice(0, limit)) {
       const result = await this.jobs.enqueue({
         tenantId,
         type: 'news.prepare',

@@ -14,11 +14,15 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { PlatformFeedService } from '../../modules/smart-publishing/platform-feed.service';
 type InvitationWithTenant = Prisma.TenantInvitationGetPayload<{ include: { tenant: true } }>;
 
 @Injectable()
 export class TenantService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly platformFeeds: PlatformFeedService,
+  ) {}
 
   async findAll(userId: string, isSuperAdmin: boolean) {
     if (isSuperAdmin) {
@@ -98,6 +102,7 @@ export class TenantService {
       return created;
     });
 
+    await this.platformFeeds.ensureSubscriptions(tenant.id);
     return tenant;
   }
 
