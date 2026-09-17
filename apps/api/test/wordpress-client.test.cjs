@@ -2,9 +2,7 @@ require('reflect-metadata');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { ValidationPipe } = require('@nestjs/common');
 const { WordPressClient } = require('../dist/modules/smart-publishing/wordpress.client');
-const { TestWordPressConnectionDto } = require('../dist/modules/smart-publishing/dto/publishing-settings.dto');
 
 function response(status, body, headers = {}) {
   const buffer = Buffer.from(JSON.stringify(body));
@@ -17,23 +15,6 @@ function response(status, body, headers = {}) {
     json: () => body,
   };
 }
-
-test('WordPress connection validation accepts cached media feature settings', async () => {
-  const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
-  const body = {
-    wp_site_url: 'https://news.example',
-    wp_media_management_enabled: 'true',
-    wp_news_importance_enabled: 'true',
-    wp_news_importance_auto_enabled: 'true',
-    wp_news_importance_audience: 'مخاطبان عمومی فارسی‌زبان',
-  };
-
-  const result = await pipe.transform(body, { type: 'body', metatype: TestWordPressConnectionDto });
-  assert.equal(result.wp_media_management_enabled, 'true');
-  assert.equal(result.wp_news_importance_enabled, 'true');
-  assert.equal(result.wp_news_importance_auto_enabled, 'true');
-  assert.equal(result.wp_news_importance_audience, 'مخاطبان عمومی فارسی‌زبان');
-});
 
 test('WordPress connection and publishing fall back to the rest_route transport after wp-json returns 404', async () => {
   const calls = [];
@@ -327,31 +308,3 @@ test('WordPress media management rejects spoofed image files before upload', asy
   assert.equal(calls.some((url) => new URL(url).pathname.endsWith('/wp-json/wp/v2/media')), false);
 });
 
-test('WordPress importance uses standard editable tags and preserves unrelated tags', async () => {
-  let updatedTags;
-  const sourceReader = {
-    safeRequest: async (url, options = {}) => {
-      const parsed = new URL(url);
-      if (parsed.pathname.endsWith('/wp-json/wp/v2/users/me')) return response(200, { id: 7 });
-      if (parsed.pathname.endsWith('/wp-json/wp/v2/tags') && (options.method || 'GET') === 'GET') {
-        if (parsed.searchParams.get('slug') === 'deska-important-news') return response(200, [{ id: 21, name: 'خبر مهم', slug: 'deska-important-news' }]);
-        if (parsed.searchParams.get('slug') === 'deska-normal-news') return response(200, [{ id: 22, name: 'خبر عادی', slug: 'deska-normal-news' }]);
-      }
-      if (parsed.pathname.endsWith('/wp-json/wp/v2/posts/52') && (options.method || 'GET') === 'GET') {
-        return response(200, { id: 52, status: 'publish', title: { raw: 'خبر' }, tags: [5, 22], categories: [] });
-      }
-      if (parsed.pathname.endsWith('/wp-json/wp/v2/posts/52') && options.method === 'POST') {
-        updatedTags = JSON.parse(options.body).tags;
-        return response(200, { id: 52, status: 'publish', title: { raw: 'خبر' }, tags: updatedTags, categories: [] });
-      }
-      return response(404, {});
-    },
-  };
-  const client = new WordPressClient(sourceReader);
-  const post = await client.setImportanceTag({
-    wp_site_url: 'https://news.example', wp_username: 'publisher', wp_app_password: 'abcd efgh ijkl',
-  }, 52, 'important');
-
-  assert.deepEqual(updatedTags, [5, 21]);
-  assert.deepEqual(post.tags, [5, 21]);
-});

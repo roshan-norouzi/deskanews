@@ -26,7 +26,7 @@ function runtimeBasePath(): string {
   if (configured) return configured;
   if (typeof window === 'undefined') return '';
   const first = window.location.pathname.split('/').filter(Boolean)[0] ?? '';
-  const appRoutes = new Set(['login', 'register', 'invitations', 'organizations', 'dashboard', 'calendar', 'contacts', 'documents', 'employees', 'projects', 'publishing', 'event-management', 'settings', 'users', 'admin', 'platform']);
+  const appRoutes = new Set(['login', 'register', 'invitations', 'organizations', 'dashboard', 'publishing', 'settings', 'users', 'admin', 'platform']);
   return first && !appRoutes.has(first) ? `/${first}` : '';
 }
 

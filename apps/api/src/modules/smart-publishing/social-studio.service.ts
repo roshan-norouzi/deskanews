@@ -524,11 +524,11 @@ export class SocialStudioService {
     if (this.maintenanceRunning) return;
     this.maintenanceRunning = true;
     try {
-      const enabledModules = await this.prisma.tenantModule.findMany({
-        where: { moduleId: 'smart-publishing', enabled: true, tenant: { isActive: true } },
-        select: { tenantId: true },
+      const activeTenants = await this.prisma.tenant.findMany({
+        where: { isActive: true, status: 'active' },
+        select: { id: true },
       });
-      const enabledTenantIds = enabledModules.map((row) => row.tenantId);
+      const enabledTenantIds = activeTenants.map((row) => row.id);
       if (!enabledTenantIds.length) return;
 
       const staleBefore = new Date(Date.now() - PROCESSING_TIMEOUT_MS);

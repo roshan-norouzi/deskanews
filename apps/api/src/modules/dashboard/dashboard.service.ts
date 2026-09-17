@@ -18,18 +18,23 @@ export class DashboardService {
 
   async getStats(tenantId: string, userId: string) {
     const now = new Date();
-    const weekAhead = new Date(now.getTime() + 7 * 86_400_000);
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
     const [
-      contacts, employees, upcomingEvents, overdueTasks, newsroomGroups, socialGroups,
-      publishedToday, socialPublishedToday, queue, unhealthyIntegrations,
-      notificationSummary, recentActivity, newsItems, socialItems, deadJobs,
+      memberCount,
+      newsroomGroups,
+      socialGroups,
+      publishedToday,
+      socialPublishedToday,
+      queue,
+      unhealthyIntegrations,
+      notificationSummary,
+      recentActivity,
+      newsItems,
+      socialItems,
+      deadJobs,
     ] = await Promise.all([
-      this.prisma.contact.count({ where: { tenantId, isActive: true } }),
-      this.prisma.employee.count({ where: { tenantId, status: 'active' } }),
-      this.prisma.calendarEvent.count({ where: { tenantId, startAt: { gte: now, lte: weekAhead } } }),
-      this.prisma.task.count({ where: { tenantId, status: { notIn: ['done', 'cancelled'] }, dueDate: { lt: now } } }),
+      this.prisma.tenantMember.count({ where: { tenantId, status: 'active' } }),
       this.prisma.newsArticle.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
       this.prisma.socialArticle.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
       this.prisma.newsArticle.count({ where: { tenantId, publishedAt: { gte: startOfDay } } }),
@@ -80,9 +85,7 @@ export class DashboardService {
     ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 15);
 
     return {
-      contacts,
-      employees: { active: employees },
-      core: { upcomingEvents, overdueTasks },
+      members: { active: memberCount },
       publishing: {
         newsroom: {
           inbox: newsroom.new ?? 0,

@@ -513,7 +513,8 @@ Write-Host ''
 
 $sharedWatchCommand = "Set-Location '$root'; `$env:CHOKIDAR_USEPOLLING='true'; .\packages\shared\node_modules\.bin\tsc.cmd -p .\packages\shared\tsconfig.json --watch --preserveWatchOutput"
 $apiCommand = "Set-Location '$root\apps\api'; `$env:DATABASE_URL='$env:DATABASE_URL'; `$env:PORT='$($devPorts.Api)'; `$env:NODE_ENV='development'; `$env:CHOKIDAR_USEPOLLING='true'; `$env:WATCHPACK_POLLING='true'; .\node_modules\.bin\nest.cmd start --watch"
-$webCommand = "Set-Location '$root\apps\web'; `$env:NODE_ENV='development'; `$env:CHOKIDAR_USEPOLLING='true'; `$env:WATCHPACK_POLLING='true'; .\node_modules\.bin\next.cmd dev --port $($devPorts.Web)"
+$apiUrl = "http://localhost:$($devPorts.Api)"
+$webCommand = "Set-Location '$root\apps\web'; `$env:NODE_ENV='development'; `$env:API_URL='$apiUrl'; `$env:NEXT_PUBLIC_API_URL='$apiUrl'; `$env:CHOKIDAR_USEPOLLING='true'; `$env:WATCHPACK_POLLING='true'; .\node_modules\.bin\next.cmd dev --port $($devPorts.Web)"
 $sharedProcess = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',$sharedWatchCommand -RedirectStandardOutput "$root\deska-shared.log" -RedirectStandardError "$root\deska-shared.err.log" -PassThru
 $apiProcess = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-Command',$apiCommand -RedirectStandardOutput "$root\deska-api.log" -RedirectStandardError "$root\deska-api.err.log" -PassThru
 

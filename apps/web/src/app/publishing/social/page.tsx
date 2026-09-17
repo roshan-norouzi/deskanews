@@ -135,7 +135,7 @@ export default function SocialPage() {
     const blob = url.startsWith('data:image/')
       ? await fetch(url, { signal: AbortSignal.timeout(15_000) }).then((response) => response.blob())
       : /^https?:\/\//iu.test(url)
-        ? await apiFetchBlob(`/publishing/media/image?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(15_000) })
+        ? await apiFetchBlob(`/publishing/proxy/image?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(15_000) })
         : await apiFetchBlob(url, { signal: AbortSignal.timeout(15_000), skipAuth: true, skipTenant: true });
     return normalizeForPublishing ? normalizeFeaturedImage(blob) : blobToDataUrl(blob);
   }

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MODULE_CATALOG, TENANT_ROLES, normalizeDigits } from '@deska/shared';
+import { TENANT_ROLES, normalizeDigits } from '@deska/shared';
 import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -14,18 +14,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
-import { UpdateEmployeeCodeSettingsDto } from './dto/update-employee-code-settings.dto';
-import { ensureEmployeeForUser, syncTenantMemberEmployees } from './tenant-employee-sync';
-import { serializeEmployeeForApi } from './employee-profile-backfill';
-
 type InvitationWithTenant = Prisma.TenantInvitationGetPayload<{ include: { tenant: true } }>;
-
-interface InvitationEmployeeMetadata {
-  employeeCode?: string | null;
-  jobTitle?: string | null;
-  status?: string | null;
-  hireDate?: string | null;
-}
 
 @Injectable()
 export class TenantService {
@@ -95,41 +84,6 @@ export class TenantService {
         },
       });
 
-      for (const mod of MODULE_CATALOG) {
-        const isCore = 'isCore' in mod ? mod.isCore : false;
-        await tx.moduleDefinition.upsert({
-          where: { id: mod.id },
-          create: {
-            id: mod.id,
-            name: mod.name,
-            domain: mod.domain,
-            version: mod.version,
-            dependencies: [...mod.dependencies],
-            isCore,
-          },
-          update: {},
-        });
-
-        await tx.tenantModule.create({
-          data: {
-            tenantId: created.id,
-            moduleId: mod.id,
-            enabled: isCore,
-          },
-        });
-      }
-
-      await tx.numberSequence.create({
-        data: {
-          tenantId: created.id,
-          code: 'employee',
-          prefix: 'EMP-',
-          suffix: '',
-          nextNumber: 1,
-          padding: 4,
-        },
-      });
-
       await tx.auditLog.create({
         data: {
           tenantId: created.id,
@@ -151,7 +105,7 @@ export class TenantService {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       include: {
-        _count: { select: { members: true, modules: true } },
+        _count: { select: { members: true } },
       },
     });
 
@@ -184,34 +138,6 @@ export class TenantService {
           settings: dto.settings as Prisma.InputJsonValue,
         }),
       },
-    });
-  }
-
-  async getEmployeeCodeSettings(tenantId: string, memberRole: string) {
-    this.assertOwner(memberRole);
-    const sequence = await this.prisma.numberSequence.upsert({
-      where: { tenantId_code: { tenantId, code: 'employee' } },
-      create: { tenantId, code: 'employee', prefix: 'EMP-', suffix: '', nextNumber: 1, padding: 4 },
-      update: {},
-      select: { prefix: true, suffix: true, padding: true },
-    });
-    return sequence;
-  }
-
-  async updateEmployeeCodeSettings(
-    tenantId: string,
-    dto: UpdateEmployeeCodeSettingsDto,
-    memberRole: string,
-  ) {
-    this.assertOwner(memberRole);
-    const current = await this.getEmployeeCodeSettings(tenantId, memberRole);
-    return this.prisma.numberSequence.update({
-      where: { tenantId_code: { tenantId, code: 'employee' } },
-      data: {
-        prefix: dto.prefix ?? current.prefix,
-        suffix: dto.suffix ?? current.suffix,
-      },
-      select: { prefix: true, suffix: true, padding: true },
     });
   }
 
@@ -326,14 +252,6 @@ export class TenantService {
     });
     if (membership) throw new ConflictException('این کاربر قبلاً عضو سازمان است');
 
-    if (dto.employeeCode?.trim()) {
-      const duplicateCode = await this.prisma.employee.findFirst({
-        where: { tenantId, employeeCode: dto.employeeCode.trim() },
-        select: { id: true },
-      });
-      if (duplicateCode) throw new ConflictException('این کد پرسنلی قبلاً استفاده شده است');
-    }
-
     const pendingInvite = await this.prisma.tenantInvitation.findFirst({
       where: {
         tenantId,
@@ -363,10 +281,7 @@ export class TenantService {
         invitedByUserId,
         expiresAt,
         metadata: {
-          employeeCode: dto.employeeCode?.trim() || null,
           jobTitle: dto.jobTitle?.trim() || null,
-          status: dto.status || 'active',
-          hireDate: dto.hireDate || null,
         } as unknown as Prisma.InputJsonValue,
       },
     });
@@ -501,21 +416,9 @@ export class TenantService {
             userId,
             role: invitation.role,
             status: 'active',
-            jobTitle: (invitation.metadata as unknown as InvitationEmployeeMetadata | null)?.jobTitle ?? null,
+            jobTitle: (invitation.metadata as { jobTitle?: string | null } | null)?.jobTitle ?? null,
           },
         });
-
-        const employee = await ensureEmployeeForUser(
-          tx as unknown as PrismaService,
-          invitation.tenantId,
-          userId,
-          acceptedAt,
-        );
-        await this.applyInvitationEmployeeMetadata(
-          tx as unknown as PrismaService,
-          invitation,
-          employee.id,
-        );
 
         return {
           tenantId: invitation.tenantId,
@@ -525,27 +428,9 @@ export class TenantService {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('اطلاعات پرسنلی با یکی از کارمندان موجود تداخل دارد');
+        throw new ConflictException('این کاربر قبلاً عضو سازمان است');
       }
       throw error;
-    }
-  }
-
-  private async applyInvitationEmployeeMetadata(
-    prisma: PrismaService,
-    invitation: InvitationWithTenant,
-    employeeId: string,
-  ) {
-    const metadata = (invitation.metadata ?? {}) as unknown as InvitationEmployeeMetadata;
-    const update: Prisma.EmployeeUpdateInput = {};
-
-    if (metadata.employeeCode) update.employeeCode = metadata.employeeCode;
-    if (metadata.jobTitle) update.jobTitle = metadata.jobTitle;
-    if (metadata.status) update.status = metadata.status;
-    if (metadata.hireDate) update.hireDate = new Date(metadata.hireDate);
-
-    if (Object.keys(update).length > 0) {
-      await prisma.employee.update({ where: { id: employeeId }, data: update });
     }
   }
 
@@ -556,18 +441,6 @@ export class TenantService {
     if (!tenant) {
       throw new NotFoundException('سازمان یافت نشد');
     }
-
-    // Legacy releases could contain memberships without a matching employee.
-    // Avoid the former N+1 write pass on every GET; run reconciliation only
-    // when a concrete missing relation is detected.
-    const missingEmployee = await this.prisma.tenantMember.findFirst({
-      where: {
-        tenantId,
-        user: { employees: { none: { tenantId } } },
-      },
-      select: { userId: true },
-    });
-    if (missingEmployee) await syncTenantMemberEmployees(this.prisma, tenantId);
 
     const members = await this.prisma.tenantMember.findMany({
       where: { tenantId },
@@ -585,46 +458,14 @@ export class TenantService {
       orderBy: { joinedAt: 'asc' },
     });
 
-    const employees = await this.prisma.employee.findMany({
-      where: {
-        tenantId,
-        userId: { in: members.map((member) => member.userId) },
-      },
-      include: { department: true },
-    });
-
-    const employeeByUserId = new Map(
-      employees
-        .filter((employee) => employee.userId)
-        .map((employee) => [employee.userId as string, employee]),
-    );
-
     return members.map((member) => ({
       userId: member.userId,
       role: member.role,
       status: member.status,
+      jobTitle: member.jobTitle,
       joinedAt: member.joinedAt,
       user: member.user,
-      employee: (() => {
-        const emp = employeeByUserId.get(member.userId);
-        return emp ? serializeEmployeeForApi(emp) : null;
-      })(),
     }));
-  }
-
-  async listDepartments(tenantId: string, requesterRole: string) {
-    this.assertAdmin(requesterRole);
-
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    if (!tenant) {
-      throw new NotFoundException('سازمان یافت نشد');
-    }
-
-    return this.prisma.department.findMany({
-      where: { tenantId },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true },
-    });
   }
 
   async updateMember(
@@ -651,7 +492,7 @@ export class TenantService {
     });
 
     if (!member) {
-      throw new NotFoundException('کارمند یافت نشد');
+      throw new NotFoundException('عضو یافت نشد');
     }
 
     if (member.role === TENANT_ROLES.OWNER && dto.role && dto.role !== TENANT_ROLES.OWNER) {
@@ -662,55 +503,15 @@ export class TenantService {
       throw new ForbiddenException('امکان تعیین نقش مالک از این مسیر وجود ندارد');
     }
 
-    if (dto.employeeCode) {
-      const duplicateCode = await this.prisma.employee.findFirst({
-        where: {
-          tenantId,
-          employeeCode: dto.employeeCode,
-          NOT: { userId },
-        },
-      });
-      if (duplicateCode) {
-        throw new ConflictException('این کد پرسنلی قبلاً استفاده شده است');
-      }
-    }
+    await this.prisma.tenantMember.update({
+      where: { tenantId_userId: { tenantId, userId } },
+      data: {
+        ...(dto.role && member.role !== TENANT_ROLES.OWNER ? { role: dto.role, roleChangedAt: new Date() } : {}),
+        ...(dto.jobTitle !== undefined ? { jobTitle: dto.jobTitle || null } : {}),
+      },
+    });
 
-    if (dto.role && member.role !== TENANT_ROLES.OWNER) {
-      await this.prisma.tenantMember.update({
-        where: { tenantId_userId: { tenantId, userId } },
-        data: { role: dto.role, roleChangedAt: new Date() },
-      });
-    }
-
-    const employee = await ensureEmployeeForUser(
-      this.prisma,
-      tenantId,
-      userId,
-      member.joinedAt,
-    );
-
-    const employeeUpdate: Prisma.EmployeeUpdateInput = {};
-
-    if (dto.employeeCode !== undefined) {
-      employeeUpdate.employeeCode = dto.employeeCode;
-    }
-    if (dto.jobTitle !== undefined) {
-      employeeUpdate.jobTitle = dto.jobTitle || null;
-    }
-    if (dto.status !== undefined) {
-      employeeUpdate.status = dto.status;
-    }
-    if (dto.hireDate !== undefined) {
-      employeeUpdate.hireDate = dto.hireDate ? new Date(dto.hireDate) : null;
-    }
-    if (Object.keys(employeeUpdate).length > 0) {
-      await this.prisma.employee.update({
-        where: { id: employee.id },
-        data: employeeUpdate,
-      });
-    }
-
-    return this.getMemberWithEmployee(tenantId, userId);
+    return this.getMember(tenantId, userId);
   }
 
   async removeMember(
@@ -730,30 +531,21 @@ export class TenantService {
     });
 
     if (!member) {
-      throw new NotFoundException('کارمند یافت نشد');
+      throw new NotFoundException('عضو یافت نشد');
     }
 
     if (member.role === TENANT_ROLES.OWNER) {
       throw new ForbiddenException('امکان حذف مالک سازمان وجود ندارد');
     }
 
-    const employee = await this.prisma.employee.findFirst({
-      where: { tenantId, userId },
-    });
-
-    await this.prisma.$transaction(async (tx) => {
-      if (employee) {
-        await tx.employee.update({ where: { id: employee.id }, data: { status: 'inactive' } });
-      }
-      await tx.tenantMember.delete({
-        where: { tenantId_userId: { tenantId, userId } },
-      });
+    await this.prisma.tenantMember.delete({
+      where: { tenantId_userId: { tenantId, userId } },
     });
 
     return { success: true };
   }
 
-  private async getMemberWithEmployee(tenantId: string, userId: string) {
+  private async getMember(tenantId: string, userId: string) {
     const member = await this.prisma.tenantMember.findUnique({
       where: { tenantId_userId: { tenantId, userId } },
       include: {
@@ -770,21 +562,16 @@ export class TenantService {
     });
 
     if (!member) {
-      throw new NotFoundException('کارمند یافت نشد');
+      throw new NotFoundException('عضو یافت نشد');
     }
-
-    const employee = await this.prisma.employee.findFirst({
-      where: { tenantId, userId },
-      include: { department: true },
-    });
 
     return {
       userId: member.userId,
       role: member.role,
       status: member.status,
+      jobTitle: member.jobTitle,
       joinedAt: member.joinedAt,
       user: member.user,
-      employee: employee ? serializeEmployeeForApi(employee) : null,
     };
   }
 

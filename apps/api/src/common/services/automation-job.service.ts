@@ -12,9 +12,6 @@ export const AUTOMATION_JOB_TYPES = [
   'social.prepare',
   'social.cover',
   'social.publish',
-  'wordpress.importance.evaluate',
-  'wordpress.importance.reevaluate-all',
-  'wordpress.importance.learn',
 ] as const;
 
 export type AutomationJobType = (typeof AUTOMATION_JOB_TYPES)[number];

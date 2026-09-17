@@ -268,7 +268,7 @@ async function loadCoverImage(url?: string): Promise<HTMLImageElement | null> {
     image.onload = () => finish(image);
     image.onerror = () => finish(null);
     if (/^https?:\/\//iu.test(url)) {
-      void apiFetchBlob(`/publishing/media/image?url=${encodeURIComponent(url)}`, { signal: controller.signal }).then((blob) => { if (!settled) { objectUrl = URL.createObjectURL(blob); image.src = objectUrl; } }).catch(() => finish(null));
+      void apiFetchBlob(`/publishing/proxy/image?url=${encodeURIComponent(url)}`, { signal: controller.signal }).then((blob) => { if (!settled) { objectUrl = URL.createObjectURL(blob); image.src = objectUrl; } }).catch(() => finish(null));
     } else image.src = withBasePath(url.startsWith('/api') ? url : `/api${url.startsWith('/') ? url : `/${url}`}`);
   });
 }
@@ -439,7 +439,7 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
     const objectUrls: string[] = [];
     void Promise.all(remoteImageUrls.map(async (url) => {
       try {
-        const blob = await apiFetchBlob(`/publishing/media/image?url=${encodeURIComponent(url)}`);
+        const blob = await apiFetchBlob(`/publishing/proxy/image?url=${encodeURIComponent(url)}`);
         const objectUrl = URL.createObjectURL(blob);
         objectUrls.push(objectUrl);
         return [url, objectUrl] as const;

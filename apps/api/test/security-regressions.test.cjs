@@ -7,7 +7,6 @@ const { TenantGuard } = require('../dist/common/guards/tenant.guard');
 const { TenantController } = require('../dist/platform/tenant/tenant.controller');
 const { TenantService } = require('../dist/platform/tenant/tenant.service');
 const { PlatformAdminService } = require('../dist/platform/admin/platform-admin.service');
-const { CalendarService } = require('../dist/modules/calendar/calendar.service');
 const { PublishingSettingsService } = require('../dist/modules/smart-publishing/publishing-settings.service');
 const { SocialStudioService } = require('../dist/modules/smart-publishing/social-studio.service');
 const { AuthService } = require('../dist/platform/auth/auth.service');
@@ -184,30 +183,6 @@ test('a previously claimed organization invitation cannot create another members
   );
 });
 
-test('calendar attendee updates are scoped to both event and tenant', async () => {
-  let attendeeLookup;
-  const prisma = {
-    calendarEventAttendee: {
-      findFirst: async (query) => {
-        attendeeLookup = query;
-        return null;
-      },
-      update: () => assert.fail('update must not run for a foreign attendee'),
-    },
-  };
-  const service = new CalendarService(prisma);
-
-  await assert.rejects(
-    () => service.updateAttendeeStatus('tenant-a', 'event-a', 'attendee-b', 'accepted'),
-    NotFoundException,
-  );
-  assert.deepEqual(attendeeLookup.where, {
-    id: 'attendee-b',
-    eventId: 'event-a',
-    event: { tenantId: 'tenant-a' },
-  });
-});
-
 test('stored integration secrets are not reused for a caller-controlled host', () => {
   const service = new PublishingSettingsService({}, {});
   const current = {
@@ -228,18 +203,13 @@ test('stored integration secrets are not reused for a caller-controlled host', (
   assert.equal(wpChanged.wp_app_password, '');
 });
 
-test('legacy GapGPT credentials remain usable when the module row has an empty placeholder', async () => {
+test('legacy GapGPT credentials remain usable when publishing JSON is empty but flat settings exist', async () => {
   const prisma = {
     tenant: {
       findUnique: async () => ({ settings: {
         gapgpt_base_url: 'https://legacy-gap.example',
         gapgpt_api_key: 'legacy-gap-secret',
-      } }),
-    },
-    tenantModule: {
-      findUnique: async () => ({ settings: {
-        gapgpt_base_url: 'https://legacy-gap.example',
-        gapgpt_api_key: '',
+        publishing: {},
       } }),
     },
   };
@@ -374,22 +344,17 @@ test('saving a new integration host removes an omitted stored secret', async () 
   let writtenSettings;
   const prisma = {
     tenant: {
-      findUnique: async () => ({ settings: {} }),
-      update: async () => ({}),
-    },
-    tenantModule: {
-      findUnique: async () => ({
-        settings: {
+      findUnique: async () => ({ settings: {
+        publishing: {
           gapgpt_base_url: 'https://trusted-gap.example',
           gapgpt_api_key: 'encrypted-stored-secret',
         },
-      }),
+      } }),
       update: async ({ data }) => {
-        writtenSettings = data.settings;
+        writtenSettings = data.settings.publishing;
         return {};
       },
     },
-    $transaction: async (operations) => Promise.all(operations),
   };
   const secrets = {
     encrypt: (value) => `encrypted:${value}`,
@@ -412,7 +377,7 @@ test('the built-in manager role excludes platform-administration permissions', (
   const permissions = getDefaultPermissionsForTenantRole('manager');
 
   assert.equal(APP_PERMISSIONS.some((permission) => permission.key === 'roles.manage'), false);
-  assert.equal(permissions.includes('modules.manage'), false);
+  assert.equal(permissions.includes('users.manage'), false);
   assert.equal(permissions.includes('platform.admin'), false);
 });
 

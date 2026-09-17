@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, BrainCircuit, CheckCircle2, Clock3, Copy, Globe2, KeyRound, PanelsTopLeft, Pencil, Plus, RefreshCw, Save, Settings2, Share2, Star, TestTube2, Upload, Trash2 } from 'lucide-react';
+import { Bot, CheckCircle2, Clock3, Copy, Globe2, KeyRound, Pencil, Plus, Save, Settings2, Share2, Star, TestTube2, Upload, Trash2 } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { CoverTemplateBuilder, parseTemplate, parseTemplateLibrary, type CoverDemoArticle, type CoverFont, type CoverTemplateLibrary } from '@/components/publishing/cover-template-builder';
 import { Button } from '@/components/ui/button';
@@ -10,28 +10,13 @@ import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch } from '@/lib/utils';
 
 type Settings = Record<string, string>;
-type ActiveTab = 'ai' | 'social' | 'news' | 'media';
+type ActiveTab = 'ai' | 'social' | 'news';
 type WordPressCategory = { id: number; name: string; slug: string; parent: number };
-type EditorialMemorySummary = {
-  enabled: boolean;
-  exampleLimit: number;
-  activeExamples: number;
-  decisions: { total: number; important: number; normal: number };
-  learnedRules: Array<{ text: string; count: number }>;
-  newsValues: Array<{ key: string; count: number }>;
-  lastLearnedAt: string | null;
-  learningJobs: { pending: number; failed: number };
-};
 const SETTINGS_DRAFT_KEY = 'deska_publishing_settings_draft';
 const SETTINGS_DRAFT_VERSION = 1;
 const MAX_COVER_TEMPLATES = 20;
 const SECRET_SETTING_KEYS = new Set(['gapgpt_api_key', 'wp_app_password', 'telegram_bot_token', 'social_instagram_access_token', 'social_linkedin_access_token', 'social_facebook_page_access_token']);
 const WORDPRESS_CONNECTION_KEYS = ['wp_site_url', 'wp_login_path', 'wp_username', 'wp_app_password', 'wp_post_status', 'wp_category_id', 'wp_categories'];
-const NEWS_VALUE_LABELS: Record<string, string> = {
-  impact: 'اثرگذاری', timeliness: 'تازگی', proximity: 'مجاورت', prominence: 'شهرت', conflict: 'تعارض',
-  novelty: 'استثنا و تازگی', magnitude: 'بزرگی', public_interest: 'منفعت عمومی', consequence: 'پیامد', continuity: 'تداوم',
-};
-
 function readSettingsDraft(): Settings {
   if (typeof window === 'undefined') return {};
   try {
@@ -164,14 +149,7 @@ export default function PublishingSettingsPage() {
     ai: 'connection',
     social: 'monitor',
     news: 'schedule',
-    media: 'process',
   });
-  const editorialMemoryApi = useApi<EditorialMemorySummary>(
-    activeTab === 'media' && subTab === 'process' && values.wp_news_importance_enabled === 'true'
-      ? '/publishing/media/importance/memory-summary'
-      : null,
-    { cache: 'no-store' },
-  );
   const hasLocalEdits = useRef(false);
   const hasSavedInSession = useRef(false);
   const [selectedCoverTemplateId, setSelectedCoverTemplateId] = useState('');
@@ -189,8 +167,6 @@ export default function PublishingSettingsPage() {
       values.gapgpt_model_news_summary,
       values.gapgpt_model_news_translation,
       values.gapgpt_model_social,
-      values.gapgpt_model_daily_report,
-      values.gapgpt_model_news_importance,
       'gpt-4o-mini',
     ].filter(Boolean))),
     [gapGptModels, values],
@@ -268,10 +244,9 @@ export default function PublishingSettingsPage() {
   }
 
   const tabKeys: Record<ActiveTab, string[]> = {
-    ai: ['gapgpt_base_url', 'gapgpt_api_key', 'gapgpt_model', 'gapgpt_model_news_summary', 'gapgpt_model_news_translation', 'gapgpt_model_social', 'gapgpt_model_daily_report', 'gapgpt_model_news_importance'],
+    ai: ['gapgpt_base_url', 'gapgpt_api_key', 'gapgpt_model', 'gapgpt_model_news_summary', 'gapgpt_model_news_translation', 'gapgpt_model_social'],
     social: ['social_poll_interval_minutes', 'social_max_age_days', 'social_auto_poll', 'social_auto_prepare', 'social_auto_generate_image', 'social_auto_image_template_id', 'social_auto_publish_telegram', 'social_auto_publish_instagram', 'social_auto_publish_linkedin', 'social_auto_publish_facebook', 'social_caption_template', 'social_image_template', 'social_image_templates', 'social_font_library'],
     news: ['news_poll_interval_minutes', 'news_max_age_days', 'news_auto_poll', 'news_auto_prepare', 'news_auto_publish', 'news_auto_send_social', 'news_summary_prompt', 'news_full_translation_prompt', 'news_persian_rewrite_prompt', 'news_persian_full_rewrite_prompt'],
-    media: ['gapgpt_model_news_importance', 'wp_media_management_enabled', 'wp_news_importance_enabled', 'wp_news_importance_auto_enabled', 'wp_news_importance_audience', 'wp_news_importance_guidance', 'wp_news_importance_threshold', 'wp_news_importance_interval_minutes', 'wp_news_importance_batch_size', 'wp_news_importance_memory_examples', 'wp_news_importance_content_chars'],
   };
 
   function selectTab(tab: ActiveTab) {
@@ -324,9 +299,9 @@ export default function PublishingSettingsPage() {
                 : ['social_font_library']
         : tab === 'news'
           ? subTab === 'schedule' ? ['news_poll_interval_minutes', 'news_max_age_days', 'news_auto_poll', 'news_auto_prepare', 'news_auto_publish', 'news_auto_send_social']
-            : ['news_summary_prompt', 'news_full_translation_prompt', 'news_persian_rewrite_prompt', 'news_persian_full_rewrite_prompt']
-          : tab === 'media' && subTab === 'wordpress' ? WORDPRESS_CONNECTION_KEYS
-            : tabKeys[tab];
+            : subTab === 'wordpress' ? WORDPRESS_CONNECTION_KEYS
+              : ['news_summary_prompt', 'news_full_translation_prompt', 'news_persian_rewrite_prompt', 'news_persian_full_rewrite_prompt']
+          : tabKeys[tab];
       const body = Object.fromEntries(keys.map((key) => [key, values[key] ?? '']));
       const saved = await apiFetch<Settings>('/publishing/settings', { method: 'PUT', body: editableSettings(body) });
       // Keep the confirmed server response in the form immediately; a late
@@ -370,12 +345,12 @@ export default function PublishingSettingsPage() {
         {error && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {message && <div role="status" className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" />{message}</div>}
 
-        <nav role="tablist" className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-2 shadow-sm lg:grid-cols-4" aria-label="دسته‌بندی تنظیمات">
-          {([['ai', 'هوش مصنوعی', Bot], ['social', 'استودیوی اجتماعی', Share2], ['news', 'پایش خبر', Clock3], ['media', 'مدیریت رسانه', PanelsTopLeft]] as const).map(([tab, label, Icon]) => <button role="tab" type="button" key={tab} onClick={() => selectTab(tab)} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition ${activeTab === tab ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`} aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1}><Icon className="h-4 w-4" />{label}</button>)}
+        <nav role="tablist" className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-2 shadow-sm lg:grid-cols-3" aria-label="دسته‌بندی تنظیمات">
+          {([['ai', 'هوش مصنوعی', Bot], ['social', 'استودیوی اجتماعی', Share2], ['news', 'پایش خبر', Clock3]] as const).map(([tab, label, Icon]) => <button role="tab" type="button" key={tab} onClick={() => selectTab(tab)} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition ${activeTab === tab ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`} aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1}><Icon className="h-4 w-4" />{label}</button>)}
         </nav>
 
-        {(activeTab === 'social' || activeTab === 'news' || activeTab === 'media') && <nav role="tablist" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2" aria-label="زیرمجموعه تنظیمات">
-          {(activeTab === 'social' ? [['monitor', 'پایش فیدها'], ['caption', 'قالب کپشن'], ['image', 'قالب تصویری'], ['networks', 'شبکه‌های اجتماعی'], ['fonts', 'کتابخانه فونت']] : activeTab === 'news' ? [['schedule', 'زمان‌بندی پایش'], ['prompts', 'پرامپت‌ها']] : [['process', 'فرایند ارزیابی'], ['wordpress', 'اتصال WordPress']]).map(([tab, label]) => <button role="tab" type="button" key={tab} onClick={() => selectSubTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-medium transition ${subTab === tab ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-600 hover:bg-white'}`} aria-selected={subTab === tab} tabIndex={subTab === tab ? 0 : -1}>{label}</button>)}
+        {(activeTab === 'social' || activeTab === 'news') && <nav role="tablist" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2" aria-label="زیرمجموعه تنظیمات">
+          {(activeTab === 'social' ? [['monitor', 'پایش فیدها'], ['caption', 'قالب کپشن'], ['image', 'قالب تصویری'], ['networks', 'شبکه‌های اجتماعی'], ['fonts', 'کتابخانه فونت']] : [['schedule', 'زمان‌بندی پایش'], ['prompts', 'پرامپت‌ها'], ['wordpress', 'اتصال WordPress']]).map(([tab, label]) => <button role="tab" type="button" key={tab} onClick={() => selectSubTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-medium transition ${subTab === tab ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-600 hover:bg-white'}`} aria-selected={subTab === tab} tabIndex={subTab === tab ? 0 : -1}>{label}</button>)}
         </nav>}
 
         {activeTab === 'ai' && <Card className="p-5 sm:p-6">
@@ -387,8 +362,6 @@ export default function PublishingSettingsPage() {
             <Field label="مدل خلاصه‌سازی خبر" hint="برای آماده‌سازی عنوان و خلاصه فارسی در اتاق خبر."><select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_news_summary || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_news_summary', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></Field>
             <Field label="مدل پردازش متن کامل خبر" hint="برای ترجمه خبر خارجی یا بازنویسی خبر فارسی هنگام انتشار در WordPress."><select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_news_translation || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_news_translation', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></Field>
             <Field label="مدل استودیوی اجتماعی" hint="برای تولید لید و خلاصه اجتماعی فارسی."><select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_social || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_social', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></Field>
-            <Field label="مدل گزارش روزانه" hint="برای تولید تیتر و بولت‌های انگلیسی گزارش روزانه."><select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_daily_report || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_daily_report', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></Field>
-            <Field label="مدل ارزیابی اهمیت خبر" hint="برای تفکیک خبرهای مهم و عادی در مدیریت رسانه."><select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_news_importance || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_news_importance', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></Field>
           </div>
           <div className="mt-5 flex flex-wrap gap-2"><Button variant="outline" isLoading={busy === 'gapgpt-models'} onClick={() => void loadGapGptModels()}><Bot className="h-4 w-4" /> دریافت فهرست مدل‌ها</Button><Button variant="outline" isLoading={busy === 'gapgpt'} onClick={() => run('gapgpt', () => apiFetch('/publishing/settings/test-gapgpt', { method: 'POST', body: editableSettings(Object.fromEntries(['gapgpt_base_url', 'gapgpt_api_key'].map((key) => [key, values[key] ?? '']))) }), 'اتصال GapGPT با موفقیت تأیید شد.')}><TestTube2 className="h-4 w-4" /> تست اتصال GapGPT</Button><Button isLoading={busy === 'save'} onClick={() => saveTab('ai')}><Save className="h-4 w-4" /> ذخیره</Button></div>
           <p className="mt-3 text-xs leading-5 text-slate-500">برای تازه‌سازی گزینه‌ها، آدرس و کلید را وارد کنید و روی «دریافت فهرست مدل‌ها» بزنید.</p>
@@ -450,7 +423,7 @@ export default function PublishingSettingsPage() {
           <div className="mt-5 flex justify-end"><Button isLoading={busy === 'save'} onClick={() => saveTab('news')}><Save className="h-4 w-4" /> ذخیره</Button></div>
         </Card>}
 
-        {activeTab === 'media' && subTab === 'wordpress' && <Card className="p-5 sm:p-6">
+        {activeTab === 'news' && subTab === 'wordpress' && <Card className="p-5 sm:p-6">
           <div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-50 text-sky-700"><Globe2 className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-900">انتشار در WordPress</h2><p className="mt-1 text-sm text-slate-500">برای امنیت، از Application Password وردپرس استفاده کنید؛ نه رمز اصلی حساب.</p></div></div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <Field label="آدرس سایت WordPress" hint="نشانی اصلی محل نصب وردپرس را وارد کنید؛ wp-admin، wp-login.php یا wp-json را به انتهای آن اضافه نکنید."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://example.com" value={values.wp_site_url || ''} onChange={(e) => { set('wp_site_url', e.target.value); set('wp_categories', '[]'); set('wp_category_id', ''); }} /></Field>
@@ -461,35 +434,7 @@ export default function PublishingSettingsPage() {
             <Field label="دسته‌بندی پیش‌فرض" hint="DESKA برای هر خبر دسته مناسب را هوشمند انتخاب می‌کند؛ این گزینه فقط در صورت ناموفق‌بودن انتخاب هوشمند استفاده می‌شود."><select className="rounded-xl border px-3 py-2.5" value={values.wp_category_id || ''} onChange={(e) => set('wp_category_id', e.target.value)}><option value="">دسته پیش‌فرض خود WordPress</option>{values.wp_category_id && !wordpressCategories.some((category) => String(category.id) === values.wp_category_id) && <option value={values.wp_category_id}>شناسه قبلی: {values.wp_category_id}</option>}{wordpressCategories.map((category) => { const parent = wordpressCategories.find((item) => item.id === category.parent); return <option key={category.id} value={category.id}>{parent ? `${parent.name} ← ` : ''}{category.name}</option>; })}</select></Field>
             <div className="md:col-span-2 rounded-2xl border border-sky-100 bg-sky-50/60 p-4"><p className="font-semibold text-slate-800">دسته‌بندی‌های سایت مقصد</p>{wordpressCategories.length ? <><p className="mt-1 text-xs leading-5 text-slate-600">{wordpressCategories.length} دسته دریافت شده است. هنگام انتشار، عنوان و خلاصه خبر فقط با همین فهرست تطبیق داده می‌شود.</p><div className="mt-3 flex flex-wrap gap-2">{wordpressCategories.slice(0, 16).map((category) => <span key={category.id} className="rounded-lg border border-sky-100 bg-white px-2.5 py-1 text-xs text-slate-700">{category.name}</span>)}{wordpressCategories.length > 16 && <span className="rounded-lg bg-sky-100 px-2.5 py-1 text-xs text-sky-800">و {wordpressCategories.length - 16} دسته دیگر</span>}</div></> : <p className="mt-1 text-xs leading-5 text-slate-600">برای دریافت دسته‌بندی‌ها، اطلاعات اتصال را وارد کنید و «تست اتصال WordPress» را بزنید.</p>}</div>
           </div>
-          <div className="mt-5 flex flex-wrap gap-2"><Button variant="outline" isLoading={busy === 'wordpress'} onClick={() => void testWordPressConnection()}><TestTube2 className="h-4 w-4" /> تست اتصال و دریافت دسته‌بندی‌ها</Button><Button isLoading={busy === 'save'} onClick={() => saveTab('media')}><Save className="h-4 w-4" /> ذخیره</Button></div>
-        </Card>}
-
-        {activeTab === 'media' && subTab === 'process' && <Card className="p-5 sm:p-6">
-          <div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700"><PanelsTopLeft className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-900">تنظیمات مدیریت رسانه</h2><p className="mt-1 text-sm leading-6 text-slate-500">نحوه دسترسی به نوشته‌ها، ارزیابی اهمیت و یادگیری از تصمیم‌های سردبیر را تنظیم کنید.</p></div></div>
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            <AutomationToggle title="فعال‌سازی مدیریت رسانه" description="دسترسی به نوشته‌های WordPress و ابزارهای مدیریت رسانه فعال شود." enabled={values.wp_media_management_enabled === 'true'} onChange={(enabled) => { set('wp_media_management_enabled', String(enabled)); if (!enabled) { set('wp_news_importance_enabled', 'false'); set('wp_news_importance_auto_enabled', 'false'); } }} />
-            <AutomationToggle title="ارزیابی اهمیت خبر" description="ستاره‌گذاری سریع، برچسب WordPress و حافظه تصمیم‌های سردبیر فعال شود." enabled={values.wp_news_importance_enabled === 'true'} onChange={(enabled) => { set('wp_news_importance_enabled', String(enabled)); if (enabled) set('wp_media_management_enabled', 'true'); else set('wp_news_importance_auto_enabled', 'false'); }} />
-            <AutomationToggle title="ارزیابی خودکار" description="خبرهای منتشرشده جدید یا ویرایش‌شده طبق زمان‌بندی در صف قرار بگیرند." enabled={values.wp_news_importance_auto_enabled === 'true'} onChange={(enabled) => { set('wp_news_importance_auto_enabled', String(enabled)); if (enabled) { set('wp_media_management_enabled', 'true'); set('wp_news_importance_enabled', 'true'); } }} />
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <Field label="مدل هوش مصنوعی ارزیابی" hint="مدل سریع‌تر، صف را زودتر پردازش می‌کند؛ مدل قوی‌تر معمولاً مرز اهمیت را دقیق‌تر تشخیص می‌دهد."><select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_news_importance || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_news_importance', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></Field>
-            <Field label="آستانه خبر مهم" hint="عدد بالاتر سخت‌گیرانه‌تر است. مقدار پیشنهادی ۸۰؛ بازه مجاز ۵۰ تا ۹۵."><div className="flex items-center gap-3"><input type="range" min="50" max="95" step="1" className="min-w-0 flex-1 accent-amber-600" value={values.wp_news_importance_threshold || '80'} onChange={(e) => set('wp_news_importance_threshold', e.target.value)} /><input type="number" min="50" max="95" inputMode="numeric" dir="ltr" className="w-24 rounded-xl border px-3 py-2.5 text-center" value={values.wp_news_importance_threshold || '80'} onChange={(e) => set('wp_news_importance_threshold', e.target.value)} /></div></Field>
-            <Field label="تعداد نمونه‌های حافظه تحریریه" hint="نمونه‌های متوازن از تصمیم‌های دستی سردبیر؛ صفر یعنی غیرفعال. بازه ۰ تا ۴۰."><input type="number" min="0" max="40" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.wp_news_importance_memory_examples || '12'} onChange={(e) => set('wp_news_importance_memory_examples', e.target.value)} /></Field>
-            <Field label="فاصله ارزیابی خودکار (دقیقه)" hint="در صورت فعال‌بودن ارزیابی خودکار؛ بازه ۱ تا ۱۴۴۰ دقیقه."><input type="number" min="1" max="1440" inputMode="numeric" dir="ltr" disabled={values.wp_news_importance_auto_enabled !== 'true'} className="rounded-xl border px-3 py-2.5 disabled:bg-slate-100" value={values.wp_news_importance_interval_minutes || '5'} onChange={(e) => set('wp_news_importance_interval_minutes', e.target.value)} /></Field>
-            <Field label="تعداد خبر در هر نوبت" hint="اندازه دسته ارزیابی خودکار یا دستی؛ بازه ۱ تا ۵۰ خبر."><input type="number" min="1" max="50" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.wp_news_importance_batch_size || '20'} onChange={(e) => set('wp_news_importance_batch_size', e.target.value)} /></Field>
-            <Field label="حداکثر متن هر خبر (کاراکتر)" hint="مقدار کمتر سریع‌تر و ارزان‌تر است؛ برای خبرهای بلند مقدار بیشتری انتخاب کنید. بازه ۲۰۰۰ تا ۳۰۰۰۰."><input type="number" min="2000" max="30000" step="1000" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.wp_news_importance_content_chars || '12000'} onChange={(e) => set('wp_news_importance_content_chars', e.target.value)} /></Field>
-            <Field label="مخاطبان هدف" hint="اهمیت خبر نسبت به نیاز و اثر آن بر این مخاطبان سنجیده می‌شود."><textarea className="min-h-28 rounded-xl border px-3 py-2.5 leading-7" maxLength={4000} placeholder="برای مثال: مدیران کسب‌وکار و فعالان صنعت" value={values.wp_news_importance_audience || 'مخاطبان عمومی فارسی‌زبان سایت'} onChange={(e) => set('wp_news_importance_audience', e.target.value)} /></Field>
-            <div className="md:col-span-2"><Field label="قواعد اختصاصی سردبیر" hint="قواعد کلی و ماندگار رسانه را اینجا بنویسید. دلایل استخراج‌شده از انتخاب‌های سردبیر نیز به‌صورت داخلی و بدون نمایش فهرست تصمیم‌ها همراه این قواعد استفاده می‌شوند."><textarea className="min-h-36 rounded-xl border px-3 py-3 leading-7" maxLength={8000} placeholder="برای مثال: تغییرات مقرراتی صنعت و تصمیم‌های رسمی دولت مهم‌اند؛ دیدارهای تشریفاتی و گزارش عملکرد عادی هستند." value={values.wp_news_importance_guidance || ''} onChange={(e) => set('wp_news_importance_guidance', e.target.value)} /></Field></div>
-          </div>
-          {values.wp_news_importance_enabled === 'true' && <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50/50 p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700"><BrainCircuit className="h-5 w-5" /></span><div><h3 className="font-bold text-slate-900">حافظه آموخته‌شده تحریریه</h3><p className="mt-1 text-xs leading-5 text-slate-600">نمای تجمیع‌شده قواعدی که سیستم از تصمیم‌های سردبیر آموخته است؛ خبرها و تصمیم‌ها به‌صورت جداگانه نمایش داده نمی‌شوند.</p></div></div><Button variant="outline" isLoading={editorialMemoryApi.isLoading} onClick={() => void editorialMemoryApi.refetch()}><RefreshCw className="h-4 w-4" /> به‌روزرسانی حافظه</Button></div>
-            {editorialMemoryApi.error ? <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{editorialMemoryApi.error}</p> : editorialMemoryApi.isLoading && !editorialMemoryApi.data ? <p className="mt-4 text-sm text-slate-500">در حال خواندن حافظه تحریریه...</p> : editorialMemoryApi.data && <>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4"><div className="rounded-xl bg-white px-3 py-3 text-slate-700 shadow-sm"><strong className="block text-lg text-violet-700">{editorialMemoryApi.data.decisions.total.toLocaleString('fa-IR')}</strong>تصمیم آموخته‌شده</div><div className="rounded-xl bg-white px-3 py-3 text-slate-700 shadow-sm"><strong className="block text-lg text-amber-700">{editorialMemoryApi.data.decisions.important.toLocaleString('fa-IR')}</strong>تصمیم مهم</div><div className="rounded-xl bg-white px-3 py-3 text-slate-700 shadow-sm"><strong className="block text-lg text-sky-700">{editorialMemoryApi.data.decisions.normal.toLocaleString('fa-IR')}</strong>تصمیم عادی</div><div className="rounded-xl bg-white px-3 py-3 text-slate-700 shadow-sm"><strong className="block text-lg text-emerald-700">{editorialMemoryApi.data.activeExamples.toLocaleString('fa-IR')}</strong>نمونه فعال از {editorialMemoryApi.data.exampleLimit.toLocaleString('fa-IR')}</div></div>
-              <div className="mt-4 grid gap-4 lg:grid-cols-2"><div className="rounded-xl border border-violet-100 bg-white p-4"><h4 className="text-sm font-bold text-slate-900">دلایل و قواعد آموخته‌شده</h4>{editorialMemoryApi.data.learnedRules.length ? <ul className="mt-3 space-y-2">{editorialMemoryApi.data.learnedRules.map((rule) => <li key={rule.text} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700"><span>{rule.text}</span>{rule.count > 1 && <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">{rule.count.toLocaleString('fa-IR')} بار</span>}</li>)}</ul> : <p className="mt-3 text-sm leading-6 text-slate-500">هنوز دلیل تکمیل‌شده‌ای در حافظه نیست. با مهم‌کردن خبر، تحلیل آن در صف یادگیری قرار می‌گیرد.</p>}</div><div className="rounded-xl border border-violet-100 bg-white p-4"><h4 className="text-sm font-bold text-slate-900">ارزش‌های خبری پرتکرار</h4>{editorialMemoryApi.data.newsValues.length ? <div className="mt-3 flex flex-wrap gap-2">{editorialMemoryApi.data.newsValues.map((value) => <span key={value.key} className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs text-violet-800">{NEWS_VALUE_LABELS[value.key] || value.key} · {value.count.toLocaleString('fa-IR')}</span>)}</div> : <p className="mt-3 text-sm leading-6 text-slate-500">هنوز ارزش خبری استخراج‌شده‌ای وجود ندارد.</p>}<div className="mt-4 border-t border-slate-100 pt-3 text-xs leading-6 text-slate-500"><p>{editorialMemoryApi.data.lastLearnedAt ? `آخرین یادگیری: ${new Date(editorialMemoryApi.data.lastLearnedAt).toLocaleString('fa-IR')}` : 'یادگیری تکمیل‌شده‌ای ثبت نشده است.'}</p>{editorialMemoryApi.data.learningJobs.pending > 0 && <p className="text-blue-700">{editorialMemoryApi.data.learningJobs.pending.toLocaleString('fa-IR')} تحلیل در صف یا در حال اجرا است.</p>}{editorialMemoryApi.data.learningJobs.failed > 0 && <p className="text-red-700">{editorialMemoryApi.data.learningJobs.failed.toLocaleString('fa-IR')} تحلیل ناموفق در مرکز عملیات نیازمند بررسی است.</p>}</div></div></div>
-            </>}
-          </div>}
-          <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/60 p-4 text-sm leading-7 text-amber-950"><strong>نحوه یادگیری:</strong> وقتی سردبیر خبری را مهم می‌کند، سیستم متن خبر را تحلیل و دلایل واقعی اهمیت و ارزش‌های خبری آن را استخراج می‌کند. این تحلیل در حافظه همان سازمان ذخیره و در ارزیابی خبرهای بعدی استفاده می‌شود؛ تصمیم‌ها به‌صورت فهرست جداگانه در تنظیمات نمایش داده نمی‌شوند.</div>
-          <div className="mt-5 flex justify-end"><Button isLoading={busy === 'save'} onClick={() => saveTab('media')}><Save className="h-4 w-4" /> ذخیره تنظیمات مدیریت رسانه</Button></div>
+          <div className="mt-5 flex flex-wrap gap-2"><Button variant="outline" isLoading={busy === 'wordpress'} onClick={() => void testWordPressConnection()}><TestTube2 className="h-4 w-4" /> تست اتصال و دریافت دسته‌بندی‌ها</Button><Button isLoading={busy === 'save'} onClick={() => saveTab('news')}><Save className="h-4 w-4" /> ذخیره</Button></div>
         </Card>}
       </main>
     </ProtectedLayout>

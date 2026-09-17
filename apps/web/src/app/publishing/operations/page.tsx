@@ -27,8 +27,6 @@ const JOB_LABELS: Record<string, string> = {
   'news.feed.fetch': 'دریافت فید خبری', 'news.prepare': 'آماده‌سازی خبر', 'news.publish': 'انتشار خبر در سایت',
   'news.send-social': 'ارسال خبر به استودیوی اجتماعی', 'social.feed.fetch': 'دریافت فید اجتماعی',
   'social.prepare': 'آماده‌سازی مطلب اجتماعی', 'social.cover': 'تولید تصویر', 'social.publish': 'انتشار اجتماعی',
-  'wordpress.importance.evaluate': 'ارزیابی اهمیت خبر WordPress', 'wordpress.importance.reevaluate-all': 'بازارزیابی همه خبرهای WordPress',
-  'wordpress.importance.learn': 'استخراج دلایل تصمیم سردبیر',
 };
 
 const HEALTH_LABELS: Record<string, string> = { healthy: 'سالم', degraded: 'دارای اختلال', down: 'قطع', unknown: 'آزمایش‌نشده', unconfigured: 'پیکربندی‌نشده', disabled: 'غیرفعال' };

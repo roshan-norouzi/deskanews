@@ -1,6 +1,6 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
 
-export const FEED_PURPOSES = ['news-room', 'social-studio', 'daily-report'] as const;
+export const FEED_PURPOSES = ['news-room', 'social-studio'] as const;
 export type FeedPurpose = (typeof FEED_PURPOSES)[number];
 
 export const SOURCE_TYPES = ['rss', 'website', 'blog', 'telegram', 'twitter'] as const;

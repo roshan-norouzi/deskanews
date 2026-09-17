@@ -41,8 +41,6 @@ const DEFAULTS: PublishingSettings = {
   gapgpt_model_news_summary: 'gpt-4o-mini',
   gapgpt_model_news_translation: 'gpt-4o-mini',
   gapgpt_model_social: 'gpt-4o-mini',
-  gapgpt_model_daily_report: 'gpt-4o-mini',
-  gapgpt_model_news_importance: 'gpt-4o-mini',
   news_poll_interval_minutes: '240',
   news_max_age_days: '10',
   news_auto_poll: 'true',
@@ -66,16 +64,6 @@ const DEFAULTS: PublishingSettings = {
   wp_post_status: 'publish',
   wp_login_path: 'wp-admin',
   wp_categories: '[]',
-  wp_media_management_enabled: 'false',
-  wp_news_importance_enabled: 'false',
-  wp_news_importance_auto_enabled: 'false',
-  wp_news_importance_audience: 'مخاطبان عمومی فارسی‌زبان سایت',
-  wp_news_importance_guidance: '',
-  wp_news_importance_threshold: '80',
-  wp_news_importance_interval_minutes: '5',
-  wp_news_importance_batch_size: '20',
-  wp_news_importance_memory_examples: '12',
-  wp_news_importance_content_chars: '12000',
 };
 
 // Older releases stored empty strings for fields whose UI showed a default
@@ -86,8 +74,6 @@ const DEFAULT_WHEN_EMPTY = new Set<PublishingSettingKey>([
   'gapgpt_model_news_summary',
   'gapgpt_model_news_translation',
   'gapgpt_model_social',
-  'gapgpt_model_daily_report',
-  'gapgpt_model_news_importance',
   'news_poll_interval_minutes',
   'news_max_age_days',
   'news_auto_poll',
@@ -109,15 +95,6 @@ const DEFAULT_WHEN_EMPTY = new Set<PublishingSettingKey>([
   'social_font_library',
   'wp_post_status',
   'wp_login_path',
-  'wp_media_management_enabled',
-  'wp_news_importance_enabled',
-  'wp_news_importance_auto_enabled',
-  'wp_news_importance_audience',
-  'wp_news_importance_threshold',
-  'wp_news_importance_interval_minutes',
-  'wp_news_importance_batch_size',
-  'wp_news_importance_memory_examples',
-  'wp_news_importance_content_chars',
   'social_instagram_api_version',
   'social_linkedin_api_version',
   'social_facebook_api_version',
@@ -509,40 +486,47 @@ export class PublishingSettingsService {
     }
   }
 
-  async getRaw(tenantId: string): Promise<PublishingSettings> {
-    const [moduleRow, tenant] = await Promise.all([
-      this.prisma.tenantModule.findUnique({
+  private async loadPublishingSources(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+    const tenantSettings = cleanObject(tenant?.settings);
+    const publishing = cleanObject(tenantSettings.publishing);
+    const legacyFlat = tenantSettings;
+    let moduleSettings: Record<string, unknown> = {};
+    try {
+      const moduleRow = await (this.prisma as PrismaService & {
+        tenantModule?: { findUnique: (args: unknown) => Promise<{ settings?: unknown } | null> };
+      }).tenantModule?.findUnique({
         where: { tenantId_moduleId: { tenantId, moduleId: 'smart-publishing' } },
         select: { settings: true },
-      }),
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }),
-    ]);
+      });
+      moduleSettings = cleanObject(moduleRow?.settings);
+    } catch {
+      moduleSettings = {};
+    }
+    return { publishing, legacyFlat, moduleSettings };
+  }
 
-    const legacy = cleanObject(tenant?.settings);
-    const moduleSettings = cleanObject(moduleRow?.settings);
+  async getRaw(tenantId: string): Promise<PublishingSettings> {
+    const { publishing, legacyFlat, moduleSettings } = await this.loadPublishingSources(tenantId);
     const result: PublishingSettings = { ...DEFAULTS };
     for (const key of PUBLISHING_SETTING_KEYS) {
+      const publishingValue = publishing[key];
       const moduleValue = moduleSettings[key];
-      // An empty value from an older release is not authoritative when a
-      // valid legacy value still exists in Tenant.settings.
       const moduleValueIsEmptyDefault = typeof moduleValue === 'string'
         && !moduleValue.trim()
-        && typeof legacy[key] === 'string'
-        && Boolean(legacy[key]?.trim());
-      const value = moduleValueIsEmptyDefault ? legacy[key] : (moduleValue ?? legacy[key]);
+        && typeof legacyFlat[key] === 'string'
+        && Boolean(legacyFlat[key]?.trim());
+      const legacyValue = moduleValueIsEmptyDefault ? legacyFlat[key] : (moduleValue ?? legacyFlat[key]);
+      const value = publishingValue ?? legacyValue;
       if (typeof value !== 'string') continue;
       if (!SECRET_KEYS.has(key) && DEFAULT_WHEN_EMPTY.has(key) && !value.trim()) continue;
       result[key] = SECRET_KEYS.has(key) ? this.secrets.decrypt(value) : value;
     }
-    const legacyPrompt = moduleSettings.news_translation_prompt ?? legacy.news_translation_prompt;
+    const legacyPrompt = moduleSettings.news_translation_prompt ?? legacyFlat.news_translation_prompt;
     if (typeof legacyPrompt === 'string') {
       result.news_summary_prompt ||= legacyPrompt;
       result.news_full_translation_prompt ||= legacyPrompt;
     }
-    // Reading settings must be side-effect free. Earlier versions migrated
-    // legacy data during GET, which could race with a simultaneous PUT and
-    // overwrite a just-saved value. Legacy values are still read above and
-    // are migrated atomically on the next explicit save instead.
     return result;
   }
 
@@ -594,11 +578,6 @@ export class PublishingSettingsService {
     if (has('news_max_age_days')) next.news_max_age_days = boundedInteger(next.news_max_age_days?.trim() || '10', 'حداکثر قدمت خبر', 1, 90);
     if (has('social_poll_interval_minutes')) next.social_poll_interval_minutes = boundedInteger(next.social_poll_interval_minutes?.trim() || '240', 'فاصله پایش استودیوی اجتماعی', 5, 1440);
     if (has('social_max_age_days')) next.social_max_age_days = boundedInteger(next.social_max_age_days?.trim() || '10', 'حداکثر قدمت مطلب اجتماعی', 1, 90);
-    if (has('wp_news_importance_threshold')) next.wp_news_importance_threshold = boundedInteger(next.wp_news_importance_threshold?.trim() || '80', 'آستانه اهمیت خبر', 50, 95);
-    if (has('wp_news_importance_interval_minutes')) next.wp_news_importance_interval_minutes = boundedInteger(next.wp_news_importance_interval_minutes?.trim() || '5', 'فاصله ارزیابی خودکار', 1, 1440);
-    if (has('wp_news_importance_batch_size')) next.wp_news_importance_batch_size = boundedInteger(next.wp_news_importance_batch_size?.trim() || '20', 'تعداد خبر در هر نوبت ارزیابی', 1, 50);
-    if (has('wp_news_importance_memory_examples')) next.wp_news_importance_memory_examples = boundedInteger(next.wp_news_importance_memory_examples?.trim() || '12', 'تعداد نمونه‌های حافظه تحریریه', 0, 40);
-    if (has('wp_news_importance_content_chars')) next.wp_news_importance_content_chars = boundedInteger(next.wp_news_importance_content_chars?.trim() || '12000', 'حجم متن ارزیابی', 2000, 30000);
     if (has('social_image_template')) next.social_image_template = normalizeCoverTemplate(next.social_image_template ?? DEFAULT_COVER_TEMPLATE);
     if (has('social_image_templates')) next.social_image_templates = normalizeCoverTemplateLibrary(next.social_image_templates ?? '', current.social_image_template ?? DEFAULT_COVER_TEMPLATE);
     if (has('social_auto_image_template_id') || has('social_image_templates')) {
@@ -609,26 +588,6 @@ export class PublishingSettingsService {
         : library.defaultTemplateId;
     }
     if (has('wp_categories')) next.wp_categories = serializeWordPressCategories(next.wp_categories);
-    if (has('wp_news_importance_enabled') && next.wp_news_importance_enabled === 'true') {
-      next.wp_media_management_enabled = 'true';
-      input.wp_media_management_enabled = 'true';
-    }
-    if (has('wp_news_importance_auto_enabled') && next.wp_news_importance_auto_enabled === 'true') {
-      next.wp_media_management_enabled = 'true';
-      next.wp_news_importance_enabled = 'true';
-      input.wp_media_management_enabled = 'true';
-      input.wp_news_importance_enabled = 'true';
-    }
-    if (has('wp_news_importance_enabled') && next.wp_news_importance_enabled !== 'true') {
-      next.wp_news_importance_auto_enabled = 'false';
-      input.wp_news_importance_auto_enabled = 'false';
-    }
-    if (has('wp_media_management_enabled') && next.wp_media_management_enabled !== 'true') {
-      next.wp_news_importance_enabled = 'false';
-      next.wp_news_importance_auto_enabled = 'false';
-      input.wp_news_importance_enabled = 'false';
-      input.wp_news_importance_auto_enabled = 'false';
-    }
     // Canonicalize the font library only when that subtab is being saved.
     // Normalizing it during an unrelated save could silently replace a custom
     // or legacy library while the user is editing another tab.
@@ -683,28 +642,20 @@ export class PublishingSettingsService {
       secretsToClear.add('social_facebook_page_access_token');
     }
 
-    const [tenant, moduleRow] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }),
-      this.prisma.tenantModule.findUnique({
-        where: { tenantId_moduleId: { tenantId, moduleId: 'smart-publishing' } },
-        select: { settings: true },
-      }),
-    ]);
-    const moduleSettings = cleanObject(moduleRow?.settings);
-    const legacySettings = cleanObject(tenant?.settings);
-    // Patch only the keys submitted by this tab. Copy legacy values into the
-    // module once, but never rebuild the whole object from defaults; this is
-    // what prevents switching tabs from erasing settings saved elsewhere.
-    const stored: Record<string, string | unknown> = { ...moduleSettings };
+    const { publishing, legacyFlat, moduleSettings } = await this.loadPublishingSources(tenantId);
+    const stored: Record<string, string | unknown> = {
+      ...moduleSettings,
+      ...publishing,
+    };
     for (const key of PUBLISHING_SETTING_KEYS) {
       if (secretsToClear.has(key)) continue;
       const storedValue = stored[key];
       const storedValueIsEmptyDefault = typeof storedValue === 'string'
         && !storedValue.trim()
-        && typeof legacySettings[key] === 'string'
-        && Boolean(legacySettings[key]?.trim());
-      if ((!(key in stored) || storedValueIsEmptyDefault) && typeof legacySettings[key] === 'string') {
-        const legacyValue = String(legacySettings[key]);
+        && typeof legacyFlat[key] === 'string'
+        && Boolean(legacyFlat[key]?.trim());
+      if ((!(key in stored) || storedValueIsEmptyDefault) && typeof legacyFlat[key] === 'string') {
+        const legacyValue = String(legacyFlat[key]);
         stored[key] = SECRET_KEYS.has(key) ? this.secrets.encrypt(legacyValue) : legacyValue;
       }
     }
@@ -719,12 +670,18 @@ export class PublishingSettingsService {
       stored[key] = SECRET_KEYS.has(key) ? this.secrets.encrypt(value) : value;
     }
     delete stored.news_translation_prompt;
-    const remainingTenantSettings = { ...legacySettings };
+    const remainingTenantSettings = { ...legacyFlat };
     for (const key of [...PUBLISHING_SETTING_KEYS, 'news_translation_prompt']) delete remainingTenantSettings[key];
-    await this.prisma.$transaction([
-      this.prisma.tenantModule.update({ where: { tenantId_moduleId: { tenantId, moduleId: 'smart-publishing' } }, data: { settings: inputJson(stored) } }),
-      this.prisma.tenant.update({ where: { id: tenantId }, data: { settings: inputJson(remainingTenantSettings) } }),
-    ]);
+    delete remainingTenantSettings.publishing;
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        settings: inputJson({
+          ...remainingTenantSettings,
+          publishing: stored,
+        }),
+      },
+    });
     return this.getPublic(tenantId);
   }
 

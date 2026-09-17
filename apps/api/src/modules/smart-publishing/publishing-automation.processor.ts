@@ -10,8 +10,6 @@ import { PublishingSettingsService } from './publishing-settings.service';
 import { SocialCoverRendererService } from './social-cover-renderer.service';
 import { SocialNetworkPublisherService, type SocialNetwork } from './social-network-publisher.service';
 import { SocialStudioService } from './social-studio.service';
-import { WordPressMediaService } from './wordpress-media.service';
-
 function payloadRecord(job: AutomationJob): Record<string, unknown> {
   return job.payload && typeof job.payload === 'object' && !Array.isArray(job.payload)
     ? job.payload as Record<string, unknown>
@@ -40,7 +38,6 @@ export class PublishingAutomationProcessor {
     private readonly socialPublisher: SocialNetworkPublisherService,
     private readonly integrations: IntegrationHealthService,
     private readonly notifications: NotificationService,
-    private readonly wordpressMedia: WordPressMediaService,
   ) {}
 
   @Interval('publishing-durable-job-worker', 2_000)
@@ -171,12 +168,6 @@ export class PublishingAutomationProcessor {
         if (result.failed.length) throw new Error(result.failed.map((item) => `${item.network}: ${item.error}`).join('؛ '));
         return result;
       }
-      case 'wordpress.importance.evaluate':
-        return this.wordpressMedia.evaluate(job.tenantId, requiredString(payload, 'postId'), true);
-      case 'wordpress.importance.reevaluate-all':
-        return this.wordpressMedia.reevaluateAll(job.tenantId, requiredString(payload, 'batchId'));
-      case 'wordpress.importance.learn':
-        return this.wordpressMedia.learnFromImportantDecision(job.tenantId, requiredString(payload, 'postId'));
       default:
         throw new Error(`نوع کار خودکار پشتیبانی نمی‌شود: ${job.type}`);
     }
@@ -192,9 +183,6 @@ export class PublishingAutomationProcessor {
       'social.prepare': 'آماده‌سازی مطلب اجتماعی',
       'social.cover': 'تولید قالب تصویری',
       'social.publish': 'انتشار در شبکه اجتماعی',
-      'wordpress.importance.evaluate': 'ارزیابی اهمیت خبر WordPress',
-      'wordpress.importance.reevaluate-all': 'بازارزیابی همه خبرهای WordPress',
-      'wordpress.importance.learn': 'استخراج دلایل تصمیم سردبیر',
     };
     return labels[type] || type;
   }

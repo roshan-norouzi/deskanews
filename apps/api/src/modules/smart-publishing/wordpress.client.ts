@@ -45,19 +45,6 @@ export interface ManagedWordPressPost {
   tags: number[];
 }
 
-interface WordPressTag {
-  id?: number;
-  name?: string;
-  slug?: string;
-  message?: string;
-  data?: { term_id?: number };
-}
-
-export const WORDPRESS_IMPORTANCE_TAGS = {
-  important: { slug: 'deska-important-news', name: 'خبر مهم' },
-  normal: { slug: 'deska-normal-news', name: 'خبر عادی' },
-} as const;
-
 type WordPressRestStyle = 'pretty' | 'query';
 
 @Injectable()
@@ -304,45 +291,6 @@ export class WordPressClient {
     return { postId: String(body.id), url: body.link };
   }
 
-  async importanceTagIds(settings: PublishingSettings, createMissing = false): Promise<{ important: number | null; normal: number | null }> {
-    const { siteUrl, authorization } = this.credentials(settings);
-    const entries = await Promise.all((['important', 'normal'] as const).map(async (importance) => {
-      const definition = WORDPRESS_IMPORTANCE_TAGS[importance];
-      const lookup = await this.restRequest(siteUrl, authorization, '/wp/v2/tags', { slug: definition.slug, per_page: '1', _fields: 'id,name,slug' }, {
-        headers: { Authorization: authorization, Accept: 'application/json' }, timeoutMs: 20_000,
-      });
-      const tags = this.json<WordPressTag[]>(lookup, []);
-      if (lookup.ok && Array.isArray(tags) && tags[0]?.id) {
-        return [importance, tags[0].id] as const;
-      }
-      if (!createMissing) return [importance, null] as const;
-      if (lookup.status === 404) {
-        throw new BadRequestException('مسیر REST برچسب‌های WordPress در هر دو روش /wp-json و ?rest_route پاسخ ۴۰۴ داد؛ دسترسی /wp/v2/tags را در reverse proxy و افزونه امنیتی WordPress آزاد کنید');
-      }
-      const createdResponse = await this.restRequest(siteUrl, authorization, '/wp/v2/tags', {}, {
-        method: 'POST',
-        headers: { Authorization: authorization, Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(definition),
-        timeoutMs: 30_000,
-      });
-      const created = this.json<WordPressTag>(createdResponse);
-      const id = Number(created.id || created.data?.term_id || 0);
-      if (!Number.isSafeInteger(id) || id < 1) this.throwWordPressError(createdResponse, created);
-      return [importance, id] as const;
-    }));
-    return Object.fromEntries(entries) as { important: number | null; normal: number | null };
-  }
-
-  async setImportanceTag(settings: PublishingSettings, postId: string | number, importance: 'important' | 'normal', currentPost?: ManagedWordPressPost): Promise<ManagedWordPressPost> {
-    const id = this.postId(postId);
-    const [post, tagIds] = await Promise.all([currentPost ? Promise.resolve(currentPost) : this.getPost(settings, id), this.importanceTagIds(settings, true)]);
-    const selectedTagId = tagIds[importance];
-    if (!selectedTagId) throw new BadRequestException('ساخت یا دریافت برچسب اهمیت در WordPress انجام نشد');
-    const specialIds = new Set([tagIds.important, tagIds.normal].filter((value): value is number => Boolean(value)));
-    const tags = [...new Set([...post.tags.filter((tagId) => !specialIds.has(tagId)), selectedTagId])];
-    return this.updatePostTags(settings, id, tags);
-  }
-
   private async uploadMedia(siteUrl: string, restStyle: WordPressRestStyle, authorization: string, imageUrl: string, title: string): Promise<number> {
     try {
       const image = await this.sourceReader.proxyImage(imageUrl);
@@ -386,26 +334,6 @@ export class WordPressClient {
       maxResponseBytes: options.maxResponseBytes ?? 2 * 1024 * 1024,
       allowLocalhostInDevelopment: true,
     });
-  }
-
-  private async updatePostTags(settings: PublishingSettings, postId: number, tags: number[]): Promise<ManagedWordPressPost> {
-    const { siteUrl, authorization } = this.credentials(settings);
-    const response = await this.restRequest(siteUrl, authorization, `/wp/v2/posts/${postId}`, {
-      context: 'edit', _embed: 'wp:featuredmedia',
-      _fields: 'id,date,modified,slug,status,link,title,excerpt,content,author,featured_media,categories,tags,_links,_embedded',
-    }, {
-      method: 'POST',
-      headers: { Authorization: authorization, Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tags }),
-      timeoutMs: 60_000,
-      maxResponseBytes: 5 * 1024 * 1024,
-    });
-    const body = this.json<WordPressPost>(response);
-    if (response.status === 404) {
-      throw new BadRequestException(`ثبت برچسب اهمیت برای نوشته شماره ${postId} با پاسخ ۴۰۴ روبه‌رو شد؛ مسیر POST نوشته‌های WordPress در reverse proxy یا افزونه امنیتی مسدود است`);
-    }
-    if (!response.ok || !body.id) this.throwWordPressError(response, body);
-    return this.normalizePost(body);
   }
 
   private async restRequest(

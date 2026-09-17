@@ -7,8 +7,6 @@ export const PUBLISHING_SETTING_KEYS = [
   'gapgpt_model_news_summary',
   'gapgpt_model_news_translation',
   'gapgpt_model_social',
-  'gapgpt_model_daily_report',
-  'gapgpt_model_news_importance',
   'news_summary_prompt',
   'news_full_translation_prompt',
   'news_persian_rewrite_prompt',
@@ -40,16 +38,6 @@ export const PUBLISHING_SETTING_KEYS = [
   'wp_post_status',
   'wp_category_id',
   'wp_categories',
-  'wp_media_management_enabled',
-  'wp_news_importance_enabled',
-  'wp_news_importance_auto_enabled',
-  'wp_news_importance_audience',
-  'wp_news_importance_guidance',
-  'wp_news_importance_threshold',
-  'wp_news_importance_interval_minutes',
-  'wp_news_importance_batch_size',
-  'wp_news_importance_memory_examples',
-  'wp_news_importance_content_chars',
   'telegram_bot_token',
   'telegram_chat_id',
   'telegram_bridge_url',
@@ -81,8 +69,6 @@ export class UpdatePublishingSettingsDto {
   @IsOptional() @IsString() @MaxLength(120) gapgpt_model_news_summary?: string;
   @IsOptional() @IsString() @MaxLength(120) gapgpt_model_news_translation?: string;
   @IsOptional() @IsString() @MaxLength(120) gapgpt_model_social?: string;
-  @IsOptional() @IsString() @MaxLength(120) gapgpt_model_daily_report?: string;
-  @IsOptional() @IsString() @MaxLength(120) gapgpt_model_news_importance?: string;
   @IsOptional() @IsString() @MaxLength(12000) news_summary_prompt?: string;
   @IsOptional() @IsString() @MaxLength(12000) news_full_translation_prompt?: string;
   @IsOptional() @IsString() @MaxLength(12000) news_persian_rewrite_prompt?: string;
@@ -114,16 +100,6 @@ export class UpdatePublishingSettingsDto {
   @IsOptional() @IsIn(['publish', 'draft', 'pending']) wp_post_status?: string;
   @IsOptional() @IsString() @MaxLength(20) wp_category_id?: string;
   @IsOptional() @IsString() @MaxLength(100000) wp_categories?: string;
-  @IsOptional() @IsIn(['true', 'false']) wp_media_management_enabled?: string;
-  @IsOptional() @IsIn(['true', 'false']) wp_news_importance_enabled?: string;
-  @IsOptional() @IsIn(['true', 'false']) wp_news_importance_auto_enabled?: string;
-  @IsOptional() @IsString() @MaxLength(4000) wp_news_importance_audience?: string;
-  @IsOptional() @IsString() @MaxLength(8000) wp_news_importance_guidance?: string;
-  @IsOptional() @IsString() @MaxLength(3) wp_news_importance_threshold?: string;
-  @IsOptional() @IsString() @MaxLength(4) wp_news_importance_interval_minutes?: string;
-  @IsOptional() @IsString() @MaxLength(2) wp_news_importance_batch_size?: string;
-  @IsOptional() @IsString() @MaxLength(2) wp_news_importance_memory_examples?: string;
-  @IsOptional() @IsString() @MaxLength(5) wp_news_importance_content_chars?: string;
   @IsOptional() @IsString() @MaxLength(500) telegram_bot_token?: string;
   @IsOptional() @IsString() @MaxLength(200) telegram_chat_id?: string;
   @IsOptional() @IsString() @MaxLength(500) telegram_bridge_url?: string;
@@ -153,11 +129,4 @@ export class TestWordPressConnectionDto {
   @IsOptional() @IsIn(['publish', 'draft', 'pending']) wp_post_status?: string;
   @IsOptional() @IsString() @MaxLength(20) wp_category_id?: string;
   @IsOptional() @IsString() @MaxLength(100000) wp_categories?: string;
-  // Accept feature settings sent by an older/cached web bundle. They are not
-  // used by the connectivity test, but rejecting them would make the test
-  // endpoint incompatible with the main WordPress settings form.
-  @IsOptional() @IsIn(['true', 'false']) wp_media_management_enabled?: string;
-  @IsOptional() @IsIn(['true', 'false']) wp_news_importance_enabled?: string;
-  @IsOptional() @IsIn(['true', 'false']) wp_news_importance_auto_enabled?: string;
-  @IsOptional() @IsString() @MaxLength(4000) wp_news_importance_audience?: string;
 }

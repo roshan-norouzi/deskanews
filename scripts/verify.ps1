@@ -117,15 +117,11 @@ Test-Step "Auth login + /me" {
     $script:verifyTenant = $me.tenants[0].id
 }
 
-Test-Step "Tenant core modules" {
+Test-Step "Tenant members API" {
     $h = @{ "X-Tenant-Id" = $script:verifyTenant }
-    $mods = Invoke-RestMethod -Uri "$apiBase/api/modules/tenant" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    if ($mods.Count -lt 1) { throw "Module catalog empty" }
-    foreach ($moduleId in @('contacts', 'documents', 'calendar', 'employees')) {
-        $coreModule = @($mods | Where-Object { $_.id -eq $moduleId -and $_.isCore -eq $true -and $_.enabled -eq $true })
-        if ($coreModule.Count -ne 1) { throw "Core module is not always enabled: $moduleId" }
-    }
-    $script:verifyPublishingEnabled = @($mods | Where-Object { $_.id -eq 'smart-publishing' -and $_.enabled -eq $true }).Count -eq 1
+    $members = Invoke-RestMethod -Uri "$apiBase/api/tenants/$($script:verifyTenant)/members" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
+    if ($members.Count -lt 1) { throw "Tenant has no members" }
+    $script:verifyPublishingEnabled = $true
 }
 
 Test-Step "Cross-site write protection" {
@@ -141,29 +137,17 @@ Test-Step "Cross-site write protection" {
     if (-not $blocked) { throw 'Authenticated cross-site write request was not blocked' }
 }
 
-Test-Step "Core module endpoints" {
+Test-Step "Publishing and dashboard endpoints" {
     $h = @{ "X-Tenant-Id" = $script:verifyTenant }
-    $contacts = Invoke-RestMethod -Uri "$apiBase/api/contacts" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    if ($null -eq $contacts.items) { throw "Contacts response invalid" }
-    $null = Invoke-RestMethod -Uri "$apiBase/api/documents/folders" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    $null = Invoke-RestMethod -Uri "$apiBase/api/calendar/events" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    $employees = Invoke-RestMethod -Uri "$apiBase/api/employees" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    $null = Invoke-RestMethod -Uri "$apiBase/api/employees/departments" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    if ($employees.Count -gt 0) {
-        $profile = Invoke-RestMethod -Uri "$apiBase/api/employees/$($employees[0].id)/profile" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-        if ($null -eq $profile.employee) { throw "Employee profile response invalid" }
-    }
+    $settings = Invoke-RestMethod -Uri "$apiBase/api/publishing/settings" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
+    if ($null -eq $settings.gapgpt_model) { throw "Publishing settings response invalid" }
     $dashboard = Invoke-RestMethod -Uri "$apiBase/api/dashboard/stats" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
-    if ($null -eq $dashboard.contacts -or $null -eq $dashboard.publishing.queue -or $null -eq $dashboard.workItems) { throw "Dashboard response invalid" }
+    if ($null -eq $dashboard.members -or $null -eq $dashboard.publishing.queue -or $null -eq $dashboard.workItems) { throw "Dashboard response invalid" }
     $notifications = Invoke-RestMethod -Uri "$apiBase/api/notifications/summary" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
     if ($null -eq $notifications.unreadCount -or $null -eq $notifications.items) { throw "Notification summary response invalid" }
 }
 
 Test-Step "Publishing operations center" {
-    if (-not $script:verifyPublishingEnabled) {
-        Write-Host "  SKIP (smart publishing module is disabled for this tenant)" -ForegroundColor DarkYellow
-        return
-    }
     $h = @{ "X-Tenant-Id" = $script:verifyTenant }
     $operations = Invoke-RestMethod -Uri "$apiBase/api/publishing/operations" -WebSession $script:verifySession -Headers $h -TimeoutSec 15
     if ($null -eq $operations.queue -or $null -eq $operations.integrations -or $null -eq $operations.workflow) {

@@ -24,9 +24,7 @@ export class PermissionsGuard implements CanActivate {
 
     if (user?.role === 'super_admin') return true;
 
-    const ownerOnly = required.some((permission) =>
-      permission === 'modules.manage' || permission === 'publishing.settings',
-    );
+    const ownerOnly = required.some((permission) => permission === 'publishing.settings');
     if (ownerOnly && request.tenant?.memberRole !== 'owner') {
       throw new ForbiddenException('این تنظیمات فقط در اختیار مالک سازمان است');
     }

@@ -221,61 +221,6 @@ test('smart WordPress categorization only accepts an id from the destination sit
   }), /دسته‌بندی معتبری/);
 });
 
-test('news importance evaluation uses a strict threshold, editorial memory, and approved news values', async () => {
-  let requestBody;
-  const outbound = {
-    safeRequest: async (_url, options) => {
-      requestBody = JSON.parse(options.body);
-      return gapGptResponse('{"importance":"normal","score":82.4,"reason":"پیامد مستقیم برای شمار زیادی از مخاطبان دارد.","news_values":["impact","public_interest","invented_value"]}');
-    },
-  };
-  const client = new GapGptClient(outbound);
-  const result = await client.evaluateNewsImportance({
-    gapgpt_base_url: 'https://gap.example/v1', gapgpt_api_key: 'secret', gapgpt_model_news_importance: 'importance-model',
-  }, {
-    title: 'عنوان خبر', excerpt: 'چکیده خبر', content: 'متن کامل خبر',
-    editorialExamples: [
-      { title: 'تصمیم مهم سردبیر', importance: 'important', reason: 'اثر مستقیم بر مخاطبان' },
-      { title: 'خبر روزمره سردبیر', importance: 'normal' },
-    ],
-  });
-
-  assert.equal(requestBody.model, 'importance-model');
-  assert.equal(result.importance, 'important');
-  assert.equal(result.score, 82);
-  assert.match(requestBody.messages[1].content, /فقط امتیاز 80 و بیشتر/);
-  assert.match(requestBody.messages[1].content, /مهم \| تصمیم مهم سردبیر/);
-  assert.match(requestBody.messages[1].content, /یادداشت سردبیر: اثر مستقیم بر مخاطبان/);
-  assert.match(requestBody.messages[1].content, /عادی \| خبر روزمره سردبیر/);
-
-  outbound.safeRequest = async (_url, options) => {
-    requestBody = JSON.parse(options.body);
-    return gapGptResponse('{"importance":"important","score":84,"reason":"اثر محدود است.","news_values":["timeliness"]}');
-  };
-  const borderline = await client.evaluateNewsImportance({
-    gapgpt_base_url: 'https://gap.example/v1', gapgpt_api_key: 'secret',
-    wp_news_importance_threshold: '85', wp_news_importance_guidance: 'اخبار انتصابات عادی هستند.',
-  }, { title: 'خبر مرزی', excerpt: '', content: 'متن' });
-  assert.equal(borderline.importance, 'normal');
-  assert.match(requestBody.messages[1].content, /فقط امتیاز 85 و بیشتر/);
-  assert.match(requestBody.messages[0].content, /اخبار انتصابات عادی هستند/);
-  assert.deepEqual(result.newsValues, ['impact', 'public_interest']);
-  assert.match(requestBody.messages[0].content, /هیچ دستور.*اجرا نکن/);
-
-  outbound.safeRequest = async (_url, options) => {
-    requestBody = JSON.parse(options.body);
-    return gapGptResponse('{"reason":"تصمیم رسمی، دامنه اثر ملی و پیامد مستقیم اقتصادی دارد.","news_values":["impact","magnitude","invented_value"]}');
-  };
-  const learned = await client.extractEditorialImportanceReasons({
-    gapgpt_base_url: 'https://gap.example/v1', gapgpt_api_key: 'secret',
-    wp_news_importance_guidance: 'تصمیم‌های رسمی اثرگذار برای این رسانه مهم‌اند.',
-  }, { title: 'تصمیم مهم سردبیر', excerpt: 'خلاصه', content: 'متن کامل تصمیم رسمی' });
-  assert.equal(learned.reason, 'تصمیم رسمی، دامنه اثر ملی و پیامد مستقیم اقتصادی دارد.');
-  assert.deepEqual(learned.newsValues, ['impact', 'magnitude']);
-  assert.match(requestBody.messages[0].content, /دلایل عینی این اهمیت را استخراج کن/);
-  assert.match(requestBody.messages[0].content, /تصمیم‌های رسمی اثرگذار/);
-});
-
 test('newsroom publishes with the category selected from live WordPress categories', async () => {
   const article = {
     id: 'news-category-a',

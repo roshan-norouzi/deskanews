@@ -24,7 +24,7 @@ import {
   applyEmployeeProfileToUpdate,
   assertUniqueNationalId,
   assertValidEmployeeProfile,
-} from '../tenant/employee-profile.helper';
+} from './profile.helper';
 
 interface JwtPayload {
   sub: string;
@@ -433,8 +433,6 @@ export class AuthService {
     if (Object.keys(update).length > 0) {
       await this.prisma.$transaction(async (tx) => {
         await tx.user.update({ where: { id: userId }, data: update });
-        // Keep legacy employee columns synchronized for modules that still read them.
-        await tx.employee.updateMany({ where: { userId }, data: update as Prisma.EmployeeUpdateManyMutationInput });
         await tx.auditLog.create({
           data: {
             tenantId: null, userId, action: 'account.employee_profile_updated', entityType: 'User', entityId: userId,

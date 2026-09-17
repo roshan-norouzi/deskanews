@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 import {
-  FileBarChart2,
   Globe2,
   HeartPulse,
   Newspaper,
@@ -27,7 +26,7 @@ import { Input } from '@/components/ui/input';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 
-type FeedPurpose = 'news-room' | 'social-studio' | 'daily-report';
+type FeedPurpose = 'news-room' | 'social-studio';
 type SourceType = 'rss' | 'website' | 'blog' | 'telegram' | 'twitter';
 
 interface Feed {
@@ -96,12 +95,6 @@ const PURPOSES: Record<FeedPurpose, { label: string; description: string; icon: 
     description: 'تولید محتوای شبکه‌های اجتماعی',
     icon: Share2,
     color: 'bg-violet-50 text-violet-700 ring-violet-100',
-  },
-  'daily-report': {
-    label: 'دیلی ریپورت',
-    description: 'ورودی گزارش روزانه',
-    icon: FileBarChart2,
-    color: 'bg-amber-50 text-amber-700 ring-amber-100',
   },
 };
 
@@ -286,7 +279,7 @@ export default function FeedsPage() {
                   ['autoPrepare', 'آماده‌سازی خودکار', 'مطالب جدید بدون دخالت کاربر آماده شوند.'],
                   ['autoPublish', 'انتشار خودکار', form.purpose === 'social-studio' ? 'مطالب آماده در شبکه‌های اجتماعی منتشر شوند.' : 'خبر آماده در سایت منتشر شود.'],
                   ['autoSendSocial', 'ارسال خودکار به استودیوی اجتماعی', 'خبر آماده برای انتشار در شبکه‌های اجتماعی ارسال شود.'],
-                ].map(([key, label, description]) => { const field = key as keyof Pick<FeedForm, 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial'>; const disabled = form.purpose === 'daily-report' && field !== 'autoPoll' || form.purpose === 'social-studio' && field === 'autoSendSocial'; return <label key={key} className={cn('flex items-start gap-3 rounded-2xl border p-4', disabled ? 'cursor-not-allowed bg-slate-50 opacity-60' : 'cursor-pointer border-slate-200 hover:border-primary-300')}><input type="checkbox" disabled={disabled} checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" /><span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{disabled ? 'برای این کاربرد قابل استفاده نیست.' : description}</span></span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">تنظیمات هر منبع بر تنظیمات عمومی سازمان اولویت دارد. منابع قدیمی که تنظیم اختصاصی ندارند، از تنظیمات عمومی استفاده می‌کنند.</p></fieldset>
+                ].map(([key, label, description]) => { const field = key as keyof Pick<FeedForm, 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial'>; const disabled = form.purpose === 'social-studio' && field === 'autoSendSocial'; return <label key={key} className={cn('flex items-start gap-3 rounded-2xl border p-4', disabled ? 'cursor-not-allowed bg-slate-50 opacity-60' : 'cursor-pointer border-slate-200 hover:border-primary-300')}><input type="checkbox" disabled={disabled} checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" /><span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{disabled ? 'برای این کاربرد قابل استفاده نیست.' : description}</span></span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">تنظیمات هر منبع بر تنظیمات عمومی سازمان اولویت دارد. منابع قدیمی که تنظیم اختصاصی ندارند، از تنظیمات عمومی استفاده می‌کنند.</p></fieldset>
               </div>
               <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4"><Button type="button" variant="outline" onClick={() => setModalOpen(false)}>انصراف</Button><Button type="submit" isLoading={busy === 'save'}>{editing ? 'ذخیره تغییرات' : 'افزودن منبع'}</Button></div>
             </form>

@@ -15,7 +15,6 @@ import { ContentWorkflowService } from '../../common/services/content-workflow.s
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
-const DAILY_REPORT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function settingEnabled(value: string | undefined, fallback = false): boolean {
   return value === 'true' || (value === undefined && fallback);
@@ -251,19 +250,15 @@ export class NewsroomService {
 
   async fetchFeed(tenantId: string, feedId: string) {
     const feed = await this.findFeed(tenantId, feedId);
-    if (!['news-room', 'daily-report'].includes(feed.purpose)) throw new BadRequestException('پایش این فید در بخش مربوط به آن انجام می‌شود');
+    if (feed.purpose !== 'news-room') throw new BadRequestException('پایش این فید در بخش مربوط به آن انجام می‌شود');
     if (!feed.enabled) throw new BadRequestException('ابتدا فید را فعال کنید');
     const startedAt = Date.now();
     try {
       const settings = await this.settings.getRaw(tenantId);
-      const maxAgeMs = feed.purpose === 'daily-report'
-        ? DAILY_REPORT_MAX_AGE_MS
-        : Number(settings.news_max_age_days || 10) * 24 * 60 * 60 * 1000;
-      const now = new Date();
-      const cutoff = new Date(now.getTime() - maxAgeMs);
-      const entries = (await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url)).filter((entry) => feed.purpose === 'daily-report'
-        ? Boolean(entry.publishedAt && entry.publishedAt >= cutoff && entry.publishedAt <= now)
-        : !entry.publishedAt || entry.publishedAt >= cutoff);
+      const maxAgeMs = Number(settings.news_max_age_days || 10) * 24 * 60 * 60 * 1000;
+      const cutoff = new Date(Date.now() - maxAgeMs);
+      const entries = (await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url))
+        .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
       const result = entries.length ? await this.prisma.newsArticle.createMany({
         skipDuplicates: true,
         data: entries.map((entry) => ({
@@ -279,7 +274,7 @@ export class NewsroomService {
           featuredImageUrl: entry.featuredImageUrl,
           sourceName: feed.name,
           publishedAtSource: entry.publishedAt,
-          status: feed.purpose === 'daily-report' ? 'report_available' : 'new',
+          status: 'new',
         })),
       }) : { count: 0 };
       await this.prisma.newsFeed.update({ where: { id: feedId }, data: { lastFetchedAt: new Date(), lastError: '' } });
@@ -533,11 +528,11 @@ export class NewsroomService {
     if (this.maintenanceRunning) return;
     this.maintenanceRunning = true;
     try {
-      const enabledModules = await this.prisma.tenantModule.findMany({
-        where: { moduleId: 'smart-publishing', enabled: true, tenant: { isActive: true } },
-        select: { tenantId: true },
+      const activeTenants = await this.prisma.tenant.findMany({
+        where: { isActive: true, status: 'active' },
+        select: { id: true },
       });
-      const enabledTenantIds = enabledModules.map((row) => row.tenantId);
+      const enabledTenantIds = activeTenants.map((row) => row.id);
       if (!enabledTenantIds.length) return;
 
       const staleBefore = new Date(Date.now() - PROCESSING_TIMEOUT_MS);

@@ -2,11 +2,10 @@ import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, 
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
-import { Public, RequireModule, RequirePermission } from '../../common/decorators/metadata.decorator';
+import { Public, RequirePermission } from '../../common/decorators/metadata.decorator';
 import { TenantCtx } from '../../common/decorators/params.decorator';
 import type { TenantContext } from '../../common/decorators/params.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { ModuleEnabledGuard } from '../../common/guards/module-enabled.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CreateFeedDto, UpdateFeedDto } from './dto/feed.dto';
@@ -20,16 +19,10 @@ import { SocialStudioService } from './social-studio.service';
 import { PublishSocialArticleDto, UpdateSocialCaptionDto, UpdateSocialLeadDto, UpdateSocialTitleDto } from './dto/social-article.dto';
 import { SourceReaderService } from './source-reader.service';
 import { SocialNetworkPublisherService } from './social-network-publisher.service';
-import { DailyReportService } from './daily-report.service';
-import { AddDailyReportItemDto, CreateDailyReportDto, UpdateDailyReportDto } from './dto/daily-report.dto';
 import { PublishingOperationsService } from './publishing-operations.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
-import { ListWordPressPostsDto, UpdateWordPressImportanceDto, UpdateWordPressPostDto } from './dto/wordpress-post.dto';
-import { WordPressMediaService } from './wordpress-media.service';
-
 @Controller('publishing')
-@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard, ModuleEnabledGuard)
-@RequireModule('smart-publishing')
+@UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 @RequirePermission('publishing.view')
 export class SmartPublishingController {
   constructor(
@@ -40,10 +33,8 @@ export class SmartPublishingController {
     private readonly socialStudio: SocialStudioService,
     private readonly sourceReader: SourceReaderService,
     private readonly socialPublisher: SocialNetworkPublisherService,
-    private readonly dailyReports: DailyReportService,
     private readonly operations: PublishingOperationsService,
     private readonly integrationHealth: IntegrationHealthService,
-    private readonly wordpressMedia: WordPressMediaService,
   ) {}
 
   @Get('operations') operationsOverview(@TenantCtx() tenant: TenantContext) { return this.operations.overview(tenant.tenantId); }
@@ -95,33 +86,7 @@ export class SmartPublishingController {
   @Delete('settings/fonts/:id') @RequirePermission('publishing.settings') removeFont(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.settingsService.removeFont(tenant.tenantId, id).then(() => ({ ok: true })); }
   @Post('settings/images') @RequirePermission('publishing.settings') @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })) uploadCoverImage(@TenantCtx() tenant: TenantContext, @UploadedFile() file: { originalname: string; mimetype?: string; buffer: Buffer }) { return this.settingsService.addImage(tenant.tenantId, file); }
 
-  @Get('media/posts') async wordPressPosts(@TenantCtx() tenant: TenantContext, @Query() query: ListWordPressPostsDto) {
-    return this.wordpressMedia.listPosts(tenant.tenantId, query);
-  }
-  @Get('media/posts/:id') async wordPressPost(@TenantCtx() tenant: TenantContext, @Param('id') id: string) {
-    return this.wordpressMedia.getPost(tenant.tenantId, id);
-  }
-  @Get('media/categories') async wordPressMediaCategories(@TenantCtx() tenant: TenantContext) {
-    return this.wordpress.categories(await this.wordpressMedia.settingsForMedia(tenant.tenantId));
-  }
-  @Patch('media/posts/:id') @RequirePermission('publishing.manage') async updateWordPressPost(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateWordPressPostDto) {
-    return this.wordpress.updatePost(await this.wordpressMedia.settingsForMedia(tenant.tenantId), id, body);
-  }
-  @Post('media/posts/:id/publish') @RequirePermission('publishing.publish') async publishWordPressPost(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateWordPressPostDto) {
-    return this.wordpress.updatePost(await this.wordpressMedia.settingsForMedia(tenant.tenantId), id, { ...body, status: 'publish' });
-  }
-  @Post('media/posts/:id/featured-image') @RequirePermission('publishing.manage') @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })) async updateWordPressFeaturedImage(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @UploadedFile() file: { originalname: string; mimetype?: string; buffer: Buffer }) {
-    return this.wordpress.updateFeaturedImage(await this.wordpressMedia.settingsForMedia(tenant.tenantId), id, file);
-  }
-  @Delete('media/posts/:id/featured-image') @RequirePermission('publishing.manage') async removeWordPressFeaturedImage(@TenantCtx() tenant: TenantContext, @Param('id') id: string) {
-    return this.wordpress.updateFeaturedImage(await this.wordpressMedia.settingsForMedia(tenant.tenantId), id, null);
-  }
-  @Post('media/importance/queue') @RequirePermission('publishing.manage') queueWordPressImportance(@TenantCtx() tenant: TenantContext) { return this.wordpressMedia.queueEvaluations(tenant.tenantId); }
-  @Post('media/importance/reevaluate-all') @RequirePermission('publishing.manage') reevaluateAllWordPressImportance(@TenantCtx() tenant: TenantContext) { return this.wordpressMedia.queueAllReevaluations(tenant.tenantId); }
-  @Get('media/importance/status') evaluationAutomationStatus(@TenantCtx() tenant: TenantContext) { return this.wordpressMedia.automationStatus(tenant.tenantId); }
-  @Get('media/importance/memory-summary') @RequirePermission('publishing.manage') editorialMemorySummary(@TenantCtx() tenant: TenantContext) { return this.wordpressMedia.editorialMemorySummary(tenant.tenantId); }
-  @Post('media/posts/:id/importance/evaluate') @RequirePermission('publishing.manage') evaluateWordPressImportance(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.wordpressMedia.evaluate(tenant.tenantId, id); }
-  @Patch('media/posts/:id/importance') @RequirePermission('publishing.manage') overrideWordPressImportance(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateWordPressImportanceDto) { return this.wordpressMedia.override(tenant.tenantId, id, body.importance); }
+  @Get('proxy/image') async proxyImage(@Query('url') url: string, @Res() response: Response) { const result = await this.sourceReader.proxyImage(String(url || '')); response.setHeader('Content-Type', result.contentType); response.setHeader('Cache-Control', 'private, max-age=3600'); return response.send(result.buffer); }
 
   @Get('feeds') feeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId); }
   @Post('feeds') @RequirePermission('publishing.manage') addFeed(@TenantCtx() tenant: TenantContext, @Body() body: CreateFeedDto) { return this.newsroom.addFeed(tenant.tenantId, body); }
@@ -147,18 +112,6 @@ export class SmartPublishingController {
   @Post('news/articles/:id/publish') @RequirePermission('publishing.publish') publishNews(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.publish(tenant.tenantId, id); }
   @Patch('news/articles/:id') @RequirePermission('publishing.manage') updateNews(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateNewsArticleDto) { return this.newsroom.updateArticle(tenant.tenantId, id, body); }
 
-  @Get('daily-reports/overview') dailyReportOverview(@TenantCtx() tenant: TenantContext) { return this.dailyReports.overview(tenant.tenantId); }
-  @Post('daily-reports/sync') @RequirePermission('publishing.manage') syncDailyReports(@TenantCtx() tenant: TenantContext) { return this.dailyReports.sync(tenant.tenantId); }
-  @Post('daily-reports') @RequirePermission('publishing.manage') createDailyReport(@TenantCtx() tenant: TenantContext, @Body() body: CreateDailyReportDto) { return this.dailyReports.createReport(tenant.tenantId, body.reportDate); }
-  @Patch('daily-reports/:reportId') @RequirePermission('publishing.manage') updateDailyReport(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string, @Body() body: UpdateDailyReportDto) { return this.dailyReports.updateReport(tenant.tenantId, reportId, body.reportDate); }
-  @Delete('daily-reports/:reportId') @RequirePermission('publishing.manage') deleteDailyReport(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string) { return this.dailyReports.deleteReport(tenant.tenantId, reportId); }
-  @Post('daily-reports/:reportId/items') @RequirePermission('publishing.manage') addDailyReportItem(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string, @Body() body: AddDailyReportItemDto) { return this.dailyReports.addItem(tenant.tenantId, reportId, body.articleId); }
-  @Delete('daily-reports/:reportId/items/:itemId') @RequirePermission('publishing.manage') removeDailyReportItem(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string, @Param('itemId') itemId: string) { return this.dailyReports.removeItem(tenant.tenantId, reportId, itemId); }
-  @Post('daily-reports/:reportId/articles/:articleId/reject') @RequirePermission('publishing.manage') rejectDailyReportArticle(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string, @Param('articleId') articleId: string) { return this.dailyReports.rejectArticle(tenant.tenantId, reportId, articleId); }
-  @Delete('daily-reports/:reportId/articles/:articleId/reject') @RequirePermission('publishing.manage') restoreDailyReportArticle(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string, @Param('articleId') articleId: string) { return this.dailyReports.restoreArticle(tenant.tenantId, reportId, articleId); }
-  @Post('daily-reports/items/:itemId/prepare') @RequirePermission('publishing.manage') prepareDailyReportItem(@TenantCtx() tenant: TenantContext, @Param('itemId') itemId: string) { return this.dailyReports.prepareItem(tenant.tenantId, itemId); }
-  @Post('daily-reports/:reportId/prepare-all') @RequirePermission('publishing.manage') prepareDailyReport(@TenantCtx() tenant: TenantContext, @Param('reportId') reportId: string) { return this.dailyReports.prepareAll(tenant.tenantId, reportId); }
-
   @Get('social/feeds') socialFeeds(@TenantCtx() tenant: TenantContext) { return this.socialStudio.feeds(tenant.tenantId); }
   @Post('social/feeds/:id/fetch') @RequirePermission('publishing.manage') fetchSocialFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.fetchFeed(tenant.tenantId, id); }
   @Post('social/sync') @RequirePermission('publishing.manage') syncSocial(@TenantCtx() tenant: TenantContext) { return this.socialStudio.sync(tenant.tenantId); }
@@ -183,7 +136,6 @@ export class SmartPublishingController {
     await this.settingsService.removeImage(tenant.tenantId, result.previousFeaturedImageUrl).catch(() => undefined);
     return result.article;
   }
-  @Get('media/image') async proxyImage(@Query('url') url: string, @Res() response: Response) { const result = await this.sourceReader.proxyImage(String(url || '')); response.setHeader('Content-Type', result.contentType); response.setHeader('Cache-Control', 'private, max-age=3600'); return response.send(result.buffer); }
   @Patch('social/articles/:id/rewrite') @RequirePermission('publishing.manage') rewrite(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateSocialCaptionDto) { return this.socialStudio.updateCaption(tenant.tenantId, id, body.rewrittenText); }
   @Patch('social/articles/:id/lead') @RequirePermission('publishing.manage') updateSocialLead(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateSocialLeadDto) { return this.socialStudio.updateLead(tenant.tenantId, id, body.leadText); }
   @Patch('social/articles/:id/title') @RequirePermission('publishing.manage') updateSocialTitle(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateSocialTitleDto) { return this.socialStudio.updateTitle(tenant.tenantId, id, body.title); }

@@ -113,7 +113,6 @@ export class PlatformAdminService {
             tenant: { select: { id: true, name: true, slug: true, status: true, primaryOwnerUserId: true } },
           },
         },
-        employees: { select: { id: true, tenantId: true, employeeCode: true, jobTitle: true, status: true } },
       },
     });
     if (!user) throw new NotFoundException('کاربر یافت نشد');
@@ -200,11 +199,6 @@ export class PlatformAdminService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.projectMember.deleteMany({ where: { userId: id } });
-      await tx.project.updateMany({ where: { managerId: id }, data: { managerId: null } });
-      await tx.task.updateMany({ where: { assigneeId: id }, data: { assigneeId: null } });
-      await tx.approvalStep.deleteMany({ where: { approverId: id } });
-      await tx.publishArticle.updateMany({ where: { createdById: id }, data: { createdById: null } });
       await tx.tenantInvitation.updateMany({ where: { invitedByUserId: id }, data: { invitedByUserId: null } });
       await tx.tenantInvitation.deleteMany({
         where: {
@@ -214,10 +208,6 @@ export class PlatformAdminService {
           ],
         },
       });
-      await tx.documentFile.updateMany({ where: { uploadedById: id }, data: { uploadedById: null } });
-      await tx.calendarEvent.updateMany({ where: { createdById: id }, data: { createdById: null } });
-      await tx.calendarEventAttendee.deleteMany({ where: { userId: id } });
-      await tx.department.updateMany({ where: { managerId: id }, data: { managerId: null } });
       await tx.auditLog.deleteMany({
         where: { entityType: 'User', entityId: id },
       });
@@ -250,7 +240,7 @@ export class PlatformAdminService {
         include: {
           primaryOwner: { select: { id: true, name: true, email: true } },
           createdBy: { select: { id: true, name: true, email: true } },
-          _count: { select: { members: true, modules: true } },
+          _count: { select: { members: true } },
         },
       }),
       this.prisma.tenant.count({ where }),
@@ -270,7 +260,7 @@ export class PlatformAdminService {
           orderBy: { joinedAt: 'asc' },
         },
         invitations: { select: { id: true, email: true, role: true, status: true, expiresAt: true, createdAt: true } },
-        _count: { select: { modules: true } },
+        _count: { select: { members: true } },
       },
     });
     if (!tenant) throw new NotFoundException('سازمان یافت نشد');

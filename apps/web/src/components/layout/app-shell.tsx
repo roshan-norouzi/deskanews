@@ -12,9 +12,6 @@ import { filterNavGroups, NAV_GROUPS } from '@/lib/navigation';
 import { TenantSwitcher } from './tenant-switcher';
 import { CommandPalette } from './command-palette';
 import { Button } from '@/components/ui/button';
-import { useApi } from '@/hooks/use-api';
-import { resolveEnabledModuleIds } from '@/lib/enabled-modules';
-import type { TenantModuleRecord } from '@/lib/tenant-modules';
 import { NotificationBell } from './notification-bell';
 
 interface AppShellProps {
@@ -30,9 +27,7 @@ export function AppShell({ children, title }: AppShellProps) {
   const [commandOpen, setCommandOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
-  const { data: tenantModules } = useApi<TenantModuleRecord[]>('/modules/tenant');
-  const enabledModules = resolveEnabledModuleIds(tenantModules);
-  const navGroups = filterNavGroups(enabledModules, isSuperAdmin, activeTenant?.memberRole === 'owner');
+  const navGroups = filterNavGroups(isSuperAdmin, activeTenant?.memberRole === 'owner');
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? '1.0.0';
 
   useEffect(() => {
@@ -104,7 +99,7 @@ export function AppShell({ children, title }: AppShellProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {navGroups.map((group) => {
             const isExpanded = expandedGroups[group.id] ?? (
-              group.id === 'dashboard' || group.id === 'core' || group.id === 'publishing'
+              group.id === 'dashboard' || group.id === 'publishing'
             );
             const hasActiveItem = group.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
 

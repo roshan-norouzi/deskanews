@@ -6,25 +6,8 @@ const { PrismaClient } = require('../apps/api/node_modules/@prisma/client');
 const prisma = new PrismaClient();
 
 const crossTenantChecks = [
-  ['Project.parentId', 'Project', 'parentId', 'Project'],
-  ['Task.projectId', 'Task', 'projectId', 'Project'],
-  ['Task.parentId', 'Task', 'parentId', 'Task'],
-  ['PublishArticle.channelId', 'PublishArticle', 'channelId', 'PublishChannel'],
   ['NewsArticle.feedId', 'NewsArticle', 'feedId', 'NewsFeed'],
-  ['DailyReportArticleDecision.reportId', 'DailyReportArticleDecision', 'reportId', 'DailyReport'],
-  ['DailyReportArticleDecision.articleId', 'DailyReportArticleDecision', 'articleId', 'NewsArticle'],
-  ['DailyReportItem.reportId', 'DailyReportItem', 'reportId', 'DailyReport'],
-  ['DailyReportItem.articleId', 'DailyReportItem', 'articleId', 'NewsArticle'],
   ['SocialArticle.feedId', 'SocialArticle', 'feedId', 'NewsFeed'],
-  ['EventManagementTask.projectId', 'EventManagementTask', 'projectId', 'EventManagementProject'],
-  ['EventManagementAgendaItem.projectId', 'EventManagementAgendaItem', 'projectId', 'EventManagementProject'],
-  ['EventManagementBudgetItem.projectId', 'EventManagementBudgetItem', 'projectId', 'EventManagementProject'],
-  ['ContactBankAccount.contactId', 'ContactBankAccount', 'contactId', 'Contact'],
-  ['DocumentFolder.parentId', 'DocumentFolder', 'parentId', 'DocumentFolder'],
-  ['DocumentFile.folderId', 'DocumentFile', 'folderId', 'DocumentFolder'],
-  ['Employee.departmentId', 'Employee', 'departmentId', 'Department'],
-  ['Employee.contactId', 'Employee', 'contactId', 'Contact'],
-  ['JobOpening.departmentId', 'JobOpening', 'departmentId', 'Department'],
 ];
 
 function identifier(value) {
@@ -79,21 +62,17 @@ async function main() {
   );
   if (ownerIssues) issues.push({ check: 'Tenant.primaryOwnerMembership', count: ownerIssues });
 
-  const danglingInviters = await count(
-    `SELECT COUNT(*)::int AS count
-       FROM "TenantInvitation" AS invitation
-       LEFT JOIN "User" AS inviter ON inviter.id = invitation."invitedByUserId"
-      WHERE invitation."invitedByUserId" IS NOT NULL AND inviter.id IS NULL`,
-  );
-  if (danglingInviters) issues.push({ check: 'TenantInvitation.invitedByUserId', count: danglingInviters });
+  if (issues.length) {
+    console.error('Database integrity issues found:');
+    for (const issue of issues) console.error(`  - ${issue.check}: ${issue.count}`);
+    process.exitCode = 1;
+    return;
+  }
 
-  console.log(JSON.stringify({ ok: issues.length === 0, tenantScopedTables: tables.length, issues }, null, 2));
-  if (issues.length) process.exitCode = 1;
+  console.log('Database integrity checks passed.');
 }
 
-main()
-  .catch((error) => {
-    console.error(`Database integrity audit failed: ${error instanceof Error ? error.message : 'unknown error'}`);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+}).finally(() => prisma.$disconnect());
