@@ -1,123 +1,105 @@
 'use client';
 
-import { useState } from 'react';
-import { Building2 } from 'lucide-react';
+import { Suspense, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Building2, ShieldCheck, User, Users } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { AccountSettingsPanel } from '@/components/settings/account-settings-panel';
+import { OrganizationSettingsPanel } from '@/components/settings/organization-settings-panel';
+import { PlatformAdminPanel } from '@/components/settings/platform-admin-panel';
+import { UsersSettingsPanel } from '@/components/settings/users-settings-panel';
+import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
-import { useApi } from '@/hooks/use-api';
-import { apiFetch } from '@/lib/utils';
-import { formatPersianDigits } from '@deska/shared';
+import { cn } from '@/lib/utils';
 
-interface TenantDetail {
-  id: string;
-  name: string;
-  slug: string;
-  plan: string;
-  locale: string;
-  _count?: {
-    members: number;
-  };
-}
+type SettingsTab = 'account' | 'organization' | 'users' | 'platform';
 
-function SettingsContent() {
-  const { activeTenant, refreshCurrentTenant } = useTenant();
-  const { data, isLoading, refetch } = useApi<TenantDetail>('/tenants/current');
-  const [name, setName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+const TAB_DEFINITIONS: Array<{
+  id: SettingsTab;
+  label: string;
+  icon: typeof User;
+  ownerOnly?: boolean;
+  platformAdminOnly?: boolean;
+}> = [
+  { id: 'account', label: 'حساب کاربری', icon: User },
+  { id: 'organization', label: 'سازمان', icon: Building2, ownerOnly: true },
+  { id: 'users', label: 'کاربران', icon: Users, ownerOnly: true },
+  { id: 'platform', label: 'مدیریت پلتفرم', icon: ShieldCheck, platformAdminOnly: true },
+];
 
-  const tenant = data ?? activeTenant;
+function SettingsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { isSuperAdmin, isPlatformAdmin } = useAuth();
+  const { activeTenant } = useTenant();
+  const isOwner = isSuperAdmin || activeTenant?.memberRole === 'owner';
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tenant) return;
+  const availableTabs = useMemo(
+    () =>
+      TAB_DEFINITIONS.filter((tab) => {
+        if (tab.ownerOnly && !isOwner) return false;
+        if (tab.platformAdminOnly && !isPlatformAdmin) return false;
+        return true;
+      }),
+    [isOwner, isPlatformAdmin],
+  );
 
-    setSaving(true);
-    setMessage(null);
-    try {
-      await apiFetch(`/tenants/${tenant.id}`, {
-        method: 'PATCH',
-        body: { name },
-      });
-      setMessage('تنظیمات ذخیره شد');
-      await refetch();
-      await refreshCurrentTenant();
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'خطا در ذخیره');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const requestedTab = (searchParams.get('tab') as SettingsTab | null) ?? 'account';
+  const activeTab = availableTabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'account';
+  const tenantRequired = activeTab === 'organization' || activeTab === 'users';
 
-  if (isLoading && !tenant) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-      </div>
-    );
+  useEffect(() => {
+    if (requestedTab === activeTab) return;
+    router.replace(`/settings?tab=${activeTab}`);
+  }, [activeTab, requestedTab, router]);
+
+  function selectTab(tab: SettingsTab) {
+    router.replace(`/settings?tab=${tab}`);
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
-      <header className="flex items-start gap-4 rounded-3xl bg-gradient-to-l from-slate-950 via-slate-900 to-indigo-950 p-6 text-white shadow-xl shadow-slate-900/10">
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-          <Building2 className="h-6 w-6" />
-        </span>
-        <div>
-          <h2 className="text-2xl font-bold">تنظیمات سازمان</h2>
-          <p className="mt-2 text-sm text-slate-300">
-            مدیریت اطلاعات سازمان فعال و مشخصات پایه آن
-          </p>
+    <ProtectedLayout title="تنظیمات" tenantRequired={tenantRequired}>
+      <div className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          {availableTabs.map((tab) => {
+            const Icon = tab.icon;
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => selectTab(tab.id)}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors',
+                  selected ? 'bg-primary-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-      </header>
 
-      <Card className="mx-auto w-full max-w-3xl overflow-hidden">
-        <CardHeader className="border-b border-slate-100 bg-slate-50/70">
-          <CardTitle>اطلاعات عمومی</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSave} className="space-y-4">
-            <Input
-              label="نام سازمان"
-              value={name || tenant?.name || ''}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Input label="نامک" value={tenant?.slug ?? ''} disabled />
-              <Input label="پلن" value={tenant?.plan ?? ''} disabled />
-              <Input
-                label="تعداد کاربران"
-                value={
-                  data?._count?.members != null
-                    ? formatPersianDigits(String(data._count.members))
-                    : '—'
-                }
-                disabled
-              />
-            </div>
-            {message && (
-              <p className={`text-sm ${message.includes('خطا') ? 'text-red-600' : 'text-green-600'}`}>
-                {message}
-              </p>
-            )}
-            <Button type="submit" isLoading={saving}>
-              ذخیره تغییرات
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+        {activeTab === 'account' && <AccountSettingsPanel />}
+        {activeTab === 'organization' && <OrganizationSettingsPanel />}
+        {activeTab === 'users' && <UsersSettingsPanel />}
+        {activeTab === 'platform' && <PlatformAdminPanel />}
+      </div>
+    </ProtectedLayout>
   );
 }
 
 export default function SettingsPage() {
   return (
-    <ProtectedLayout title="تنظیمات" ownerOnly>
-      <SettingsContent />
-    </ProtectedLayout>
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+        </div>
+      }
+    >
+      <SettingsPageContent />
+    </Suspense>
   );
 }

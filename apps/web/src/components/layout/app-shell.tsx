@@ -8,7 +8,7 @@ import { PLATFORM_NAME } from '@deska/shared';
 import { cn, withBasePath } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
-import { filterNavGroups, filterNavItems } from '@/lib/navigation';
+import { filterNavGroups, filterNavEntries, type NavItem } from '@/lib/navigation';
 import { TenantSwitcher } from './tenant-switcher';
 import { CommandPalette } from './command-palette';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ export function AppShell({ children, title }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
 
-  const navItems = filterNavItems(isSuperAdmin, activeTenant?.memberRole === 'owner');
+  const navEntries = filterNavEntries(isSuperAdmin, activeTenant?.memberRole === 'owner');
   const navGroups = filterNavGroups(isSuperAdmin, activeTenant?.memberRole === 'owner');
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? '1.0.0';
 
@@ -80,9 +80,17 @@ export function AppShell({ children, title }: AppShellProps) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {navItems.map((item) => {
+          {navEntries.map((entry, index) => {
+            if ('type' in entry && entry.type === 'separator') {
+              return <div key={`separator-${index}`} className="my-3 border-t border-white/15" role="separator" />;
+            }
+
+            const item = entry as NavItem;
             const Icon = item.icon;
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive =
+              item.href === '/settings'
+                ? pathname === '/settings' || pathname.startsWith('/settings/')
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}

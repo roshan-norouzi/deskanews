@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
@@ -63,7 +63,9 @@ export function ProtectedLayout({
 
   return (
     <AppShell title={title}>
-      <PlatformNavigation />
+      <Suspense fallback={null}>
+        <PlatformNavigation />
+      </Suspense>
       {children}
     </AppShell>
   );
