@@ -5,7 +5,8 @@
   "packageManager": "pnpm@10.34.5",
   "scripts": {
     "dev": "pnpm --filter @deska/shared build && pnpm --filter @deska/api build && pnpm --filter @deska/api --filter @deska/web --parallel dev",
-    "start": "powershell -ExecutionPolicy Bypass -File ./scripts/start-dev.ps1 -SkipMigrate -SkipSeed",
+    "start": "powershell -ExecutionPolicy Bypass -File ./scripts/start-dev.ps1 -SkipSeed -FreshWebCache",
+    "update": "powershell -ExecutionPolicy Bypass -File ./scripts/update-local.ps1 -SkipSeed",
     "dev:api": "pnpm --filter @deska/api dev",
     "dev:web": "pnpm --filter @deska/web dev",
     "build": "pnpm -r build",
