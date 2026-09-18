@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import {
   Globe2,
   HeartPulse,
+  Map,
+  MessageCircle,
   Newspaper,
   Radio,
   RefreshCw,
@@ -24,9 +26,17 @@ import { Input } from '@/components/ui/input';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { useTenant } from '@/lib/tenant-context';
+import {
+  IRAN_SOURCE_HELP,
+  RIGHTS_MODES,
+  SOURCE_TYPES,
+  validateFeedUrl,
+  sourceTypeLabel,
+  type RightsMode,
+  type SourceType,
+} from '@/lib/feed-sources';
 
 type FeedPurpose = 'news-room' | 'social-studio';
-type SourceType = 'rss' | 'website';
 type FeedScope = 'tenant' | 'platform';
 
 interface Feed {
@@ -35,6 +45,8 @@ interface Feed {
   name: string;
   url: string;
   sourceType?: SourceType;
+  rightsMode?: RightsMode;
+  adapterConfig?: Record<string, unknown>;
   resolvedFeedUrl?: string;
   includeWords?: string[];
   excludeWords?: string[];
@@ -54,6 +66,9 @@ interface FeedForm {
   name: string;
   url: string;
   sourceType: SourceType;
+  rightsMode: RightsMode;
+  maxItems: string;
+  sitemapUrl: string;
   purpose: FeedPurpose;
   includeWords: string;
   excludeWords: string;
@@ -64,11 +79,21 @@ interface FeedForm {
   autoSendSocial: boolean;
 }
 
-const EMPTY_FORM: FeedForm = { name: '', url: '', sourceType: 'rss', purpose: 'news-room', includeWords: '', excludeWords: '', pollIntervalMinutes: '240', autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false };
-
-const SOURCE_TYPES: Record<SourceType, { label: string; description: string; placeholder: string; icon: typeof Rss }> = {
-  rss: { label: 'آدرس فید', description: 'RSS / Atom / JSON Feed', placeholder: 'https://example.com/feed.xml', icon: Rss },
-  website: { label: 'آدرس سایت', description: 'سیستم فید استاندارد سایت را پیدا می‌کند', placeholder: 'https://example.com', icon: Globe2 },
+const EMPTY_FORM: FeedForm = {
+  name: '',
+  url: '',
+  sourceType: 'rss',
+  rightsMode: 'quote_ok',
+  maxItems: '',
+  sitemapUrl: '',
+  purpose: 'news-room',
+  includeWords: '',
+  excludeWords: '',
+  pollIntervalMinutes: '240',
+  autoPoll: true,
+  autoPrepare: true,
+  autoPublish: false,
+  autoSendSocial: false,
 };
 
 interface HealthItem {
@@ -81,7 +106,7 @@ interface HealthItem {
 }
 
 interface HealthResult {
-  source: { name: string; url: string; sourceType: SourceType; resolvedFeedUrl?: string };
+  source: { name: string; url: string; sourceType: SourceType; rightsMode?: RightsMode; resolvedFeedUrl?: string };
   items: HealthItem[];
 }
 
@@ -104,13 +129,32 @@ function validateForm(form: FeedForm) {
   if (form.name.trim().length < 2) return 'نام منبع باید حداقل ۲ نویسه باشد.';
   const interval = Number(form.pollIntervalMinutes);
   if (!Number.isInteger(interval) || interval < 5 || interval > 1440) return 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.';
-  try {
-    const url = new URL(form.url.trim());
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
-  } catch {
-    return 'آدرس منبع باید کامل و معتبر باشد؛ مانند https://example.com';
+  const urlError = validateFeedUrl(form.url, form.sourceType);
+  if (urlError) return urlError;
+  if (form.maxItems.trim()) {
+    const maxItems = Number(form.maxItems);
+    if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > 200) return 'حداکثر مطالب باید بین ۱ تا ۲۰۰ باشد.';
+  }
+  if (form.sitemapUrl.trim()) {
+    try {
+      const parsed = new URL(form.sitemapUrl.trim());
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
+    } catch {
+      return 'آدرس سایت‌مپ جایگزین معتبر نیست.';
+    }
   }
   return '';
+}
+
+function defaultRightsForSource(sourceType: SourceType): RightsMode {
+  return sourceType === 'rss' ? 'quote_ok' : 'rewrite_required';
+}
+
+function buildAdapterConfig(form: FeedForm): Record<string, unknown> | undefined {
+  const config: Record<string, unknown> = {};
+  if (form.maxItems.trim()) config.maxItems = Number(form.maxItems);
+  if (form.sitemapUrl.trim()) config.sitemapUrl = form.sitemapUrl.trim();
+  return Object.keys(config).length ? config : undefined;
 }
 
 function wordsToString(words?: string[]) {
@@ -155,7 +199,22 @@ export default function FeedsPage() {
   function openEdit(feed: Feed) {
     if (feed.scope === 'platform') return;
     setEditing(feed);
-    setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || 'rss', purpose: feed.purpose, includeWords: wordsToString(feed.includeWords), excludeWords: wordsToString(feed.excludeWords), pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? feed.purpose === 'news-room', autoPublish: feed.autoPublish ?? false, autoSendSocial: feed.autoSendSocial ?? false });
+    setForm({
+      name: feed.name,
+      url: feed.url,
+      sourceType: feed.sourceType || 'rss',
+      rightsMode: feed.rightsMode || defaultRightsForSource(feed.sourceType || 'rss'),
+      maxItems: feed.adapterConfig?.maxItems ? String(feed.adapterConfig.maxItems) : '',
+      sitemapUrl: typeof feed.adapterConfig?.sitemapUrl === 'string' ? feed.adapterConfig.sitemapUrl : '',
+      purpose: feed.purpose,
+      includeWords: wordsToString(feed.includeWords),
+      excludeWords: wordsToString(feed.excludeWords),
+      pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240),
+      autoPoll: feed.autoPoll ?? true,
+      autoPrepare: feed.autoPrepare ?? feed.purpose === 'news-room',
+      autoPublish: feed.autoPublish ?? false,
+      autoSendSocial: feed.autoSendSocial ?? false,
+    });
     setNotice(null);
     setModalOpen(true);
   }
@@ -192,12 +251,19 @@ export default function FeedsPage() {
       await apiFetch(editing ? `/publishing/feeds/${editing.id}` : '/publishing/feeds', {
         method: editing ? 'PATCH' : 'POST',
         body: {
-          ...form,
           name: form.name.trim(),
           url: form.url.trim(),
+          sourceType: form.sourceType,
+          purpose: form.purpose,
+          rightsMode: form.rightsMode,
+          adapterConfig: buildAdapterConfig(form),
           includeWords: form.includeWords,
           excludeWords: form.excludeWords,
           pollIntervalMinutes: Number(form.pollIntervalMinutes),
+          autoPoll: form.autoPoll,
+          autoPrepare: form.autoPrepare,
+          autoPublish: form.autoPublish,
+          autoSendSocial: form.autoSendSocial,
         },
       });
       setModalOpen(false);
@@ -254,7 +320,7 @@ export default function FeedsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1020px] text-right text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-5 py-3 font-medium">منبع</th><th className="px-5 py-3 font-medium">نوع</th><th className="px-5 py-3 font-medium">فیلتر کلمات</th><th className="px-5 py-3 font-medium">کاربرد</th><th className="px-5 py-3 font-medium">پایش</th><th className="px-5 py-3 font-medium">وضعیت</th><th className="px-5 py-3 font-medium">عملیات</th></tr></thead>
+                <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-5 py-3 font-medium">منبع</th><th className="px-5 py-3 font-medium">نوع</th><th className="px-5 py-3 font-medium">حقوق محتوا</th><th className="px-5 py-3 font-medium">فیلتر کلمات</th><th className="px-5 py-3 font-medium">کاربرد</th><th className="px-5 py-3 font-medium">پایش</th><th className="px-5 py-3 font-medium">وضعیت</th><th className="px-5 py-3 font-medium">عملیات</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {visibleFeeds.map((feed) => {
                     const meta = PURPOSES[feed.purpose] ?? PURPOSES['news-room'];
@@ -265,7 +331,8 @@ export default function FeedsPage() {
                     return (
                       <tr key={`${feed.scope || 'tenant'}-${feed.id}`} className="transition hover:bg-slate-50/80">
                         <td className="px-5 py-4"><div className="flex items-center gap-2"><div className="font-semibold text-slate-900">{feed.name}</div>{isPlatform && <Badge variant="default">پیش‌فرض</Badge>}</div><div className="mt-1 max-w-md truncate text-xs text-slate-500" dir="ltr" title={feed.url}>{feed.url}</div>{feed.resolvedFeedUrl && <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">فید: {feed.resolvedFeedUrl}</div>}{feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}{isPlatform && feed.platformEnabled === false && <div className="mt-1 text-xs text-amber-700">این منبع توسط مدیر کل غیرفعال شده است</div>}</td>
-                        <td className="px-5 py-4"><span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700"><SourceIcon className="h-4 w-4" />{sourceMeta.label}</span></td>
+                        <td className="px-5 py-4"><span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700"><SourceIcon className="h-4 w-4" />{sourceTypeLabel(feed.sourceType)}</span></td>
+                        <td className="px-5 py-4 text-xs text-slate-600">{RIGHTS_MODES[feed.rightsMode || defaultRightsForSource(feed.sourceType || 'rss')]?.label || '—'}</td>
                         <td className="px-5 py-4 text-xs text-slate-600">{feed.includeWords?.length ? <div>شامل: {feed.includeWords.join('، ')}</div> : null}{feed.excludeWords?.length ? <div>بدون: {feed.excludeWords.join('، ')}</div> : null}{!feed.includeWords?.length && !feed.excludeWords?.length ? '—' : null}</td>
                         <td className="px-5 py-4"><span className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium ring-1', meta.color)}><PurposeIcon className="h-4 w-4" />{meta.label}</span></td>
                         <td className="px-5 py-4 text-slate-600"><div>{feed.pollIntervalMinutes ? `هر ${feed.pollIntervalMinutes} دقیقه` : isPlatform ? 'مدیریت مرکزی' : 'طبق تنظیمات سازمان'}</div><div className="mt-1 text-xs text-slate-400">{feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}</div></td>
@@ -285,8 +352,11 @@ export default function FeedsPage() {
             <form onSubmit={saveFeed} className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl">
               <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 className="text-xl font-bold text-slate-900">{editing ? 'ویرایش منبع' : 'افزودن منبع جدید'}</h2><p className="mt-1 text-sm text-slate-500">نوع منبع و محل استفاده از محتوای آن را مشخص کنید.</p></div><button type="button" aria-label="بستن" className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" onClick={() => setModalOpen(false)}><X className="h-5 w-5" /></button></div>
               <div className="space-y-5 p-6">
+                <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4 text-xs leading-6 text-sky-900">{IRAN_SOURCE_HELP}</div>
                 <div className="grid gap-4 sm:grid-cols-2"><Input label="نام منبع" required placeholder="مثلاً خبرگزاری رسمی" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /><Input label={SOURCE_TYPES[form.sourceType].label} required dir="ltr" placeholder={SOURCE_TYPES[form.sourceType].placeholder} value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} /></div>
-                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">نوع منبع</legend><div className="grid gap-3 sm:grid-cols-2">{(Object.entries(SOURCE_TYPES) as [SourceType, (typeof SOURCE_TYPES)[SourceType]][]).map(([key, item]) => { const Icon = item.icon; return <label key={key} className={cn('cursor-pointer rounded-2xl border p-4 transition', form.sourceType === key ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-100' : 'border-slate-200 hover:border-slate-300')}><input type="radio" name="sourceType" value={key} checked={form.sourceType === key} onChange={() => setForm((current) => ({ ...current, sourceType: key }))} className="sr-only" /><Icon className={cn('h-5 w-5', form.sourceType === key ? 'text-primary-700' : 'text-slate-500')} /><span className="mt-3 block text-sm font-semibold text-slate-900">{item.label}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">برای آدرس سایت، سیستم تلاش می‌کند فید RSS/Atom/JSON مناسب را پیدا کند.</p></fieldset>
+                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">نوع منبع</legend><div className="grid gap-3 sm:grid-cols-2">{(Object.entries(SOURCE_TYPES) as [SourceType, (typeof SOURCE_TYPES)[SourceType]][]).map(([key, item]) => { const Icon = item.icon; return <label key={key} className={cn('cursor-pointer rounded-2xl border p-4 transition', form.sourceType === key ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-100' : 'border-slate-200 hover:border-slate-300')}><input type="radio" name="sourceType" value={key} checked={form.sourceType === key} onChange={() => setForm((current) => ({ ...current, sourceType: key, rightsMode: defaultRightsForSource(key) }))} className="sr-only" /><Icon className={cn('h-5 w-5', form.sourceType === key ? 'text-primary-700' : 'text-slate-500')} /><span className="mt-3 block text-sm font-semibold text-slate-900">{item.label.replace('آدرس ', '').replace('کانال ', '')}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">برای سایت، سیستم ابتدا RSS/Atom/JSON را جست‌وجو می‌کند؛ برای تلگرام فقط کانال‌های عمومی t.me/s پشتیبانی می‌شوند.</p></fieldset>
+                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">حقوق استفاده از محتوا</legend><select className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" value={form.rightsMode} onChange={(event) => setForm((current) => ({ ...current, rightsMode: event.target.value as RightsMode }))}>{(Object.entries(RIGHTS_MODES) as [RightsMode, (typeof RIGHTS_MODES)[RightsMode]][]).map(([key, item]) => <option key={key} value={key}>{item.label} — {item.description}</option>)}</select></fieldset>
+                {(form.sourceType === 'sitemap' || form.sourceType === 'telegram') && <div className="grid gap-4 sm:grid-cols-2"><Input label="حداکثر مطالب (اختیاری)" dir="ltr" placeholder="50" value={form.maxItems} onChange={(event) => setForm((current) => ({ ...current, maxItems: event.target.value }))} />{form.sourceType === 'sitemap' && <Input label="آدرس سایت‌مپ جایگزین (اختیاری)" dir="ltr" placeholder="https://example.com/news-sitemap.xml" value={form.sitemapUrl} onChange={(event) => setForm((current) => ({ ...current, sitemapUrl: event.target.value }))} />}</div>}
                 <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">این منبع برای کدام بخش استفاده می‌شود؟</legend><div className="grid gap-3 sm:grid-cols-3">{(Object.entries(PURPOSES) as [FeedPurpose, (typeof PURPOSES)[FeedPurpose]][]).map(([key, item]) => { const Icon = item.icon; return <label key={key} className={cn('cursor-pointer rounded-2xl border p-4 transition', form.purpose === key ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-100' : 'border-slate-200 hover:border-slate-300')}><input type="radio" name="purpose" value={key} checked={form.purpose === key} onChange={() => setForm((current) => ({ ...current, purpose: key }))} className="sr-only" /><Icon className={cn('h-5 w-5', form.purpose === key ? 'text-primary-700' : 'text-slate-500')} /><span className="mt-3 block text-sm font-semibold text-slate-900">{item.label}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span></label>; })}</div></fieldset>
                 <div className="grid gap-4 sm:grid-cols-2"><Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(event) => setForm((current) => ({ ...current, includeWords: event.target.value }))} /><Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(event) => setForm((current) => ({ ...current, excludeWords: event.target.value }))} /></div>
                 <label className="grid gap-1.5 text-sm font-medium text-slate-700">فاصله پایش (دقیقه)<input type="number" min="5" max="1440" required dir="ltr" className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value }))} /><span className="text-xs font-normal text-slate-500">بین ۵ دقیقه تا ۲۴ ساعت</span></label>

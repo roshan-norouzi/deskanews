@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Globe2, HeartPulse, Plus, RefreshCw, Rss, Trash2, X } from 'lucide-react';
+import { HeartPulse, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,14 +9,23 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { apiFetch, cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-
-type SourceType = 'rss' | 'website';
+import {
+  IRAN_SOURCE_HELP,
+  RIGHTS_MODES,
+  SOURCE_TYPES,
+  validateFeedUrl,
+  sourceTypeLabel,
+  type RightsMode,
+  type SourceType,
+} from '@/lib/feed-sources';
 
 interface PlatformFeed {
   id: string;
   name: string;
   url: string;
   sourceType: SourceType;
+  rightsMode: RightsMode;
+  adapterConfig?: Record<string, unknown>;
   resolvedFeedUrl: string;
   includeWords: string[];
   excludeWords: string[];
@@ -30,6 +39,9 @@ interface FeedForm {
   name: string;
   url: string;
   sourceType: SourceType;
+  rightsMode: RightsMode;
+  maxItems: string;
+  sitemapUrl: string;
   includeWords: string;
   excludeWords: string;
   pollIntervalMinutes: string;
@@ -40,30 +52,39 @@ const EMPTY_FORM: FeedForm = {
   name: '',
   url: '',
   sourceType: 'rss',
+  rightsMode: 'quote_ok',
+  maxItems: '',
+  sitemapUrl: '',
   includeWords: '',
   excludeWords: '',
   pollIntervalMinutes: '240',
   enabled: true,
 };
 
-const SOURCE_TYPES: Record<SourceType, { label: string; description: string; placeholder: string; icon: typeof Rss }> = {
-  rss: { label: 'آدرس فید', description: 'RSS / Atom / JSON Feed', placeholder: 'https://example.com/feed.xml', icon: Rss },
-  website: { label: 'آدرس سایت', description: 'سیستم فید استاندارد سایت را پیدا می‌کند', placeholder: 'https://example.com', icon: Globe2 },
-};
-
 function wordsToString(words?: string[]) {
   return (words || []).join('، ');
+}
+
+function defaultRightsForSource(sourceType: SourceType): RightsMode {
+  return sourceType === 'rss' ? 'quote_ok' : 'rewrite_required';
+}
+
+function buildAdapterConfig(form: FeedForm): Record<string, unknown> | undefined {
+  const config: Record<string, unknown> = {};
+  if (form.maxItems.trim()) config.maxItems = Number(form.maxItems);
+  if (form.sitemapUrl.trim()) config.sitemapUrl = form.sitemapUrl.trim();
+  return Object.keys(config).length ? config : undefined;
 }
 
 function validateForm(form: FeedForm) {
   if (form.name.trim().length < 2) return 'نام منبع باید حداقل ۲ نویسه باشد.';
   const interval = Number(form.pollIntervalMinutes);
   if (!Number.isInteger(interval) || interval < 5 || interval > 1440) return 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.';
-  try {
-    const url = new URL(form.url.trim());
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
-  } catch {
-    return 'آدرس منبع باید کامل و معتبر باشد.';
+  const urlError = validateFeedUrl(form.url, form.sourceType);
+  if (urlError) return urlError;
+  if (form.maxItems.trim()) {
+    const maxItems = Number(form.maxItems);
+    if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > 200) return 'حداکثر مطالب باید بین ۱ تا ۲۰۰ باشد.';
   }
   return '';
 }
@@ -106,6 +127,9 @@ export default function PlatformFeedsPage() {
       name: feed.name,
       url: feed.url,
       sourceType: feed.sourceType,
+      rightsMode: feed.rightsMode || defaultRightsForSource(feed.sourceType),
+      maxItems: feed.adapterConfig?.maxItems ? String(feed.adapterConfig.maxItems) : '',
+      sitemapUrl: typeof feed.adapterConfig?.sitemapUrl === 'string' ? feed.adapterConfig.sitemapUrl : '',
       includeWords: wordsToString(feed.includeWords),
       excludeWords: wordsToString(feed.excludeWords),
       pollIntervalMinutes: String(feed.pollIntervalMinutes),
@@ -128,6 +152,8 @@ export default function PlatformFeedsPage() {
         name: form.name.trim(),
         url: form.url.trim(),
         sourceType: form.sourceType,
+        rightsMode: form.rightsMode,
+        adapterConfig: buildAdapterConfig(form),
         includeWords: form.includeWords,
         excludeWords: form.excludeWords,
         pollIntervalMinutes: Number(form.pollIntervalMinutes),
@@ -163,6 +189,7 @@ export default function PlatformFeedsPage() {
           <div>
             <h1 className="text-2xl font-bold">منابع پیش‌فرض پلتفرم</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">این منابع در همه سازمان‌ها نمایش داده می‌شوند. مالک هر سازمان می‌تواند آن‌ها را روشن یا خاموش کند. پردازش و آماده‌سازی یک‌بار انجام می‌شود تا هزینه هوش مصنوعی تکراری نشود.</p>
+            <p className="mt-3 max-w-2xl text-xs leading-6 text-slate-400">{IRAN_SOURCE_HELP}</p>
           </div>
           <Button className="bg-white text-slate-900 hover:bg-slate-100" onClick={openCreate}><Plus className="h-4 w-4" /> افزودن منبع پیش‌فرض</Button>
         </header>
@@ -177,11 +204,12 @@ export default function PlatformFeedsPage() {
             <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center text-sm text-slate-500">هنوز منبع پیش‌فرضی ثبت نشده است.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-right text-sm">
+              <table className="w-full min-w-[980px] text-right text-sm">
                 <thead className="bg-slate-50 text-xs text-slate-500">
                   <tr>
                     <th className="px-5 py-3 font-medium">منبع</th>
                     <th className="px-5 py-3 font-medium">نوع</th>
+                    <th className="px-5 py-3 font-medium">حقوق محتوا</th>
                     <th className="px-5 py-3 font-medium">فیلتر کلمات</th>
                     <th className="px-5 py-3 font-medium">پایش</th>
                     <th className="px-5 py-3 font-medium">وضعیت</th>
@@ -197,7 +225,8 @@ export default function PlatformFeedsPage() {
                         {feed.resolvedFeedUrl && <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">فید: {feed.resolvedFeedUrl}</div>}
                         {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
                       </td>
-                      <td className="px-5 py-4">{feed.sourceType === 'website' ? 'سایت' : 'فید'}</td>
+                      <td className="px-5 py-4">{sourceTypeLabel(feed.sourceType)}</td>
+                      <td className="px-5 py-4 text-xs text-slate-600">{RIGHTS_MODES[feed.rightsMode || defaultRightsForSource(feed.sourceType)]?.label || '—'}</td>
                       <td className="px-5 py-4 text-xs text-slate-600">
                         {feed.includeWords.length ? <div>شامل: {feed.includeWords.join('، ')}</div> : null}
                         {feed.excludeWords.length ? <div>بدون: {feed.excludeWords.join('، ')}</div> : null}
@@ -254,15 +283,29 @@ export default function PlatformFeedsPage() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     {(Object.entries(SOURCE_TYPES) as [SourceType, (typeof SOURCE_TYPES)[SourceType]][]).map(([key, item]) => (
                       <label key={key} className={cn('cursor-pointer rounded-2xl border p-4', form.sourceType === key ? 'border-primary-500 bg-primary-50' : 'border-slate-200')}>
-                        <input type="radio" className="sr-only" checked={form.sourceType === key} onChange={() => setForm((c) => ({ ...c, sourceType: key }))} />
+                        <input type="radio" className="sr-only" checked={form.sourceType === key} onChange={() => setForm((c) => ({ ...c, sourceType: key, rightsMode: defaultRightsForSource(key) }))} />
                         <item.icon className="h-5 w-5" />
-                        <span className="mt-2 block text-sm font-semibold">{item.label}</span>
+                        <span className="mt-2 block text-sm font-semibold">{item.label.replace('آدرس ', '').replace('کانال ', '')}</span>
                         <span className="mt-1 block text-xs text-slate-500">{item.description}</span>
                       </label>
                     ))}
                   </div>
                 </fieldset>
                 <Input label={SOURCE_TYPES[form.sourceType].label} required dir="ltr" placeholder={SOURCE_TYPES[form.sourceType].placeholder} value={form.url} onChange={(e) => setForm((c) => ({ ...c, url: e.target.value }))} />
+                <fieldset>
+                  <legend className="mb-2 text-sm font-medium">حقوق استفاده از محتوا</legend>
+                  <select className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" value={form.rightsMode} onChange={(e) => setForm((c) => ({ ...c, rightsMode: e.target.value as RightsMode }))}>
+                    {(Object.entries(RIGHTS_MODES) as [RightsMode, (typeof RIGHTS_MODES)[RightsMode]][]).map(([key, item]) => (
+                      <option key={key} value={key}>{item.label} — {item.description}</option>
+                    ))}
+                  </select>
+                </fieldset>
+                {(form.sourceType === 'sitemap' || form.sourceType === 'telegram') && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Input label="حداکثر مطالب (اختیاری)" dir="ltr" placeholder="50" value={form.maxItems} onChange={(e) => setForm((c) => ({ ...c, maxItems: e.target.value }))} />
+                    {form.sourceType === 'sitemap' && <Input label="آدرس سایت‌مپ جایگزین (اختیاری)" dir="ltr" placeholder="https://example.com/news-sitemap.xml" value={form.sitemapUrl} onChange={(e) => setForm((c) => ({ ...c, sitemapUrl: e.target.value }))} />}
+                  </div>
+                )}
                 <Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(e) => setForm((c) => ({ ...c, includeWords: e.target.value }))} />
                 <Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(e) => setForm((c) => ({ ...c, excludeWords: e.target.value }))} />
                 <Input label="فاصله پایش (دقیقه)" dir="ltr" value={form.pollIntervalMinutes} onChange={(e) => setForm((c) => ({ ...c, pollIntervalMinutes: e.target.value }))} />

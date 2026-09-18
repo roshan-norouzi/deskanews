@@ -289,6 +289,7 @@ test('a prepared newsroom article is converted directly into ready social conten
     settings,
     gapGpt,
     sourceReader,
+    {},
     { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'publish-job-a' } }; } },
     { success: async () => ({}), failure: async () => ({}) },
     { record: async () => ({}) },
@@ -323,6 +324,7 @@ test('archived social articles are hidden from the default list', async () => {
   };
   const service = new SocialStudioService(
     prisma,
+    {},
     {},
     {},
     {},

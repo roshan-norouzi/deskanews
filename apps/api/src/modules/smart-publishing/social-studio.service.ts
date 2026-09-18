@@ -5,6 +5,8 @@ import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
+import { SourceAdapterRegistry } from './source-adapters/source-adapter.registry';
+import { effectiveReadTarget } from './source-adapters/feed-source.utils';
 import { entryFilterText, matchesWordFilters } from './feed-word-filter';
 import type { SocialNetwork } from './social-network-publisher.service';
 import { AutomationJobService } from '../../common/services/automation-job.service';
@@ -75,6 +77,7 @@ export class SocialStudioService {
     private readonly settings: PublishingSettingsService,
     private readonly gapGpt: GapGptClient,
     private readonly sourceReader: SourceReaderService,
+    private readonly sourceAdapters: SourceAdapterRegistry,
     private readonly jobs: AutomationJobService,
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
@@ -149,9 +152,8 @@ export class SocialStudioService {
       const settings = await this.settings.getRaw(tenantId);
       const maxAgeDays = Number(settings.social_max_age_days || 10);
       const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
-      const readUrl = feed.sourceType === 'website' && feed.resolvedFeedUrl ? feed.resolvedFeedUrl : feed.url;
-      const readType = feed.sourceType === 'website' && feed.resolvedFeedUrl ? 'rss' : (feed.sourceType || 'rss');
-      const entries = (await this.sourceReader.readSource(readType, readUrl))
+      const target = effectiveReadTarget(feed);
+      const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const enrichedEntries = await Promise.all(entries.map(async (entry) => ({

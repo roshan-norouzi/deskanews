@@ -2,12 +2,15 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { USAGE_METRIC_KEYS } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type UpdateFeedDto, type SourceType } from './dto/feed.dto';
+import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type UpdateFeedDto } from './dto/feed.dto';
 import { NEWS_STATUSES, type UpdateNewsArticleDto } from './dto/news-article.dto';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
+import { SourceAdapterRegistry } from './source-adapters/source-adapter.registry';
+import { effectiveReadTarget, normalizeFeedUrl, normalizeRightsMode, normalizeSourceType } from './source-adapters/feed-source.utils';
+import { parseAdapterConfig, adapterConfigForDb } from './source-adapters/adapter-config';
 import { WordPressClient } from './wordpress.client';
 import { parseWordPressCategories } from './wordpress-category';
 import { AutomationJobService } from '../../common/services/automation-job.service';
@@ -26,28 +29,6 @@ function settingEnabled(value: string | undefined, fallback = false): boolean {
 
 function normalizePurpose(value: unknown, fallback: FeedPurpose = 'news-room'): FeedPurpose {
   return FEED_PURPOSES.includes(value as FeedPurpose) ? value as FeedPurpose : fallback;
-}
-
-function normalizeFeedUrl(value: string): string {
-  try {
-    const url = new URL(value.trim());
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error();
-    url.hash = '';
-    return url.toString();
-  } catch {
-    throw new BadRequestException('آدرس منبع معتبر نیست');
-  }
-}
-
-function normalizeSourceType(value: unknown): SourceType {
-  return value === 'website' ? 'website' : 'rss';
-}
-
-function effectiveReadTarget(feed: { sourceType: string; url: string; resolvedFeedUrl: string }) {
-  if (feed.sourceType === 'website' && feed.resolvedFeedUrl) {
-    return { sourceType: 'rss' as SourceType, url: feed.resolvedFeedUrl };
-  }
-  return { sourceType: (feed.sourceType || 'rss') as SourceType, url: feed.url };
 }
 
 function sourceBoolean(value: boolean | null | undefined, fallback: boolean): boolean {
@@ -129,6 +110,7 @@ export class NewsroomService {
     private readonly settings: PublishingSettingsService,
     private readonly gapGpt: GapGptClient,
     private readonly sourceReader: SourceReaderService,
+    private readonly sourceAdapters: SourceAdapterRegistry,
     private readonly wordpress: WordPressClient,
     private readonly jobs: AutomationJobService,
     private readonly integrationHealth: IntegrationHealthService,
@@ -176,8 +158,8 @@ export class NewsroomService {
 
   async addFeed(tenantId: string, data: CreateFeedDto) {
     const name = data.name.trim();
-    const url = normalizeFeedUrl(data.url);
     const sourceType = normalizeSourceType(data.sourceType);
+    const url = normalizeFeedUrl(data.url, sourceType);
     const purpose = normalizePurpose(data.purpose);
     const duplicate = await this.prisma.newsFeed.findFirst({ where: { tenantId, url } });
     if (duplicate) throw new ConflictException('این فید قبلاً ثبت شده است');
@@ -197,6 +179,8 @@ export class NewsroomService {
       url,
       sourceType,
       resolvedFeedUrl,
+      rightsMode: normalizeRightsMode(data.rightsMode, sourceType),
+      adapterConfig: adapterConfigForDb(data.adapterConfig),
       includeWords: parseWordList(data.includeWords),
       excludeWords: parseWordList(data.excludeWords),
       purpose,
@@ -212,8 +196,8 @@ export class NewsroomService {
   async updateFeed(tenantId: string, id: string, data: UpdateFeedDto) {
     const feed = await this.findFeed(tenantId, id);
     const name = String(data.name ?? feed.name).trim();
-    const url = normalizeFeedUrl(String(data.url ?? feed.url));
     const sourceType = normalizeSourceType(data.sourceType ?? feed.sourceType);
+    const url = normalizeFeedUrl(String(data.url ?? feed.url), sourceType);
     const purpose = normalizePurpose(data.purpose, normalizePurpose(feed.purpose));
     const duplicate = await this.prisma.newsFeed.findFirst({ where: { tenantId, url, NOT: { id } } });
     if (duplicate) throw new ConflictException('این آدرس قبلاً ثبت شده است');
@@ -227,6 +211,8 @@ export class NewsroomService {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     } else if (sourceType === 'rss') {
       resolvedFeedUrl = '';
+    } else if (sourceType !== 'website') {
+      resolvedFeedUrl = '';
     }
 
     return this.prisma.newsFeed.update({ where: { id }, data: {
@@ -234,6 +220,8 @@ export class NewsroomService {
       url,
       sourceType,
       resolvedFeedUrl,
+      ...(data.rightsMode !== undefined ? { rightsMode: normalizeRightsMode(data.rightsMode, sourceType) } : {}),
+      ...(data.adapterConfig !== undefined ? { adapterConfig: adapterConfigForDb(data.adapterConfig) } : {}),
       ...(data.includeWords !== undefined ? { includeWords: parseWordList(data.includeWords) } : {}),
       ...(data.excludeWords !== undefined ? { excludeWords: parseWordList(data.excludeWords) } : {}),
       purpose,
@@ -318,7 +306,7 @@ export class NewsroomService {
       const maxAgeMs = Number(settings.news_max_age_days || 10) * 24 * 60 * 60 * 1000;
       const cutoff = new Date(Date.now() - maxAgeMs);
       const target = effectiveReadTarget(feed);
-      const entries = (await this.sourceReader.readSource(target.sourceType, target.url))
+      const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const result = entries.length ? await this.prisma.newsArticle.createMany({
@@ -373,7 +361,7 @@ export class NewsroomService {
     const startedAt = Date.now();
     try {
       const target = effectiveReadTarget(feed);
-      const entries = (await this.sourceReader.readSource(target.sourceType, target.url))
+      const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const latest = entries.map((entry, index) => ({ entry, index }))
         .sort((left, right) => {
@@ -398,6 +386,7 @@ export class NewsroomService {
           name: feed.name,
           url: feed.url,
           sourceType: feed.sourceType || 'rss',
+          rightsMode: feed.rightsMode,
           resolvedFeedUrl: feed.resolvedFeedUrl,
         },
         items: latest,

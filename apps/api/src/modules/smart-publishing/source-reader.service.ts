@@ -358,11 +358,27 @@ export class SourceReaderService {
         return this.readWebsiteSource(sourceUrl);
       case 'telegram':
         return this.readTelegramChannel(sourceUrl);
+      case 'sitemap':
+        return this.readSitemapSource(sourceUrl);
       case 'twitter':
         return this.readTwitterAccount(sourceUrl);
       default:
         throw new BadRequestException('نوع منبع پشتیبانی نمی‌شود');
     }
+  }
+
+  async fetchSitemapXml(sitemapUrl: string): Promise<string> {
+    return this.safeFetchText(sitemapUrl, MAX_FEED_BYTES, [
+      'application/xml',
+      'text/xml',
+      'application/rss+xml',
+      'application/atom+xml',
+    ]);
+  }
+
+  async readSitemapSource(sourceUrl: string): Promise<FeedEntry[]> {
+    const { SitemapSourceAdapter } = await import('./source-adapters/sitemap.adapter');
+    return new SitemapSourceAdapter(this).readEntries({ sourceType: 'sitemap', url: sourceUrl, adapterConfig: {} });
   }
 
   /**
@@ -386,7 +402,7 @@ export class SourceReaderService {
     }
   }
 
-  private async readWebsiteSource(sourceUrl: string): Promise<FeedEntry[]> {
+  async readWebsiteSource(sourceUrl: string): Promise<FeedEntry[]> {
     const discoveredFeed = await this.discoverFeedUrl(sourceUrl).catch(() => null);
     if (discoveredFeed) {
       try {
@@ -437,7 +453,7 @@ export class SourceReaderService {
     }
   }
 
-  private async readPagePreview(articleUrl: string, fallbackTitle: string): Promise<FeedEntry | null> {
+  async readPagePreview(articleUrl: string, fallbackTitle: string): Promise<FeedEntry | null> {
     try {
       const html = await this.safeFetchText(articleUrl, 2 * 1024 * 1024, ['text/html', 'application/xhtml+xml']);
       const $ = load(html);
@@ -469,7 +485,7 @@ export class SourceReaderService {
     }
   }
 
-  private async readTelegramChannel(sourceUrl: string): Promise<FeedEntry[]> {
+  async readTelegramChannel(sourceUrl: string, maxItems = 50): Promise<FeedEntry[]> {
     const channelUrl = this.telegramHistoryUrl(sourceUrl);
     const html = await this.safeFetchText(channelUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
     const $ = load(html);
@@ -498,7 +514,7 @@ export class SourceReaderService {
       } satisfies FeedEntry;
     }).get().filter(Boolean) as FeedEntry[];
     if (!entries.length) throw new BadRequestException('از کانال تلگرام عمومی مطلبی پیدا نشد؛ کانال باید عمومی باشد و آدرس آن درست وارد شود');
-    return entries.slice(-50);
+    return entries.slice(-maxItems);
   }
 
   private telegramHistoryUrl(sourceUrl: string): string {

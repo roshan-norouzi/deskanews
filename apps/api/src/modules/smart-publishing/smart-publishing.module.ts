@@ -7,6 +7,7 @@ import { PublishingSettingsService } from './publishing-settings.service';
 import { SecretProtectionService } from './secret-protection.service';
 import { PublishingFontFileController, PublishingImageFileController, SmartPublishingController, SocialPublishingMediaController } from './smart-publishing.controller';
 import { SourceReaderService } from './source-reader.service';
+import { SourceAdapterRegistry } from './source-adapters/source-adapter.registry';
 import { SocialStudioService } from './social-studio.service';
 import { WordPressClient } from './wordpress.client';
 import { SocialNetworkPublisherService } from './social-network-publisher.service';
@@ -16,7 +17,7 @@ import { PublishingOperationsService } from './publishing-operations.service';
 @Module({
   imports: [ScheduleModule.forRoot()],
   controllers: [SmartPublishingController, PublishingFontFileController, PublishingImageFileController, SocialPublishingMediaController],
-  providers: [PublishingSettingsService, SecretProtectionService, GapGptClient, WordPressClient, SourceReaderService, NewsroomService, PlatformFeedService, SocialStudioService, SocialNetworkPublisherService, SocialCoverRendererService, PublishingOperationsService, PublishingAutomationProcessor],
+  providers: [PublishingSettingsService, SecretProtectionService, GapGptClient, WordPressClient, SourceReaderService, SourceAdapterRegistry, NewsroomService, PlatformFeedService, SocialStudioService, SocialNetworkPublisherService, SocialCoverRendererService, PublishingOperationsService, PublishingAutomationProcessor],
   exports: [PlatformFeedService],
 })
 export class SmartPublishingModule {}

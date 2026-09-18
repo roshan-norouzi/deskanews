@@ -1,5 +1,5 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
-import { SOURCE_TYPES } from '../../../modules/smart-publishing/dto/feed.dto';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
+import { RIGHTS_MODES, SOURCE_TYPES } from '../../../modules/smart-publishing/dto/feed.dto';
 
 export class CreatePlatformFeedDto {
   @IsString()
@@ -12,6 +12,14 @@ export class CreatePlatformFeedDto {
   @IsOptional()
   @IsIn(SOURCE_TYPES)
   sourceType?: (typeof SOURCE_TYPES)[number];
+
+  @IsOptional()
+  @IsIn(RIGHTS_MODES)
+  rightsMode?: (typeof RIGHTS_MODES)[number];
+
+  @IsOptional()
+  @IsObject()
+  adapterConfig?: Record<string, unknown>;
 
   @IsOptional()
   includeWords?: string | string[];
@@ -43,6 +51,14 @@ export class UpdatePlatformFeedDto {
   @IsOptional()
   @IsIn(SOURCE_TYPES)
   sourceType?: (typeof SOURCE_TYPES)[number];
+
+  @IsOptional()
+  @IsIn(RIGHTS_MODES)
+  rightsMode?: (typeof RIGHTS_MODES)[number];
+
+  @IsOptional()
+  @IsObject()
+  adapterConfig?: Record<string, unknown>;
 
   @IsOptional()
   includeWords?: string | string[];

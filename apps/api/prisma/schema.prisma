@@ -16,6 +16,8 @@ model NewsFeed {
   url                 String
   sourceType          String          @default("rss")
   resolvedFeedUrl     String          @default("")
+  rightsMode          String          @default("quote_ok")
+  adapterConfig       Json            @default("{}")
   includeWords        String[]        @default([])
   excludeWords        String[]        @default([])
   pollIntervalMinutes Int?
@@ -43,6 +45,8 @@ model PlatformFeed {
   url                 String                 @unique
   sourceType          String                 @default("rss")
   resolvedFeedUrl     String                 @default("")
+  rightsMode          String                 @default("quote_ok")
+  adapterConfig       Json                   @default("{}")
   includeWords        String[]               @default([])
   excludeWords        String[]               @default([])
   pollIntervalMinutes Int                    @default(240)
