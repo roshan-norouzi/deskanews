@@ -8,13 +8,12 @@ import { Button } from '@/components/ui/button';
 import { useTenant } from '@/lib/tenant-context';
 import { useApi } from '@/hooks/use-api';
 import { apiFetch } from '@/lib/utils';
-import { formatPersianDigits } from '@deska/shared';
+import { OrganizationUsagePanel } from '@/components/settings/organization-usage-panel';
 
 interface TenantDetail {
   id: string;
   name: string;
   slug: string;
-  plan: string;
   locale: string;
   _count?: {
     members: number;
@@ -83,14 +82,13 @@ export function OrganizationSettingsPanel() {
               onChange={(e) => setName(e.target.value)}
               required
             />
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Input label="نامک" value={tenant?.slug ?? ''} disabled />
-              <Input label="پلن" value={tenant?.plan ?? ''} disabled />
               <Input
                 label="تعداد کاربران"
                 value={
                   data?._count?.members != null
-                    ? formatPersianDigits(String(data._count.members))
+                    ? String(data._count.members)
                     : '—'
                 }
                 disabled
@@ -107,6 +105,8 @@ export function OrganizationSettingsPanel() {
           </form>
         </CardContent>
       </Card>
+
+      <OrganizationUsagePanel tenantId={tenant?.id ?? null} />
     </div>
   );
 }

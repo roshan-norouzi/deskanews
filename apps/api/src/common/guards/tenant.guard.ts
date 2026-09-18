@@ -19,6 +19,16 @@ export class TenantGuard implements CanActivate {
     private config: ConfigService,
   ) {}
 
+  private resolvePermissions(member: { role: string; permissions: string[] }): string[] {
+    if (member.role === TENANT_ROLES.OWNER) {
+      return ['*'];
+    }
+    if (member.permissions?.length) {
+      return member.permissions;
+    }
+    return getDefaultPermissionsForTenantRole(member.role);
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
@@ -54,7 +64,7 @@ export class TenantGuard implements CanActivate {
 
     const member = await this.prisma.tenantMember.findUnique({
       where: { tenantId_userId: { tenantId, userId: user.id } },
-      include: { tenant: { select: { isActive: true, status: true } } },
+      include: { tenant: { select: { isActive: true, status: true, primaryOwnerUserId: true } } },
     });
 
     if (!member) {
@@ -69,14 +79,11 @@ export class TenantGuard implements CanActivate {
       throw new ForbiddenException('عضویت شما در این سازمان فعال نیست');
     }
 
-    const hasAdministrativeRole = [TENANT_ROLES.OWNER, TENANT_ROLES.ADMIN].includes(
-      member.role as typeof TENANT_ROLES.OWNER,
-    );
-    request.user.permissions = hasAdministrativeRole
-      ? ['*']
-      : getDefaultPermissionsForTenantRole(member.role);
+    const isOwner =
+      member.role === TENANT_ROLES.OWNER || member.tenant.primaryOwnerUserId === user.id;
+    request.user.permissions = isOwner ? ['*'] : this.resolvePermissions(member);
 
-    request.tenant = { tenantId, memberRole: member.role };
+    request.tenant = { tenantId, memberRole: isOwner ? TENANT_ROLES.OWNER : member.role };
     return true;
   }
 }

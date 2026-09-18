@@ -73,7 +73,7 @@ export const APP_PERMISSIONS = [
   { key: 'platform.organizations.view', label: 'مشاهده سازمان‌های پلتفرم', moduleId: 'platform' },
   { key: 'platform.organizations.manage', label: 'مدیریت سازمان‌های پلتفرم', moduleId: 'platform' },
   { key: 'organization.members.view', label: 'مشاهده اعضای سازمان', moduleId: 'platform' },
-  { key: 'organization.members.invite', label: 'دعوت عضو سازمان', moduleId: 'platform' },
+  { key: 'organization.members.add', label: 'افزودن عضو سازمان', moduleId: 'platform' },
   { key: 'organization.members.manage', label: 'مدیریت اعضای سازمان', moduleId: 'platform' },
   { key: 'organization.owners.manage', label: 'مدیریت مالکان سازمان', moduleId: 'platform' },
   { key: 'dashboard.view', label: 'مشاهده داشبورد', moduleId: 'platform' },
@@ -99,7 +99,7 @@ export const DEFAULT_TENANT_ROLE_PERMISSIONS: Record<TenantRole, readonly AppPer
   admin: APP_PERMISSIONS.map((permission) => permission.key),
   manager: APP_PERMISSIONS
     .map((permission) => permission.key)
-    .filter((permission) => !permission.startsWith('platform.') && !['users.manage', 'organization.owners.manage'].includes(permission)),
+    .filter((permission) => !permission.startsWith('platform.') && !['users.manage', 'organization.owners.manage', 'organization.members.add'].includes(permission)),
   senior_specialist: [
     ...VIEW_PERMISSIONS,
     'publishing.manage',
@@ -112,6 +112,37 @@ export const DEFAULT_TENANT_ROLE_PERMISSIONS: Record<TenantRole, readonly AppPer
 export function getDefaultPermissionsForTenantRole(role: string): string[] {
   return [...(DEFAULT_TENANT_ROLE_PERMISSIONS[role as TenantRole] ?? [])];
 }
+
+/** Permissions an organization owner can assign to members (excludes platform-wide controls). */
+export const ORGANIZATION_ASSIGNABLE_PERMISSIONS = APP_PERMISSIONS
+  .map((permission) => permission.key)
+  .filter((key) => !key.startsWith('platform.') && key !== 'organization.owners.manage') as AppPermission[];
+
+export function isOrganizationAssignablePermission(key: string): key is AppPermission {
+  return (ORGANIZATION_ASSIGNABLE_PERMISSIONS as readonly string[]).includes(key);
+}
+
+export const USAGE_METRIC_KEYS = {
+  NEWS_MONITORED: 'news.monitored',
+  NEWS_PREPARED: 'news.prepared',
+  NEWS_SUMMARIZED: 'news.summarized',
+  NEWS_TRANSLATED: 'news.translated',
+} as const;
+
+export type UsageMetricKey = (typeof USAGE_METRIC_KEYS)[keyof typeof USAGE_METRIC_KEYS];
+
+export const DEFAULT_USAGE_METRICS: Array<{
+  key: UsageMetricKey;
+  label: string;
+  unitLabel: string;
+  unitCost: number;
+  sortOrder: number;
+}> = [
+  { key: USAGE_METRIC_KEYS.NEWS_MONITORED, label: 'خبرهای پایش‌شده', unitLabel: 'توکن', unitCost: 1, sortOrder: 10 },
+  { key: USAGE_METRIC_KEYS.NEWS_PREPARED, label: 'خبرهای آماده‌شده', unitLabel: 'توکن', unitCost: 1, sortOrder: 20 },
+  { key: USAGE_METRIC_KEYS.NEWS_SUMMARIZED, label: 'خبرهای خلاصه‌شده', unitLabel: 'توکن', unitCost: 1, sortOrder: 30 },
+  { key: USAGE_METRIC_KEYS.NEWS_TRANSLATED, label: 'خبرهای ترجمه‌شده', unitLabel: 'توکن', unitCost: 1, sortOrder: 40 },
+];
 
 // Subscription plans
 export interface PlanLimits {

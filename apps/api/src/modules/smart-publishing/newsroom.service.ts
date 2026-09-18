@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { USAGE_METRIC_KEYS } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type UpdateFeedDto, type SourceType } from './dto/feed.dto';
@@ -14,6 +15,7 @@ import { IntegrationHealthService } from '../../common/services/integration-heal
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
 import { PlatformFeedService } from './platform-feed.service';
+import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
@@ -132,6 +134,7 @@ export class NewsroomService {
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
     private readonly platformFeeds: PlatformFeedService,
+    private readonly usageTracking: UsageTrackingService,
   ) {}
 
   private recordWorkflow(params: {
@@ -336,6 +339,9 @@ export class NewsroomService {
           status: 'new',
         })),
       }) : { count: 0 };
+      if (result.count > 0) {
+        await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_MONITORED, result.count);
+      }
       await this.prisma.newsFeed.update({ where: { id: feedId }, data: { lastFetchedAt: new Date(), lastError: '' } });
       await this.integrationHealth.success({
         tenantId,
@@ -444,12 +450,14 @@ export class NewsroomService {
           },
         });
         await this.recordWorkflow({ tenantId, id, fromStatus: article.status, toStatus: 'ready', action: 'prepared', title: `خبر «${updated.titleFa}» از منبع مشترک آماده شد` });
+        await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_PREPARED, 1);
         return updated;
       }
       await this.platformFeeds.prepareSharedArticle(article.platformFeedArticleId, tenantId);
       const refreshed = await this.findArticle(tenantId, id);
       if (refreshed.status === 'ready') {
         await this.recordWorkflow({ tenantId, id, fromStatus: article.status, toStatus: 'ready', action: 'prepared', title: `خبر «${refreshed.titleFa}» آماده شد` });
+        await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_PREPARED, 1);
       }
       return refreshed;
     }
@@ -485,6 +493,8 @@ export class NewsroomService {
         },
       });
       await this.integrationHealth.success({ tenantId, key: 'gapgpt', type: 'ai', name: 'GapGPT', latencyMs: Date.now() - startedAt, metadata: { operation: 'news-summary' } }).catch((healthError) => this.logger.warn(`GapGPT health could not be recorded: ${healthError instanceof Error ? healthError.message : 'unknown error'}`));
+      await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_SUMMARIZED, 1);
+      await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_PREPARED, 1);
       await this.recordWorkflow({ tenantId, id, fromStatus: 'processing', toStatus: 'ready', action: 'prepared', title: `خبر «${updated.titleFa}» آماده شد` });
       return updated;
     } catch (error) {
@@ -559,6 +569,7 @@ export class NewsroomService {
             part: index + 1,
             totalParts: chunks.length,
           }));
+          await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_TRANSLATED, 1);
         }
         contentFa = translated.join('\n\n');
       }

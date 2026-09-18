@@ -17,6 +17,7 @@ import type { AuthUser, TenantContext } from '../../common/decorators/params.dec
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { AddMemberDto } from './dto/add-member.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -111,6 +112,25 @@ export class TenantController {
   @Post('invites/accept')
   acceptInvite(@User() user: AuthUser, @Body() dto: AcceptInviteDto) {
     return this.tenantService.acceptInvite(user.id, dto);
+  }
+
+  @Post(':id/members')
+  @UseGuards(TenantGuard)
+  addMember(
+    @Param('id') id: string,
+    @Body() dto: AddMemberDto,
+    @User() user: AuthUser,
+    @TenantCtx() tenant: TenantContext,
+  ) {
+    this.assertTenantMatch(id, tenant.tenantId);
+    return this.tenantService.addMember(tenant.tenantId, dto, tenant.memberRole, user.id);
+  }
+
+  @Get(':id/usage')
+  @UseGuards(TenantGuard)
+  getUsage(@Param('id') id: string, @TenantCtx() tenant: TenantContext) {
+    this.assertTenantMatch(id, tenant.tenantId);
+    return this.tenantService.getUsage(tenant.tenantId);
   }
 
   @Get(':id/members')

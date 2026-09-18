@@ -8,6 +8,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PlatformModule } from './platform/platform.module';
+import { UsageTrackingModule } from './platform/usage/usage-tracking.module';
 import { BusinessModulesModule } from './modules/modules.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
@@ -30,6 +31,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     ]),
     PrismaModule,
     CommonModule,
+    UsageTrackingModule,
     PlatformModule,
     BusinessModulesModule,
   ],

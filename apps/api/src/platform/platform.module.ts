@@ -4,9 +4,11 @@ import { HealthModule } from './health/health.module';
 import { TenantModule } from './tenant/tenant.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformAdminModule } from './admin/platform-admin.module';
+import { UsageTrackingModule } from './usage/usage-tracking.module';
 
 @Module({
   imports: [
+    UsageTrackingModule,
     AuthModule,
     TenantModule,
     HealthModule,

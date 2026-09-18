@@ -11,6 +11,7 @@ import { PlatformTransferOwnershipDto } from './dto/platform-transfer-ownership.
 import { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
 import { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import { CreatePlatformFeedDto, UpdatePlatformFeedDto } from './dto/platform-feed.dto';
+import { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
 
 @Controller('platform')
 export class PlatformAdminController {
@@ -120,6 +121,21 @@ export class PlatformAdminController {
     @Body() dto: PlatformTransferOwnershipDto,
   ) {
     return this.service.transferOwnership(actor, id, dto.targetUserId);
+  }
+
+  @Get('usage-metrics')
+  listUsageMetrics(@User() actor: AuthUser) {
+    return this.service.listUsageMetrics(actor);
+  }
+
+  @Patch('usage-metrics')
+  updateUsageMetrics(@User() actor: AuthUser, @Body() dto: UpdateUsageMetricsDto) {
+    return this.service.updateUsageMetrics(actor, dto);
+  }
+
+  @Get('organizations/:id/usage')
+  organizationUsage(@User() actor: AuthUser, @Param('id') id: string) {
+    return this.service.getOrganizationUsage(actor, id);
   }
 
   @Get('feeds')

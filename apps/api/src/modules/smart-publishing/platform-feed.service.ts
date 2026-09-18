@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { USAGE_METRIC_KEYS } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SourceReaderService } from './source-reader.service';
@@ -7,6 +8,7 @@ import { PublishingSettingsService } from './publishing-settings.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
 import type { CreatePlatformFeedDto, UpdatePlatformFeedDto } from '../../platform/admin/dto/platform-feed.dto';
 import type { SourceType } from './dto/feed.dto';
+import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 
 const PLATFORM_ARTICLE_MAX_AGE_DAYS = 10;
 
@@ -42,6 +44,7 @@ export class PlatformFeedService {
     private readonly sourceReader: SourceReaderService,
     private readonly gapGpt: GapGptClient,
     private readonly settings: PublishingSettingsService,
+    private readonly usageTracking: UsageTrackingService,
   ) {}
 
   listAll() {
@@ -297,6 +300,10 @@ export class PlatformFeedService {
       })),
     });
 
+    if (result.count > 0) {
+      await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_MONITORED, result.count);
+    }
+
     for (const article of articles.filter((row) => row.prepStatus === 'ready')) {
       await this.prisma.newsArticle.updateMany({
         where: { tenantId, platformFeedArticleId: article.id },
@@ -340,6 +347,20 @@ export class PlatformFeedService {
         status: 'ready',
       },
     });
+
+    const subscribedTenants = await this.prisma.newsArticle.findMany({
+      where: { platformFeedArticleId },
+      select: { tenantId: true },
+      distinct: ['tenantId'],
+    });
+    await Promise.all(
+      subscribedTenants.map(({ tenantId }) =>
+        Promise.all([
+          this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_SUMMARIZED, 1),
+          this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_PREPARED, 1),
+        ]),
+      ),
+    );
 
     return updated;
   }

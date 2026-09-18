@@ -1,12 +1,11 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ORGANIZATIONAL_ROLES } from '@deska/shared';
-
-const EDITABLE_TENANT_ROLES = [...ORGANIZATIONAL_ROLES] as const;
+import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOrganizationAssignablePermission } from '../validators/organization-permission.validator';
 
 export class UpdateMemberDto {
   @IsOptional()
-  @IsIn(EDITABLE_TENANT_ROLES, { message: 'نقش عضویت معتبر نیست' })
-  role?: string;
+  @IsArray()
+  @IsOrganizationAssignablePermission({ each: true })
+  permissions?: string[];
 
   @IsOptional()
   @IsString()

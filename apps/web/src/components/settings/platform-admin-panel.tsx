@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Crown, Search, Trash2, UserPlus, Users } from 'lucide-react';
-import { PLATFORM_ROLES, TENANT_ROLE_LABELS, type TenantRole } from '@deska/shared';
+import { Building2, Crown, Gauge, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { PLATFORM_ROLES, TENANT_ROLE_LABELS, formatPersianDigits, type TenantRole } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,22 @@ type PlatformUser = { id: string; name: string; email: string; role: string; sta
 type Organization = { id: string; name: string; slug: string; status: string; primaryOwner?: { id: string; name: string } | null; _count: { members: number } };
 type ListResult<T> = { items: T[]; total: number };
 type Overview = { users: number; activeUsers: number; organizations: number; activeOrganizations: number; memberships: number };
-type OrganizationDetail = Organization & { members: Array<{ userId: string; role: string; status: string; user: { name: string; email: string } }> };
+type OrganizationDetail = Organization & {
+  members: Array<{ userId: string; role: string; status: string; user: { name: string; email: string } }>;
+};
+type UsageMetricDefinition = {
+  key: string;
+  label: string;
+  unitLabel: string;
+  unitCost: number;
+  enabled: boolean;
+  sortOrder: number;
+};
+type OrganizationUsageSummary = {
+  tenantId: string;
+  metrics: Array<UsageMetricDefinition & { quantity: number; totalCost: number }>;
+  totalCost: number;
+};
 
 function StatusSelect({ value, onChange, kind }: { value: string; onChange: (value: string) => void; kind: 'user' | 'organization' }) {
   return (
@@ -30,7 +45,7 @@ function StatusSelect({ value, onChange, kind }: { value: string; onChange: (val
 
 export function PlatformAdminPanel() {
   const { isSuperAdmin } = useAuth();
-  const [tab, setTab] = useState<'users' | 'organizations'>('users');
+  const [tab, setTab] = useState<'users' | 'organizations' | 'usage'>('users');
   const [query, setQuery] = useState('');
   const [overview, setOverview] = useState<Overview>();
   const [users, setUsers] = useState<PlatformUser[]>([]);
@@ -43,6 +58,9 @@ export function PlatformAdminPanel() {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
+  const [usageMetrics, setUsageMetrics] = useState<UsageMetricDefinition[]>([]);
+  const [savingUsage, setSavingUsage] = useState(false);
+  const [organizationUsage, setOrganizationUsage] = useState<OrganizationUsageSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,17 +71,23 @@ export function PlatformAdminPanel() {
         apiFetch<Overview>('/platform/overview', { skipTenant: true }),
         tab === 'users'
           ? apiFetch<ListResult<PlatformUser>>(`/platform/users${suffix}`, { skipTenant: true })
-          : apiFetch<ListResult<Organization>>(`/platform/organizations${suffix}`, { skipTenant: true }),
+          : tab === 'organizations'
+            ? apiFetch<ListResult<Organization>>(`/platform/organizations${suffix}`, { skipTenant: true })
+            : Promise.resolve({ items: [], total: 0 } as ListResult<PlatformUser>),
       ]);
       setOverview(summary);
       if (tab === 'users') setUsers((result as ListResult<PlatformUser>).items);
-      else setOrganizations((result as ListResult<Organization>).items);
+      else if (tab === 'organizations') setOrganizations((result as ListResult<Organization>).items);
+      else if (tab === 'usage' && isSuperAdmin) {
+        const metrics = await apiFetch<UsageMetricDefinition[]>('/platform/usage-metrics', { skipTenant: true });
+        setUsageMetrics(metrics);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'دریافت اطلاعات انجام نشد');
     } finally {
       setLoading(false);
     }
-  }, [query, tab]);
+  }, [query, tab, isSuperAdmin]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 250);
@@ -102,8 +126,12 @@ export function PlatformAdminPanel() {
     }
   };
   const openOrganization = async (id: string) => {
-    const result = await apiFetch<OrganizationDetail>(`/platform/organizations/${id}`, { skipTenant: true });
+    const [result, usage] = await Promise.all([
+      apiFetch<OrganizationDetail>(`/platform/organizations/${id}`, { skipTenant: true }),
+      apiFetch<OrganizationUsageSummary>(`/platform/organizations/${id}/usage`, { skipTenant: true }),
+    ]);
     setDetail(result);
+    setOrganizationUsage(usage);
     setTargetOwner(result.primaryOwner?.id ?? '');
   };
   const transferOwnership = async () => {
@@ -148,7 +176,10 @@ export function PlatformAdminPanel() {
         skipTenant: true,
         body: { confirmIrreversible: true, confirmCascade: true, confirmationText: organization.slug },
       });
-      if (detail?.id === organization.id) setDetail(undefined);
+      if (detail?.id === organization.id) {
+        setDetail(undefined);
+        setOrganizationUsage(null);
+      }
       await load();
       if (!result.storageCleanupComplete) {
         setError('اطلاعات سازمان حذف شد، اما پاک‌سازی بخشی از فایل‌های فیزیکی نیازمند بررسی گزارش سرور است.');
@@ -157,6 +188,23 @@ export function PlatformAdminPanel() {
       setError(reason instanceof Error ? reason.message : 'حذف سازمان انجام نشد');
     } finally {
       setDeletingId('');
+    }
+  };
+
+  const saveUsageMetrics = async () => {
+    setSavingUsage(true);
+    setError('');
+    try {
+      const metrics = await apiFetch<UsageMetricDefinition[]>('/platform/usage-metrics', {
+        method: 'PATCH',
+        skipTenant: true,
+        body: { metrics: usageMetrics },
+      });
+      setUsageMetrics(metrics);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'ذخیره تعرفه مصرف انجام نشد');
+    } finally {
+      setSavingUsage(false);
     }
   };
 
@@ -196,6 +244,12 @@ export function PlatformAdminPanel() {
                 <Building2 className="h-4 w-4" />
                 سازمان‌ها
               </Button>
+              {isSuperAdmin && (
+                <Button variant={tab === 'usage' ? 'primary' : 'outline'} onClick={() => setTab('usage')}>
+                  <Gauge className="h-4 w-4" />
+                  تعرفه مصرف
+                </Button>
+              )}
             </div>
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <div className="relative min-w-56 flex-1 sm:w-80">
@@ -259,7 +313,7 @@ export function PlatformAdminPanel() {
                 </article>
               ))}
             </div>
-          ) : (
+          ) : tab === 'organizations' ? (
             <div className="space-y-3">
               {organizations.map((organization) => (
                 <article key={organization.id} className="rounded-2xl border p-4">
@@ -280,6 +334,68 @@ export function PlatformAdminPanel() {
                 </article>
               ))}
             </div>
+          ) : (
+            <div className="space-y-4">
+              {usageMetrics.map((metric, index) => (
+                <div key={metric.key} className="grid gap-3 rounded-2xl border p-4 md:grid-cols-4">
+                  <Input
+                    label="عنوان مصرف"
+                    value={metric.label}
+                    onChange={(event) =>
+                      setUsageMetrics((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, label: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <Input
+                    label="واحد"
+                    value={metric.unitLabel}
+                    onChange={(event) =>
+                      setUsageMetrics((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, unitLabel: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <Input
+                    label="هزینه هر واحد"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={String(metric.unitCost)}
+                    onChange={(event) =>
+                      setUsageMetrics((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, unitCost: Number(event.target.value) || 0 }
+                            : item,
+                        ),
+                      )
+                    }
+                  />
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={metric.enabled}
+                      onChange={(event) =>
+                        setUsageMetrics((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, enabled: event.target.checked } : item,
+                          ),
+                        )
+                      }
+                    />
+                    فعال
+                  </label>
+                </div>
+              ))}
+              <Button onClick={() => void saveUsageMetrics()} isLoading={savingUsage}>
+                ذخیره تعرفه‌ها
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -288,7 +404,8 @@ export function PlatformAdminPanel() {
           <CardHeader>
             <CardTitle>مالکیت {detail.name}</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap items-end gap-3">
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-end gap-3">
             {isSuperAdmin ? (
               <>
                 <label className="min-w-72 flex-1 text-sm">
@@ -307,7 +424,29 @@ export function PlatformAdminPanel() {
             ) : (
               <p className="flex-1 text-sm text-slate-600">انتقال مالکیت فقط توسط مدیر کل سیستم انجام می‌شود.</p>
             )}
-            <Button variant="ghost" onClick={() => setDetail(undefined)}>بستن</Button>
+            <Button variant="ghost" onClick={() => { setDetail(undefined); setOrganizationUsage(null); }}>بستن</Button>
+            </div>
+
+            {organizationUsage && (
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-semibold text-slate-900">مصرف سازمان</h4>
+                  <Badge variant="info">
+                    جمع: {formatPersianDigits(String(organizationUsage.totalCost))} توکن
+                  </Badge>
+                </div>
+                <div className="space-y-2">
+                  {organizationUsage.metrics.map((metric) => (
+                    <div key={metric.key} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                      <span>{metric.label}</span>
+                      <span className="text-slate-600">
+                        {formatPersianDigits(String(metric.quantity))} × {formatPersianDigits(String(metric.unitCost))} = {formatPersianDigits(String(metric.totalCost))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
