@@ -34,6 +34,7 @@ interface PlatformFeed {
   enabled: boolean;
   lastFetchedAt: string | null;
   lastError: string;
+  _count?: { subscriptions: number; articles: number };
 }
 
 interface FeedForm {
@@ -237,7 +238,12 @@ export default function PlatformFeedsPage() {
                         <div>هر {feed.pollIntervalMinutes} دقیقه</div>
                         <div className="mt-1 text-xs text-slate-400">{feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}</div>
                       </td>
-                      <td className="px-5 py-4"><Badge variant={feed.enabled ? 'success' : 'default'}>{feed.enabled ? 'فعال' : 'غیرفعال'}</Badge></td>
+                      <td className="px-5 py-4">
+                        <Badge variant={feed.enabled ? 'success' : 'default'}>{feed.enabled ? 'فعال' : 'غیرفعال'}</Badge>
+                        {(feed._count?.subscriptions ?? 0) > 0 && (
+                          <div className="mt-1 text-xs text-slate-400">{feed._count?.subscriptions} سازمان</div>
+                        )}
+                      </td>
                       <td className="px-5 py-4">
                         <div className="flex gap-1">
                           <Button size="sm" variant="ghost" isLoading={busy === `test-${feed.id}`} onClick={async () => {
@@ -254,9 +260,17 @@ export default function PlatformFeedsPage() {
                           }}><RefreshCw className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" onClick={() => openEdit(feed)}>ویرایش</Button>
                           <Button size="sm" variant="ghost" className="text-red-600" isLoading={busy === `delete-${feed.id}`} onClick={async () => {
-                            if (!window.confirm(`منبع «${feed.name}» حذف شود؟`)) return;
+                            const subscriptionCount = feed._count?.subscriptions ?? 0;
+                            const enabledHint = subscriptionCount > 0
+                              ? `\n\n${subscriptionCount} سازمان این منبع را در لیست دارند. مطالب قبلی در اتاق خبر سازمان‌ها حفظ می‌شود.`
+                              : '';
+                            if (!window.confirm(`منبع «${feed.name}» حذف شود؟${enabledHint}`)) return;
                             setBusy(`delete-${feed.id}`);
-                            try { await apiFetch(`/platform/feeds/${feed.id}`, { method: 'DELETE', skipTenant: true }); await load(); }
+                            try {
+                              const result = await apiFetch<{ message?: string }>(`/platform/feeds/${feed.id}`, { method: 'DELETE', skipTenant: true });
+                              setNotice(result.message || 'منبع پیش‌فرض حذف شد.');
+                              await load();
+                            }
                             catch (reason) { setNotice(reason instanceof Error ? reason.message : 'حذف انجام نشد'); }
                             finally { setBusy(''); }
                           }}><Trash2 className="h-4 w-4" /></Button>

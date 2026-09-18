@@ -29,7 +29,17 @@ export class PlatformFeedService {
   ) {}
 
   listAll() {
-    return this.prisma.platformFeed.findMany({ orderBy: { createdAt: 'desc' } });
+    return this.prisma.platformFeed.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        _count: {
+          select: {
+            subscriptions: true,
+            articles: true,
+          },
+        },
+      },
+    });
   }
 
   async create(data: CreatePlatformFeedDto) {
@@ -99,9 +109,24 @@ export class PlatformFeedService {
   }
 
   async delete(id: string) {
-    await this.findFeed(id);
+    const feed = await this.findFeed(id);
+    const [subscriptionCount, enabledSubscriptionCount, articleCount] = await Promise.all([
+      this.prisma.tenantPlatformFeed.count({ where: { platformFeedId: id } }),
+      this.prisma.tenantPlatformFeed.count({ where: { platformFeedId: id, enabled: true } }),
+      this.prisma.platformFeedArticle.count({ where: { platformFeedId: id } }),
+    ]);
     await this.prisma.platformFeed.delete({ where: { id } });
-    return { ok: true };
+    return {
+      ok: true,
+      removed: {
+        subscriptions: subscriptionCount,
+        enabledSubscriptions: enabledSubscriptionCount,
+        sharedArticles: articleCount,
+      },
+      message: enabledSubscriptionCount > 0
+        ? `منبع «${feed.name}» حذف شد. ${enabledSubscriptionCount} سازمان آن را فعال داشتند؛ مطالب قبلی در اتاق خبر سازمان‌ها حفظ می‌شود.`
+        : `منبع «${feed.name}» حذف شد.`,
+    };
   }
 
   async test(id: string) {
