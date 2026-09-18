@@ -25,10 +25,12 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { MfaDisableDto, MfaEnableDto, MfaVerifyDto } from './dto/mfa.dto';
 import { MfaService } from './mfa.service';
+import { ApiTags, ApiOperation, ApiResponse } from '../../common/decorators/swagger.decorator';
 
 const ACCESS_COOKIE_NAME = 'deska_access_token';
 const REFRESH_COOKIE_NAME = 'deska_refresh_token';
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -40,6 +42,8 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
+  @ApiOperation({ summary: 'Login with email/password; may require MFA step' })
+  @ApiResponse({ status: 200, description: 'Authenticated user or MFA challenge' })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,

@@ -6,7 +6,9 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { DashboardService } from './dashboard.service';
+import { ApiDeskaAuth } from '../../common/decorators/swagger.decorator';
 
+@ApiDeskaAuth('dashboard')
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 export class DashboardController {

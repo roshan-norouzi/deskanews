@@ -10,7 +10,6 @@ import { IntegrationHealthService } from './services/integration-health.service'
 import { DistributedLockService } from './services/distributed-lock.service';
 import { SignedUrlService } from './services/signed-url.service';
 import { AssetAccessService } from './services/asset-access.service';
-import { LocalStorageService } from './services/local-storage.service';
 import { ObjectStorageService } from './services/object-storage.service';
 
 @Global()
@@ -25,7 +24,6 @@ import { ObjectStorageService } from './services/object-storage.service';
     DistributedLockService,
     SignedUrlService,
     AssetAccessService,
-    LocalStorageService,
     ObjectStorageService,
   ],
   exports: [
@@ -38,7 +36,6 @@ import { ObjectStorageService } from './services/object-storage.service';
     DistributedLockService,
     SignedUrlService,
     AssetAccessService,
-    LocalStorageService,
     ObjectStorageService,
   ],
 })

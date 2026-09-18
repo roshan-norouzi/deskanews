@@ -11,7 +11,9 @@ import { PlatformTransferOwnershipDto } from './dto/platform-transfer-ownership.
 import { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
 import { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import { CreatePlatformFeedDto, UpdatePlatformFeedDto } from './dto/platform-feed.dto';
+import { ApiDeskaAuth } from '../../common/decorators/swagger.decorator';
 
+@ApiDeskaAuth('platform')
 @Controller('platform')
 export class PlatformAdminController {
   constructor(

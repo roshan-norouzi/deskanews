@@ -6,10 +6,27 @@ const { GapGptClient, isLikelyPersianNews } = require('../dist/modules/smart-pub
 const { NewsroomService } = require('../dist/modules/smart-publishing/newsroom.service');
 const { SocialNetworkPublisherService } = require('../dist/modules/smart-publishing/social-network-publisher.service');
 const { SocialStudioService } = require('../dist/modules/smart-publishing/social-studio.service');
+const { NewsroomAutomationService } = require('../dist/modules/smart-publishing/newsroom-automation.service');
+const { SocialAutomationService } = require('../dist/modules/smart-publishing/social-automation.service');
 const { SocialCoverRendererService } = require('../dist/modules/smart-publishing/social-cover-renderer.service');
 
 const integrationHealth = { success: async () => ({}), failure: async () => ({}) };
 const workflow = { record: async () => ({}) };
+const mockNewsroomAutomation = {
+  queueAutomation: async () => ({ prepared: 0, sentToSocial: 0, published: 0 }),
+  purgeRejected: async () => ({ count: 0 }),
+};
+const mockSocialAutomation = {
+  queueAutomation: async () => ({ prepared: 0, generated: 0, published: 0 }),
+  queueFeaturedImageFallback: async () => ({ queued: false }),
+};
+const mockStorage = {
+  key: (_kind, filename) => `social-publishing/${filename}`,
+  put: async () => {},
+  get: async () => Buffer.alloc(0),
+  delete: async () => {},
+};
+const mockSignedUrls = { sign: (path) => path };
 const platformFeeds = {
   listForTenant: async () => [],
   ensureSubscriptions: async () => {},
@@ -110,6 +127,7 @@ test('newsroom preparation fills a missing featured image from article metadata'
     integrationHealth,
     workflow,
     platformFeeds,
+    mockNewsroomAutomation,
   );
 
   await newsroom.summarize('tenant-a', article.id);
@@ -127,7 +145,7 @@ test('source health test returns the five latest items without saving them', asy
   }));
   const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '' }) } };
   const sourceReader = { readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, mockNewsroomAutomation);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 
@@ -149,7 +167,7 @@ test('source settings are stored independently for each source', async () => {
     platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
   const sourceReader = { discoverFeedUrl: async () => 'https://source.example/rss.xml' };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, mockNewsroomAutomation);
 
   await newsroom.addFeed('tenant-a', { name: 'منبع اختصاصی', url: 'https://source.example', purpose: 'news-room', sourceType: 'website', includeWords: ['فناوری'], pollIntervalMinutes: 15, autoPoll: true, autoPrepare: false, autoPublish: true, autoSendSocial: false });
   await newsroom.updateFeed('tenant-a', feed.id, { includeWords: ['اقتصاد'], pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
@@ -270,7 +288,7 @@ test('newsroom publishes with the category selected from live WordPress categori
     categories: async () => categories,
     publish: async (_settings, input) => { publishInput = input; return { postId: '42', url: 'https://destination.example/post' }; },
   };
-  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, mockNewsroomAutomation);
 
   await newsroom.publish('tenant-a', article.id);
 
@@ -300,7 +318,7 @@ test('newsroom never publishes an RSS summary as the full WordPress article', as
     readArticleOrFallback: async () => ({ text: article.originalSummary, featuredImageUrl: '', contentSource: 'feed', isFullText: false }),
   };
   const wordpress = { validateSettings: () => undefined, categories: async () => [] };
-  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, mockNewsroomAutomation);
 
   await assert.rejects(() => newsroom.publish('tenant-a', article.id), /فقط چکیده خبر را ارائه می‌کند/);
 });
@@ -325,9 +343,9 @@ test('news automation durably queues social routing instead of publishing to Wor
       return { created: true, job: { id: 'job-a' } };
     },
   };
-  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds);
+  const automation = new NewsroomAutomationService(prisma, settings, jobs, { runExclusive: async (_id, fn) => fn() });
 
-  const result = await newsroom.queueAutomation('tenant-a', 3);
+  const result = await automation.queueAutomation('tenant-a', 3);
 
   assert.equal(queuedJobs.length, 1);
   assert.equal(queuedJobs[0].type, 'news.send-social');
@@ -397,9 +415,9 @@ test('social automation durably queues a cover with the selected default templat
     social_auto_publish_telegram: 'false',
   }) };
   const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'job-cover' } }; } };
-  const studio = new SocialStudioService(prisma, settings, {}, {}, jobs, integrationHealth, workflow);
+  const automation = new SocialAutomationService(prisma, settings, jobs, { runExclusive: async (_id, fn) => fn() });
 
-  const result = await studio.queueAutomation('tenant-a', 3);
+  const result = await automation.queueAutomation('tenant-a', 3);
 
   assert.equal(queuedJobs.length, 1);
   assert.equal(queuedJobs[0].type, 'social.cover');
@@ -429,9 +447,9 @@ test('social automation queues featured-image publishing after cover generation 
     social_auto_publish_facebook: 'false',
   }) };
   const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'job-fallback' } }; } };
-  const studio = new SocialStudioService(prisma, settings, {}, {}, jobs, integrationHealth, workflow);
+  const automation = new SocialAutomationService(prisma, settings, jobs, { runExclusive: async (_id, fn) => fn() });
 
-  const result = await studio.queueFeaturedImageFallback('tenant-a', 'social-fallback-a');
+  const result = await automation.queueFeaturedImageFallback('tenant-a', 'social-fallback-a');
 
   assert.equal(result.queued, true);
   assert.deepEqual(result.networks, ['telegram']);
@@ -496,7 +514,7 @@ test('automatic publisher prefers a generated cover over the source image', asyn
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => { bridgeCalls += 1; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
   };
-  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow);
+  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, mockStorage, mockSignedUrls);
   publisher.publicMedia = async () => ({ buffer: Buffer.from('generated'), contentType: 'image/png' });
 
   const result = await publisher.publishAutomatically('tenant-a', article.id, ['telegram']);
@@ -527,7 +545,7 @@ test('automatic publisher falls back to the featured image when generated media 
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async (_url, options) => { bridgeCalls += 1; bridgePhoto = JSON.parse(options.body).photo_base64; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
   };
-  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow);
+  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, mockStorage, mockSignedUrls);
   publisher.publicMedia = async () => { throw new Error('generated file is unavailable'); };
 
   const result = await publisher.publishAutomatically('tenant-a', article.id, ['telegram']);
@@ -559,7 +577,7 @@ test('explicit featured-image fallback bypasses a stale generated cover', async 
     proxyImage: async () => { featuredImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => ({ ok: true, status: 200, json: () => ({ ok: true }) }),
   };
-  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow);
+  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, mockStorage, mockSignedUrls);
   publisher.publicMedia = async () => { generatedImageCalls += 1; return { buffer: Buffer.from('generated'), contentType: 'image/png' }; };
 
   const result = await publisher.publishAutomatically('tenant-a', article.id, ['telegram'], true);

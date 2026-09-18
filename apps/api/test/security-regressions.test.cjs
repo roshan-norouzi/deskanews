@@ -9,6 +9,11 @@ const { TenantService } = require('../dist/platform/tenant/tenant.service');
 const { PlatformAdminService } = require('../dist/platform/admin/platform-admin.service');
 const { PublishingSettingsService } = require('../dist/modules/smart-publishing/publishing-settings.service');
 const { SocialStudioService } = require('../dist/modules/smart-publishing/social-studio.service');
+const { SocialAutomationService } = require('../dist/modules/smart-publishing/social-automation.service');
+const mockSocialAutomation = {
+  queueAutomation: async () => ({ prepared: 0, generated: 0, published: 0 }),
+  queueFeaturedImageFallback: async () => ({ queued: false }),
+};
 const { AuthService } = require('../dist/platform/auth/auth.service');
 const mockMfa = {
   isSetupRequired: () => false,
@@ -290,14 +295,17 @@ test('a prepared newsroom article is converted directly into ready social conten
       category: 'جهان',
     }),
   };
+  const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'publish-job-a' } }; } };
+  const automation = new SocialAutomationService(prisma, settings, jobs, { runExclusive: async (_id, fn) => fn() });
   const service = new SocialStudioService(
     prisma,
     settings,
     gapGpt,
     sourceReader,
-    { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'publish-job-a' } }; } },
+    jobs,
     { success: async () => ({}), failure: async () => ({}) },
     { record: async () => ({}) },
+    automation,
   );
 
   const result = await service.sendNewsToStudio('tenant-a', 'news-a');
@@ -335,6 +343,7 @@ test('archived social articles are hidden from the default list', async () => {
     {},
     { success: async () => ({}), failure: async () => ({}) },
     { record: async () => ({}) },
+    mockSocialAutomation,
   );
 
   await service.articles('tenant-a');

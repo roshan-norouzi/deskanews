@@ -23,6 +23,9 @@ import { SourceReaderService } from './source-reader.service';
 import { SocialNetworkPublisherService } from './social-network-publisher.service';
 import { PublishingOperationsService } from './publishing-operations.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
+import { ApiDeskaAuth } from '../../common/decorators/swagger.decorator';
+
+@ApiDeskaAuth('publishing')
 @Controller('publishing')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 @RequirePermission('publishing.view')

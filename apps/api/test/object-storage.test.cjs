@@ -9,6 +9,13 @@ test('storage object keys stay tenant scoped and basename safe', () => {
   assert.equal(storageObjectKey('social-publishing', '../escape.png'), 'social-publishing/escape.png');
 });
 
+test('tenant storage prefixes cover fonts and social paths', () => {
+  assert.deepEqual(
+    require('../dist/common/services/object-storage.types').tenantStoragePrefix('tenant-a'),
+    ['tenant-a/', 'fonts/tenant-a/', 'cover-images/tenant-a/', 'social-publishing/tenant-a/'],
+  );
+});
+
 test('object storage local backend writes and reads bytes', async () => {
   const { ObjectStorageService } = require('../dist/common/services/object-storage.service');
   const previousStoragePath = process.env.STORAGE_PATH;

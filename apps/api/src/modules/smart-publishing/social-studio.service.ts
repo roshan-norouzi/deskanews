@@ -1,30 +1,14 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
-import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { entryFilterText, matchesWordFilters } from './feed-word-filter';
-import type { SocialNetwork } from './social-network-publisher.service';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
-import { DistributedLockService, SCHEDULER_LOCK_IDS } from '../../common/services/distributed-lock.service';
-
-const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
-
-function settingEnabled(value: string | undefined, fallback = false): boolean {
-  return value === 'true' || (value === undefined && fallback);
-}
-
-function sourceBoolean(value: boolean | null | undefined, fallback: boolean): boolean {
-  return value === null || value === undefined ? fallback : value;
-}
-
-function sourceInterval(value: number | null | undefined, fallback: number): number {
-  return Number.isInteger(value) && value! >= 5 && value! <= 1440 ? value! : fallback;
-}
+import { socialFeedReadTarget } from './feed-target.helpers';
+import { SocialAutomationService } from './social-automation.service';
 
 function renderTemplate(template: string, values: Record<string, string>): string {
   return template.replace(/\{([a-z_]+)\}/gi, (match, key: string) => values[key] ?? match).trim();
@@ -48,28 +32,9 @@ function likelyImageUrl(value: string | null | undefined): string | null {
   return null;
 }
 
-function automaticCoverTemplateId(settings: PublishingSettings): string {
-  const requested = settings.social_auto_image_template_id?.trim();
-  try {
-    const library = JSON.parse(settings.social_image_templates || '') as {
-      defaultTemplateId?: unknown;
-      templates?: Array<{ id?: unknown }>;
-    };
-    const ids = new Set((Array.isArray(library.templates) ? library.templates : [])
-      .map((template) => typeof template.id === 'string' ? template.id : '')
-      .filter(Boolean));
-    if (requested && ids.has(requested)) return requested;
-    if (typeof library.defaultTemplateId === 'string' && ids.has(library.defaultTemplateId)) return library.defaultTemplateId;
-    const first = ids.values().next().value;
-    if (typeof first === 'string') return first;
-  } catch { /* use the legacy template below */ }
-  return requested || 'default';
-}
-
 @Injectable()
 export class SocialStudioService {
   private readonly logger = new Logger(SocialStudioService.name);
-  private maintenanceRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,7 +44,7 @@ export class SocialStudioService {
     private readonly jobs: AutomationJobService,
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
-    private readonly locks: DistributedLockService,
+    private readonly automation: SocialAutomationService,
   ) {}
 
   private recordWorkflow(params: {
@@ -151,9 +116,8 @@ export class SocialStudioService {
       const settings = await this.settings.getRaw(tenantId);
       const maxAgeDays = Number(settings.social_max_age_days || 10);
       const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
-      const readUrl = feed.sourceType === 'website' && feed.resolvedFeedUrl ? feed.resolvedFeedUrl : feed.url;
-      const readType = feed.sourceType === 'website' && feed.resolvedFeedUrl ? 'rss' : (feed.sourceType || 'rss');
-      const entries = (await this.sourceReader.readSource(readType, readUrl))
+      const target = socialFeedReadTarget(feed);
+      const entries = (await this.sourceReader.readSource(target.sourceType, target.url))
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const enrichedEntries = await Promise.all(entries.map(async (entry) => ({
@@ -525,173 +489,11 @@ export class SocialStudioService {
     return this.prisma.socialArticle.update({ where: { id }, data: { title: normalized, captionText: caption, rewrittenText: caption, generatedImageUrl: null, generatedImageTemplateId: null, status: article.status === 'archived' ? 'archived' : 'ready' } });
   }
 
-  @Interval('smart-publishing-social-maintenance', 60_000)
-  async maintenance() {
-    if (this.maintenanceRunning) return;
-    this.maintenanceRunning = true;
-    try {
-      await this.locks.runExclusive(SCHEDULER_LOCK_IDS.socialMaintenance, async () => {
-        const activeTenants = await this.prisma.tenant.findMany({
-        where: { isActive: true, status: 'active' },
-        select: { id: true },
-      });
-      const enabledTenantIds = activeTenants.map((row) => row.id);
-      if (!enabledTenantIds.length) return;
-
-      const staleBefore = new Date(Date.now() - PROCESSING_TIMEOUT_MS);
-      await this.prisma.socialArticle.updateMany({
-        where: { tenantId: { in: enabledTenantIds }, status: 'processing', processingStartedAt: { lte: staleBefore } },
-        data: { status: 'pending', processingStartedAt: null },
-      });
-      const feeds = await this.prisma.newsFeed.findMany({ where: { tenantId: { in: enabledTenantIds }, purpose: 'social-studio', enabled: true }, orderBy: { lastFetchedAt: 'asc' } });
-      for (const feed of feeds) {
-        const settings = await this.settings.getRaw(feed.tenantId);
-        const intervalMs = sourceInterval(feed.pollIntervalMinutes, Number(settings.social_poll_interval_minutes || 240)) * 60_000;
-        if (sourceBoolean(feed.autoPoll, settingEnabled(settings.social_auto_poll, true)) && (!feed.lastFetchedAt || Date.now() - feed.lastFetchedAt.getTime() >= intervalMs)) {
-          await this.jobs.enqueue({
-            tenantId: feed.tenantId,
-            type: 'social.feed.fetch',
-            payload: { feedId: feed.id },
-            dedupeKey: `feed:${feed.id}:fetch`,
-            retryDead: true,
-            priority: 20,
-            maxAttempts: 6,
-          });
-        }
-      }
-      for (const tenantId of enabledTenantIds) await this.queueAutomation(tenantId, 25);
-      });
-    } catch (error) {
-      this.logger.error(`Social studio maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      this.maintenanceRunning = false;
-    }
+  queueAutomation(tenantId: string, limit = 25) {
+    return this.automation.queueAutomation(tenantId, limit);
   }
 
-  private autoPublishNetworks(settings: PublishingSettings): SocialNetwork[] {
-    const networks: SocialNetwork[] = [];
-    if (settingEnabled(settings.social_auto_publish_telegram)) networks.push('telegram');
-    if (settingEnabled(settings.social_auto_publish_instagram)) networks.push('instagram');
-    if (settingEnabled(settings.social_auto_publish_linkedin)) networks.push('linkedin');
-    if (settingEnabled(settings.social_auto_publish_facebook)) networks.push('facebook');
-    return networks;
+  queueFeaturedImageFallback(tenantId: string, articleId: string) {
+    return this.automation.queueFeaturedImageFallback(tenantId, articleId);
   }
-
-  async queueAutomation(tenantId: string, limit = 25) {
-    const settings = await this.settings.getRaw(tenantId);
-    const prepared = await this.enqueuePending(tenantId, limit, settingEnabled(settings.social_auto_prepare));
-    const autoGenerateImage = settingEnabled(settings.social_auto_generate_image);
-    const templateId = automaticCoverTemplateId(settings);
-    const generated = autoGenerateImage
-      ? await this.enqueueReadyImages(tenantId, templateId, limit)
-      : 0;
-    const networks = this.autoPublishNetworks(settings);
-    const published = networks.length ? await this.enqueueReadyPublishing(tenantId, networks, limit, autoGenerateImage) : 0;
-    return { prepared, generated, published };
-  }
-
-  async queueFeaturedImageFallback(tenantId: string, articleId: string) {
-    const settings = await this.settings.getRaw(tenantId);
-    const networks = this.autoPublishNetworks(settings);
-    if (!networks.length) return { queued: false, reason: 'automatic-publishing-disabled' };
-    const article = await this.prisma.socialArticle.findFirst({
-      where: { id: articleId, tenantId, status: 'ready' },
-      select: {
-        id: true, featuredImageUrl: true,
-        telegramSentAt: true, instagramSentAt: true, linkedinSentAt: true, facebookSentAt: true,
-      },
-    });
-    if (!article?.featuredImageUrl) return { queued: false, reason: 'featured-image-missing' };
-    const pending = networks.filter((network) => {
-      if (network === 'telegram') return !article.telegramSentAt;
-      if (network === 'instagram') return !article.instagramSentAt;
-      if (network === 'linkedin') return !article.linkedinSentAt;
-      return !article.facebookSentAt;
-    });
-    if (!pending.length) return { queued: false, reason: 'already-published' };
-    const result = await this.jobs.enqueue({
-      tenantId,
-      type: 'social.publish',
-      payload: { articleId: article.id, networks: pending, imageFallback: 'featured' },
-      dedupeKey: `social:${article.id}:publish:${[...pending].sort().join(',')}`,
-      priority: 4,
-      maxAttempts: 6,
-    });
-    return { queued: result.created, networks: pending };
-  }
-
-  private async enqueuePending(tenantId: string, limit: number, fallback: boolean) {
-    const rows = await this.prisma.socialArticle.findMany({
-      where: { tenantId, status: 'pending' },
-      orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
-      take: Math.max(limit * 4, 100),
-      select: { id: true, feed: { select: { autoPrepare: true } } },
-    });
-    let queued = 0;
-    for (const row of rows.filter((item) => sourceBoolean(item.feed?.autoPrepare, fallback)).slice(0, limit)) {
-      const result = await this.jobs.enqueue({
-        tenantId,
-        type: 'social.prepare',
-        payload: { articleId: row.id },
-        dedupeKey: `social:${row.id}:prepare`,
-        priority: 10,
-      });
-      if (result.created) queued += 1;
-    }
-    return queued;
-  }
-
-  private async enqueueReadyImages(tenantId: string, templateId: string, limit: number) {
-    const rows = await this.prisma.socialArticle.findMany({
-      where: {
-        tenantId,
-        status: 'ready',
-        OR: [{ generatedImageUrl: null }, { generatedImageTemplateId: null }, { generatedImageTemplateId: { not: templateId } }],
-      },
-      orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
-      take: limit,
-      select: { id: true },
-    });
-    let queued = 0;
-    for (const row of rows) {
-      const result = await this.jobs.enqueue({
-        tenantId,
-        type: 'social.cover',
-        payload: { articleId: row.id, templateId },
-        dedupeKey: `social:${row.id}:cover:${templateId}`,
-        priority: 6,
-        maxAttempts: 4,
-      });
-      if (result.created) queued += 1;
-    }
-    return queued;
-  }
-
-  private async enqueueReadyPublishing(tenantId: string, networks: SocialNetwork[], limit: number, requireGeneratedImage = false) {
-    const missingDelivery: Array<Record<string, null>> = [];
-    if (networks.includes('telegram')) missingDelivery.push({ telegramSentAt: null });
-    if (networks.includes('instagram')) missingDelivery.push({ instagramSentAt: null });
-    if (networks.includes('linkedin')) missingDelivery.push({ linkedinSentAt: null });
-    if (networks.includes('facebook')) missingDelivery.push({ facebookSentAt: null });
-    const rows = await this.prisma.socialArticle.findMany({
-      where: { tenantId, status: 'ready', OR: missingDelivery, ...(requireGeneratedImage ? { generatedImageUrl: { not: null } } : {}) },
-      orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
-      take: Math.max(limit * 4, 100),
-      select: { id: true, feed: { select: { autoPublish: true, purpose: true } } },
-    });
-    let queued = 0;
-    for (const row of rows.filter((item) => item.feed?.purpose === 'news-room' || sourceBoolean(item.feed?.autoPublish, true)).slice(0, limit)) {
-      const result = await this.jobs.enqueue({
-        tenantId,
-        type: 'social.publish',
-        payload: { articleId: row.id, networks },
-        dedupeKey: `social:${row.id}:publish:${[...networks].sort().join(',')}`,
-        priority: 4,
-        maxAttempts: 6,
-      });
-      if (result.created) queued += 1;
-    }
-    return queued;
-  }
-
 }

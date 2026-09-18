@@ -22,7 +22,9 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantService } from './tenant.service';
+import { ApiDeskaAuth } from '../../common/decorators/swagger.decorator';
 
+@ApiDeskaAuth('tenants')
 @Controller('tenants')
 @UseGuards(JwtAuthGuard)
 export class TenantController {

@@ -11,6 +11,7 @@ export function tenantStoragePrefix(tenantId: string): string[] {
     `${tenantId}/`,
     `fonts/${tenantId}/`,
     `cover-images/${tenantId}/`,
+    `social-publishing/${tenantId}/`,
   ];
 }
 

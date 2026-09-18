@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type UpdateFeedDto, type SourceType } from './dto/feed.dto';
+import { type CreateFeedDto, type FeedPurpose, type UpdateFeedDto } from './dto/feed.dto';
 import { NEWS_STATUSES, type UpdateNewsArticleDto } from './dto/news-article.dto';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
@@ -12,50 +11,17 @@ import { parseWordPressCategories } from './wordpress-category';
 import { AutomationJobService } from '../../common/services/automation-job.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
-import { DistributedLockService, SCHEDULER_LOCK_IDS } from '../../common/services/distributed-lock.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
 import { PlatformFeedService } from './platform-feed.service';
+import { NewsroomAutomationService } from './newsroom-automation.service';
+import {
+  effectiveReadTarget,
+  normalizeFeedUrl,
+  normalizePurpose,
+  normalizeSourceType,
+} from './feed-target.helpers';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
-const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
-
-function settingEnabled(value: string | undefined, fallback = false): boolean {
-  return value === 'true' || (value === undefined && fallback);
-}
-
-function normalizePurpose(value: unknown, fallback: FeedPurpose = 'news-room'): FeedPurpose {
-  return FEED_PURPOSES.includes(value as FeedPurpose) ? value as FeedPurpose : fallback;
-}
-
-function normalizeFeedUrl(value: string): string {
-  try {
-    const url = new URL(value.trim());
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error();
-    url.hash = '';
-    return url.toString();
-  } catch {
-    throw new BadRequestException('آدرس منبع معتبر نیست');
-  }
-}
-
-function normalizeSourceType(value: unknown): SourceType {
-  return value === 'website' ? 'website' : 'rss';
-}
-
-function effectiveReadTarget(feed: { sourceType: string; url: string; resolvedFeedUrl: string }) {
-  if (feed.sourceType === 'website' && feed.resolvedFeedUrl) {
-    return { sourceType: 'rss' as SourceType, url: feed.resolvedFeedUrl };
-  }
-  return { sourceType: (feed.sourceType || 'rss') as SourceType, url: feed.url };
-}
-
-function sourceBoolean(value: boolean | null | undefined, fallback: boolean): boolean {
-  return value === null || value === undefined ? fallback : value;
-}
-
-function sourceInterval(value: number | null | undefined, fallback: number): number {
-  return Number.isInteger(value) && value! >= 5 && value! <= 1440 ? value! : fallback;
-}
 
 function splitText(value: string, maxChars = 10_000): string[] {
   const paragraphs = value.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
@@ -121,7 +87,6 @@ function looksLikeFullStoredFeedContent(content: string, summary: string): boole
 @Injectable()
 export class NewsroomService {
   private readonly logger = new Logger(NewsroomService.name);
-  private maintenanceRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -133,7 +98,7 @@ export class NewsroomService {
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
     private readonly platformFeeds: PlatformFeedService,
-    private readonly locks: DistributedLockService,
+    private readonly automation: NewsroomAutomationService,
   ) {}
 
   private recordWorkflow(params: {
@@ -617,121 +582,12 @@ export class NewsroomService {
     }
   }
 
-  async purgeRejected(tenantId?: string) {
-    return this.prisma.newsArticle.deleteMany({ where: { ...(tenantId ? { tenantId } : {}), status: 'rejected', purgeAfter: { lte: new Date() } } });
+  purgeRejected(tenantId?: string) {
+    return this.automation.purgeRejected(tenantId);
   }
 
-  @Interval('smart-publishing-newsroom-maintenance', 60_000)
-  async maintenance() {
-    if (this.maintenanceRunning) return;
-    this.maintenanceRunning = true;
-    try {
-      await this.locks.runExclusive(SCHEDULER_LOCK_IDS.newsroomMaintenance, async () => {
-        const activeTenants = await this.prisma.tenant.findMany({
-        where: { isActive: true, status: 'active' },
-        select: { id: true },
-      });
-      const enabledTenantIds = activeTenants.map((row) => row.id);
-      if (!enabledTenantIds.length) return;
-
-      const staleBefore = new Date(Date.now() - PROCESSING_TIMEOUT_MS);
-      await this.prisma.newsArticle.updateMany({ where: { tenantId: { in: enabledTenantIds }, status: 'processing', processingStartedAt: { lte: staleBefore } }, data: { status: 'new', processingStartedAt: null } });
-      await this.prisma.newsArticle.updateMany({ where: { tenantId: { in: enabledTenantIds }, status: 'publishing', processingStartedAt: { lte: staleBefore } }, data: { status: 'publish_failed', processingStartedAt: null, lastError: 'عملیات انتشار قبلی ناتمام مانده بود؛ دوباره تلاش کنید' } });
-      await this.prisma.newsArticle.updateMany({ where: { tenantId: { in: enabledTenantIds }, status: 'social_processing', processingStartedAt: { lte: staleBefore } }, data: { status: 'social_failed', processingStartedAt: null, lastError: 'ارسال قبلی به استودیوی اجتماعی ناتمام ماند؛ دوباره تلاش کنید' } });
-      await this.prisma.newsArticle.deleteMany({ where: { tenantId: { in: enabledTenantIds }, status: 'rejected', purgeAfter: { lte: new Date() } } });
-
-      const feeds = await this.prisma.newsFeed.findMany({ where: { tenantId: { in: enabledTenantIds }, purpose: 'news-room', enabled: true }, orderBy: { lastFetchedAt: 'asc' } });
-      for (const feed of feeds) {
-        const settings = await this.settings.getRaw(feed.tenantId);
-        const intervalMs = sourceInterval(feed.pollIntervalMinutes, Number(settings.news_poll_interval_minutes || 240)) * 60_000;
-        if (sourceBoolean(feed.autoPoll, settingEnabled(settings.news_auto_poll, true)) && (!feed.lastFetchedAt || Date.now() - feed.lastFetchedAt.getTime() >= intervalMs)) {
-          await this.jobs.enqueue({
-            tenantId: feed.tenantId,
-            type: 'news.feed.fetch',
-            payload: { feedId: feed.id },
-            dedupeKey: `feed:${feed.id}:fetch`,
-            retryDead: true,
-            priority: 20,
-            maxAttempts: 6,
-          });
-        }
-      }
-      for (const tenantId of enabledTenantIds) await this.queueAutomation(tenantId, 25);
-      });
-    } catch (error) {
-      this.logger.error(`Newsroom maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
-    } finally {
-      this.maintenanceRunning = false;
-    }
-  }
-
-  async queueAutomation(tenantId: string, limit = 25, providedSettings?: PublishingSettings) {
-    const settings = providedSettings || await this.settings.getRaw(tenantId);
-    const prepared = settingEnabled(settings.news_auto_prepare, true)
-      ? await this.enqueuePending(tenantId, limit, true)
-      : 0;
-    const routeToSocial = settingEnabled(settings.news_auto_send_social);
-    const sentToSocial = routeToSocial
-      ? await this.enqueueReady(tenantId, 'news.send-social', limit, 'autoSendSocial')
-      : 0;
-    const published = !routeToSocial && settingEnabled(settings.news_auto_publish)
-      ? await this.enqueueReady(tenantId, 'news.publish', limit, 'autoPublish')
-      : 0;
-    return { prepared, sentToSocial, published };
-  }
-
-  private async enqueuePending(tenantId: string, limit: number, requireSourceAutomation = false) {
-    const settings = await this.settings.getRaw(tenantId);
-    const fallback = settingEnabled(settings.news_auto_prepare, true);
-    const rows = await this.prisma.newsArticle.findMany({
-      where: {
-        tenantId,
-        status: 'new',
-        OR: [
-          { feed: { purpose: 'news-room' } },
-          { platformFeedArticleId: { not: null } },
-        ],
-      },
-      orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
-      take: Math.max(limit * 4, 100),
-      select: { id: true, platformFeedArticleId: true, feed: { select: { autoPrepare: true } } },
-    });
-    let queued = 0;
-    for (const row of rows.filter((item) => !requireSourceAutomation || item.platformFeedArticleId || sourceBoolean(item.feed?.autoPrepare, fallback)).slice(0, limit)) {
-      const result = await this.jobs.enqueue({
-        tenantId,
-        type: 'news.prepare',
-        payload: { articleId: row.id },
-        dedupeKey: `news:${row.id}:prepare`,
-        priority: 10,
-      });
-      if (result.created) queued += 1;
-    }
-    return queued;
-  }
-
-  private async enqueueReady(tenantId: string, type: 'news.publish' | 'news.send-social', limit: number, sourceSetting: 'autoPublish' | 'autoSendSocial') {
-    const settings = await this.settings.getRaw(tenantId);
-    const fallback = type === 'news.publish' ? settingEnabled(settings.news_auto_publish) : settingEnabled(settings.news_auto_send_social);
-    const rows = await this.prisma.newsArticle.findMany({
-      where: { tenantId, status: 'ready', feed: { purpose: 'news-room' } },
-      orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
-      take: Math.max(limit * 4, 100),
-      select: { id: true, feed: { select: { autoPublish: true, autoSendSocial: true } } },
-    });
-    let queued = 0;
-    for (const row of rows.filter((item) => sourceBoolean(item.feed?.[sourceSetting], fallback)).slice(0, limit)) {
-      const result = await this.jobs.enqueue({
-        tenantId,
-        type,
-        payload: { articleId: row.id },
-        dedupeKey: `news:${row.id}:${type === 'news.publish' ? 'publish' : 'send-social'}`,
-        priority: type === 'news.publish' ? 5 : 7,
-        maxAttempts: 6,
-      });
-      if (result.created) queued += 1;
-    }
-    return queued;
+  queueAutomation(tenantId: string, limit = 25, providedSettings?: PublishingSettings) {
+    return this.automation.queueAutomation(tenantId, limit, providedSettings);
   }
 
   private async findFeed(tenantId: string, id: string) {

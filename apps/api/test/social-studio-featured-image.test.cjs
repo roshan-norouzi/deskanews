@@ -3,6 +3,10 @@ require('reflect-metadata');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SocialStudioService } = require('../dist/modules/smart-publishing/social-studio.service');
+const mockSocialAutomation = {
+  queueAutomation: async () => ({ prepared: 0, generated: 0, published: 0 }),
+  queueFeaturedImageFallback: async () => ({ queued: false }),
+};
 
 test('social featured-image updates stay tenant-scoped and clear a stale generated image', async () => {
   let findArgs;
@@ -14,7 +18,7 @@ test('social featured-image updates stay tenant-scoped and clear a stale generat
       update: async (args) => { updateArgs = args; return updatedArticle; },
     },
   };
-  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {});
+  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {}, mockSocialAutomation);
 
   const result = await service.updateFeaturedImage('tenant-0001', 'article-1', updatedArticle.featuredImageUrl);
 
@@ -39,7 +43,7 @@ test('social featured-image cannot update an article from another tenant', async
       update: async () => { updateCalled = true; },
     },
   };
-  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {});
+  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {}, mockSocialAutomation);
 
   await assert.rejects(
     () => service.updateFeaturedImage('tenant-0001', 'article-from-another-tenant', null),
