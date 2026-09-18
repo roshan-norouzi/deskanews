@@ -224,6 +224,50 @@ test('legacy GapGPT credentials remain usable when publishing JSON is empty but 
   assert.equal(settings.gapgpt_api_key, 'legacy-gap-secret');
 });
 
+test('telegram bridge URL survives empty publishing bucket when module settings still hold it', async () => {
+  const prisma = {
+    tenant: {
+      findUnique: async () => ({
+        settings: {
+          publishing: { telegram_bridge_url: '' },
+        },
+      }),
+    },
+    tenantModule: {
+      findUnique: async () => ({
+        settings: { telegram_bridge_url: 'https://worker.example/' },
+      }),
+    },
+  };
+  const service = new PublishingSettingsService(prisma, {
+    encrypt: (value) => value,
+    decrypt: (value) => value,
+  });
+
+  const settings = await service.getRaw('tenant-a');
+
+  assert.equal(settings.telegram_bridge_url, 'https://worker.example/');
+  assert.equal(await service.resolveTelegramBridgeUrl('tenant-a'), 'https://worker.example/');
+});
+
+test('resolveTelegramBridgeUrl returns empty only when no bridge is configured anywhere', async () => {
+  const prisma = {
+    tenant: {
+      findUnique: async () => ({
+        settings: { publishing: { telegram_bridge_url: '' } },
+      }),
+    },
+  };
+  const service = new PublishingSettingsService(prisma, {
+    encrypt: (value) => value,
+    decrypt: (value) => value,
+  });
+
+  const settings = await service.getRaw('tenant-a');
+  assert.equal(settings.telegram_bridge_url, 'https://telegram-bridge.roshan-norouzi.workers.dev/');
+  assert.match(await service.resolveTelegramBridgeUrl('tenant-a'), /^https:\/\//u);
+});
+
 test('a prepared newsroom article is converted directly into ready social content', async () => {
   const newsStatuses = [];
   const queuedJobs = [];

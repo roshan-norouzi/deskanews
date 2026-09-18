@@ -184,3 +184,35 @@ test('PlatformFeedService delete throws when feed is missing', async () => {
     NotFoundException,
   );
 });
+
+test('PlatformFeedService resolves telegram bridge from subscribed tenant settings', async () => {
+  const store = createMockStore();
+  const settings = {
+    resolveTelegramBridgeUrl: async (tenantId) => (tenantId === 'tenant-a' ? 'https://bridge.example' : ''),
+  };
+  const sourceReader = { discoverFeedUrl: async () => null };
+  const reader = new (require('../dist/modules/smart-publishing/source-reader.service').SourceReaderService)();
+  reader.fetchTelegramChannelHtml = async (_channelUrl, bridgeUrl) => {
+    assert.equal(bridgeUrl, 'https://bridge.example');
+    return '<div class="tgme_widget_message"><div class="tgme_widget_message_text">خبر</div><a class="tgme_widget_message_date" href="https://t.me/sample/1"><time datetime="2026-09-18T08:00:00+00:00"></time></a></div>';
+  };
+  const sourceAdapters = new (require('../dist/modules/smart-publishing/source-adapters/source-adapter.registry').SourceAdapterRegistry)(reader);
+  const service = new PlatformFeedService(
+    {
+      ...store.prisma,
+      tenantPlatformFeed: {
+        ...store.prisma.tenantPlatformFeed,
+        findMany: async () => [{ tenantId: 'tenant-a', enabled: false }],
+      },
+    },
+    sourceReader,
+    sourceAdapters,
+    {},
+    settings,
+    { record: async () => {} },
+  );
+  const feed = await service.create({ name: 'تلگرام', url: '@sample', sourceType: 'telegram' });
+  const result = await service.test(feed.id);
+  assert.equal(result.ok, true);
+  assert.equal(result.items.length, 1);
+});

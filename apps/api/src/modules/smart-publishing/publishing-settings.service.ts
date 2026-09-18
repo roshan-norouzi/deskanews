@@ -106,6 +106,13 @@ function cleanObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function firstNonEmptySettingValue(...candidates: unknown[]): string | undefined {
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
 function inputJson(value: Record<string, unknown>): Prisma.InputJsonObject {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonObject;
 }
@@ -517,7 +524,12 @@ export class PublishingSettingsService {
         && typeof legacyFlat[key] === 'string'
         && Boolean(legacyFlat[key]?.trim());
       const legacyValue = moduleValueIsEmptyDefault ? legacyFlat[key] : (moduleValue ?? legacyFlat[key]);
-      const value = publishingValue ?? legacyValue;
+      const storedValue = firstNonEmptySettingValue(publishingValue, legacyValue);
+      if (storedValue !== undefined) {
+        result[key] = SECRET_KEYS.has(key) ? this.secrets.decrypt(storedValue) : storedValue;
+        continue;
+      }
+      const value = typeof publishingValue === 'string' ? publishingValue : typeof legacyValue === 'string' ? legacyValue : undefined;
       if (typeof value !== 'string') continue;
       if (!SECRET_KEYS.has(key) && DEFAULT_WHEN_EMPTY.has(key) && !value.trim()) continue;
       result[key] = SECRET_KEYS.has(key) ? this.secrets.decrypt(value) : value;
@@ -528,6 +540,14 @@ export class PublishingSettingsService {
       result.news_full_translation_prompt ||= legacyPrompt;
     }
     return result;
+  }
+
+  resolveTelegramBridgeUrlFromSettings(settings: PublishingSettings): string {
+    return String(settings.telegram_bridge_url ?? '').trim();
+  }
+
+  async resolveTelegramBridgeUrl(tenantId: string): Promise<string> {
+    return this.resolveTelegramBridgeUrlFromSettings(await this.getRaw(tenantId));
   }
 
   async getPublic(tenantId: string): Promise<Record<string, string>> {

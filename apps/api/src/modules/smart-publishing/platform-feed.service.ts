@@ -469,14 +469,16 @@ export class PlatformFeedService {
   }
 
   private async resolveTelegramBridgeUrl(platformFeedId: string): Promise<string> {
-    const subscription = await this.prisma.tenantPlatformFeed.findFirst({
-      where: { platformFeedId, enabled: true, tenant: { isActive: true, status: 'active' } },
-      select: { tenantId: true },
-      orderBy: { updatedAt: 'desc' },
+    const subscriptions = await this.prisma.tenantPlatformFeed.findMany({
+      where: { platformFeedId, tenant: { isActive: true, status: 'active' } },
+      select: { tenantId: true, enabled: true },
+      orderBy: [{ enabled: 'desc' }, { updatedAt: 'desc' }],
     });
-    if (!subscription) return '';
-    const settings = await this.settings.getRaw(subscription.tenantId);
-    return settings.telegram_bridge_url?.trim() || '';
+    for (const subscription of subscriptions) {
+      const bridgeUrl = await this.settings.resolveTelegramBridgeUrl(subscription.tenantId);
+      if (bridgeUrl) return bridgeUrl;
+    }
+    return '';
   }
 
   private async findFeed(id: string) {

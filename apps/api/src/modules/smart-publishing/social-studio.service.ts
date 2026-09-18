@@ -152,7 +152,7 @@ export class SocialStudioService {
       const settings = await this.settings.getRaw(tenantId);
       const maxAgeDays = Number(settings.social_max_age_days || 10);
       const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
-      const target = effectiveReadTarget(feed, { telegramBridgeUrl: settings.telegram_bridge_url });
+      const target = effectiveReadTarget(feed, { telegramBridgeUrl: await this.settings.resolveTelegramBridgeUrl(tenantId) });
       const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));

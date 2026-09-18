@@ -305,7 +305,7 @@ export class NewsroomService {
       const settings = await this.settings.getRaw(tenantId);
       const maxAgeMs = Number(settings.news_max_age_days || 10) * 24 * 60 * 60 * 1000;
       const cutoff = new Date(Date.now() - maxAgeMs);
-      const target = effectiveReadTarget(feed, { telegramBridgeUrl: settings.telegram_bridge_url });
+      const target = effectiveReadTarget(feed, { telegramBridgeUrl: await this.settings.resolveTelegramBridgeUrl(tenantId) });
       const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
@@ -360,8 +360,7 @@ export class NewsroomService {
     const feed = await this.findFeed(tenantId, feedId);
     const startedAt = Date.now();
     try {
-      const settings = await this.settings.getRaw(tenantId);
-      const target = effectiveReadTarget(feed, { telegramBridgeUrl: settings.telegram_bridge_url });
+      const target = effectiveReadTarget(feed, { telegramBridgeUrl: await this.settings.resolveTelegramBridgeUrl(tenantId) });
       const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const latest = entries.map((entry, index) => ({ entry, index }))

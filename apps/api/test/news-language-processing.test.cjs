@@ -19,6 +19,16 @@ const platformFeeds = {
 };
 const TEST_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
+function mockPublishingSettings(rawFactory = async () => ({})) {
+  return {
+    getRaw: rawFactory,
+    resolveTelegramBridgeUrl: async (tenantId) => {
+      const raw = await rawFactory(tenantId);
+      return String(raw.telegram_bridge_url || '').trim();
+    },
+  };
+}
+
 function gapGptResponse(content) {
   return {
     ok: true,
@@ -104,7 +114,7 @@ test('newsroom preparation fills a missing featured image from article metadata'
   const sourceAdapters = {};
   const newsroom = new NewsroomService(
     prisma,
-    { getRaw: async () => ({}) },
+    mockPublishingSettings(async () => ({})),
     { summarize: async () => ({ title: 'تیتر آماده', summary: 'خلاصه آماده' }) },
     sourceReader,
     sourceAdapters,
@@ -132,7 +142,7 @@ test('source health test returns the five latest items without saving them', asy
   const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '' }) } };
   const sourceReader = {};
   const sourceAdapters = { readEntries: async (target) => { assert.equal(target.sourceType, 'website'); assert.equal(target.url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, sourceAdapters, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
+  const newsroom = new NewsroomService(prisma, mockPublishingSettings(async () => ({})), {}, sourceReader, sourceAdapters, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 
@@ -286,7 +296,7 @@ test('newsroom publishes with the category selected from live WordPress categori
       update: async ({ data }) => ({ ...article, ...data }),
     },
   };
-  const settings = { getRaw: async () => ({ wp_category_id: '11', wp_categories: JSON.stringify(categories) }) };
+  const settings = mockPublishingSettings(async () => ({ wp_category_id: '11', wp_categories: JSON.stringify(categories) }));
   const gapGpt = {
     chooseWordPressCategory: async (_settings, input) => { categoryInput = input; return 22; },
   };
@@ -326,7 +336,7 @@ test('newsroom never publishes an RSS summary as the full WordPress article', as
     readArticleOrFallback: async () => ({ text: article.originalSummary, featuredImageUrl: '', contentSource: 'feed', isFullText: false }),
   };
   const wordpress = { validateSettings: () => undefined, categories: async () => [] };
-  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, {}, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking);
+  const newsroom = new NewsroomService(prisma, mockPublishingSettings(async () => ({})), {}, sourceReader, {}, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   await assert.rejects(() => newsroom.publish('tenant-a', article.id), /فقط چکیده خبر را ارائه می‌کند/);
 });
@@ -338,13 +348,11 @@ test('news automation durably queues social routing instead of publishing to Wor
       findMany: async () => [{ id: 'news-a' }],
     },
   };
-  const settings = {
-    getRaw: async () => ({
-      news_auto_prepare: 'false',
-      news_auto_publish: 'true',
-      news_auto_send_social: 'true',
-    }),
-  };
+  const settings = mockPublishingSettings(async () => ({
+    news_auto_prepare: 'false',
+    news_auto_publish: 'true',
+    news_auto_send_social: 'true',
+  }));
   const jobs = {
     enqueue: async (job) => {
       queuedJobs.push(job);
@@ -377,14 +385,12 @@ test('automatic social publishing records delivery and does not resend to the sa
       update: async ({ data }) => Object.assign(article, data),
     },
   };
-  const settings = {
-    getRaw: async () => ({
-      telegram_bot_token: 'token',
-      telegram_chat_id: '@channel',
-      telegram_bridge_url: 'https://bridge.example',
-      social_caption_template: '{title}\n\n{summary}',
-    }),
-  };
+  const settings = mockPublishingSettings(async () => ({
+    telegram_bot_token: 'token',
+    telegram_chat_id: '@channel',
+    telegram_bridge_url: 'https://bridge.example',
+    social_caption_template: '{title}\n\n{summary}',
+  }));
   const outbound = {
     proxyImage: async () => ({ buffer: TEST_PNG, contentType: 'image/png' }),
     safeRequest: async () => {
@@ -416,12 +422,12 @@ test('social automation durably queues a cover with the selected default templat
       findMany: async () => [{ id: 'social-cover-a' }],
     },
   };
-  const settings = { getRaw: async () => ({
+  const settings = mockPublishingSettings(async () => ({
     social_auto_prepare: 'false',
     social_auto_generate_image: 'true',
     social_auto_image_template_id: 'template-telegram',
     social_auto_publish_telegram: 'false',
-  }) };
+  }));
   const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'job-cover' } }; } };
   const studio = new SocialStudioService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow);
 
@@ -448,12 +454,12 @@ test('social automation queues featured-image publishing after cover generation 
       }),
     },
   };
-  const settings = { getRaw: async () => ({
+  const settings = mockPublishingSettings(async () => ({
     social_auto_publish_telegram: 'true',
     social_auto_publish_instagram: 'true',
     social_auto_publish_linkedin: 'false',
     social_auto_publish_facebook: 'false',
-  }) };
+  }));
   const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'job-fallback' } }; } };
   const studio = new SocialStudioService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow);
 
@@ -517,7 +523,7 @@ test('automatic publisher prefers a generated cover over the source image', asyn
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
-  const settings = { getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }) };
+  const settings = mockPublishingSettings(async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }));
   const outbound = {
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => { bridgeCalls += 1; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
@@ -548,7 +554,7 @@ test('automatic publisher falls back to the featured image when generated media 
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
-  const settings = { getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }) };
+  const settings = mockPublishingSettings(async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }));
   const outbound = {
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async (_url, options) => { bridgeCalls += 1; bridgePhoto = JSON.parse(options.body).photo_base64; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
@@ -580,7 +586,7 @@ test('explicit featured-image fallback bypasses a stale generated cover', async 
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
-  const settings = { getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }) };
+  const settings = mockPublishingSettings(async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }));
   const outbound = {
     proxyImage: async () => { featuredImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => ({ ok: true, status: 200, json: () => ({ ok: true }) }),

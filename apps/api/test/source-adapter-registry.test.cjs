@@ -76,6 +76,56 @@ test('telegram ingest without bridge returns Iran worker guidance', async () => 
   );
 });
 
+test('newsroom telegram health test uses tenant publishing bridge URL', async () => {
+  const { NewsroomService } = require('../dist/modules/smart-publishing/newsroom.service');
+  const integrationHealth = { success: async () => ({}), failure: async () => ({}) };
+  const workflow = { record: async () => ({}) };
+  const usageTracking = { record: async () => {} };
+  const platformFeeds = { listForTenant: async () => [], ensureSubscriptions: async () => {} };
+  let bridgeUsed = '';
+  const reader = new SourceReaderService();
+  reader.fetchTelegramChannelHtml = async (_channelUrl, bridgeUrl) => {
+    bridgeUsed = bridgeUrl;
+    return readFileSync(join(__dirname, 'fixtures/telegram-channel.html'), 'utf8');
+  };
+  const sourceAdapters = new SourceAdapterRegistry(reader);
+  const prisma = {
+    newsFeed: {
+      findFirst: async () => ({
+        id: 'feed-telegram',
+        name: 'کانال نمونه',
+        url: 'https://t.me/sample',
+        sourceType: 'telegram',
+        includeWords: [],
+        excludeWords: [],
+        resolvedFeedUrl: '',
+        adapterConfig: {},
+      }),
+    },
+  };
+  const settings = {
+    resolveTelegramBridgeUrl: async () => 'https://bridge.example',
+  };
+  const newsroom = new NewsroomService(
+    prisma,
+    settings,
+    {},
+    reader,
+    sourceAdapters,
+    {},
+    {},
+    integrationHealth,
+    workflow,
+    platformFeeds,
+    usageTracking,
+  );
+
+  const result = await newsroom.testFeed('tenant-a', 'feed-telegram');
+
+  assert.equal(bridgeUsed, 'https://bridge.example');
+  assert.ok(result.items.length > 0);
+});
+
 test('website adapter extracts Iranian news index pages', async () => {
   const isnaHome = readFileSync(join(__dirname, 'fixtures/isna-home.html'), 'utf8');
   const isnaArticle = readFileSync(join(__dirname, 'fixtures/isna-article.html'), 'utf8');
