@@ -4,8 +4,11 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PublishingSettingsService } from './publishing-settings.service';
+import {
+  TELEGRAM_PUBLISH_CREDENTIALS_REQUIRED,
+} from './source-adapters/telegram-bridge';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
+import { PublishingSettingsService } from './publishing-settings.service';
 import { SourceReaderService } from './source-reader.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
@@ -298,7 +301,9 @@ export class SocialNetworkPublisherService {
   }
 
   private async publishTelegram(settings: PublishingSettings, caption: string, image: ImagePayload) {
-    if (!settings.telegram_bot_token || !settings.telegram_chat_id) throw new BadRequestException('تنظیمات تلگرام کامل نیست');
+    if (!settings.telegram_bot_token || !settings.telegram_chat_id) {
+      throw new BadRequestException(TELEGRAM_PUBLISH_CREDENTIALS_REQUIRED);
+    }
     if (settings.telegram_bridge_url) {
       const response = await this.telegramBridgeRequest(settings.telegram_bridge_url, {
         token: settings.telegram_bot_token,
@@ -322,9 +327,15 @@ export class SocialNetworkPublisherService {
   }
 
   private async testTelegram(settings: PublishingSettings) {
-    if (!settings.telegram_bot_token || !settings.telegram_chat_id) throw new BadRequestException('تنظیمات تلگرام کامل نیست');
     if (settings.telegram_bridge_url) {
       await this.telegramBridgeProbe(settings.telegram_bridge_url);
+    }
+    if (!settings.telegram_bot_token || !settings.telegram_chat_id) {
+      throw new BadRequestException(settings.telegram_bridge_url
+        ? `${TELEGRAM_PUBLISH_CREDENTIALS_REQUIRED} Worker برای پایش کانال عمومی کافی است.`
+        : TELEGRAM_PUBLISH_CREDENTIALS_REQUIRED);
+    }
+    if (settings.telegram_bridge_url) {
       return;
     }
     const base = `https://api.telegram.org/bot${settings.telegram_bot_token}`;
@@ -376,15 +387,15 @@ export class SocialNetworkPublisherService {
       const response = await this.outbound.safeRequest(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ action: 'probe' }),
         timeoutMs: 15_000,
         acceptedTypes: ['application/json'],
         allowLocalhostInDevelopment: true,
       });
-      // Worker supports publish payloads and `{ action: "fetch", url }` for public t.me HTML ingest.
-      // An empty probe still proves the relay is reachable without sending Telegram traffic.
-      if (![400, 405].includes(response.status) && !response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        let body: { ok?: boolean; error?: string } = {};
+        try { body = response.json<typeof body>(); } catch { /* ignore */ }
+        throw new Error(body.error || `HTTP ${response.status}`);
       }
     } catch (error) {
       const timedOut = error instanceof Error && error.name === 'TimeoutError';

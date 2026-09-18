@@ -76,6 +76,63 @@ test('telegram ingest without bridge returns Iran worker guidance', async () => 
   );
 });
 
+test('telegram ingest calls worker fetch action without bot credentials', async () => {
+  const reader = new SourceReaderService();
+  let requestBody = null;
+  reader.safeRequest = async (_url, options) => {
+    requestBody = JSON.parse(String(options.body));
+    return {
+      ok: true,
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      json: () => ({ ok: true, html: readFileSync(join(__dirname, 'fixtures/telegram-channel.html'), 'utf8') }),
+      text: () => '',
+    };
+  };
+  await reader.readTelegramChannel('https://t.me/sample', 10, 'https://bridge.example');
+  assert.deepEqual(requestBody, { action: 'fetch', url: 'https://t.me/s/sample' });
+  assert.equal(requestBody.token, undefined);
+  assert.equal(requestBody.chat_id, undefined);
+});
+
+test('telegram ingest maps worker publish credential errors to ingest guidance', async () => {
+  const reader = new SourceReaderService();
+  reader.safeRequest = async () => ({
+    ok: true,
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    json: () => ({ ok: false, error: 'missing token or chat_id' }),
+    text: () => '',
+  });
+  await assert.rejects(
+    () => reader.readTelegramChannel('https://t.me/sample', 10, 'https://bridge.example'),
+    (error) => error instanceof BadRequestException && /مسیر انتشار/u.test(error.message),
+  );
+});
+
+test('telegram publish still requires bot token and chat id', async () => {
+  const { SocialNetworkPublisherService } = require('../dist/modules/smart-publishing/social-network-publisher.service');
+  const publisher = new SocialNetworkPublisherService(
+    {},
+    {},
+    {
+      proxyImage: async () => ({ buffer: Buffer.from('abc'), contentType: 'image/png' }),
+      safeRequest: async () => ({
+        ok: true,
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        json: () => ({ ok: true, mode: 'probe' }),
+      }),
+    },
+    { success: async () => ({}), failure: async () => ({}) },
+    { record: async () => ({}) },
+  );
+  await assert.rejects(
+    () => publisher.testConnection('tenant-a', 'telegram', { telegram_bridge_url: 'https://bridge.example' }),
+    (error) => error instanceof BadRequestException && /انتشار در تلگرام/u.test(error.message),
+  );
+});
+
 test('newsroom telegram health test uses tenant publishing bridge URL', async () => {
   const { NewsroomService } = require('../dist/modules/smart-publishing/newsroom.service');
   const integrationHealth = { success: async () => ({}), failure: async () => ({}) };

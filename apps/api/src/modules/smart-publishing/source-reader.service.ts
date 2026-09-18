@@ -13,8 +13,10 @@ import { load } from 'cheerio';
 import { XMLParser } from 'fast-xml-parser';
 import type { SourceType } from './dto/feed.dto';
 import {
+  buildTelegramBridgeFetchPayload,
   extractTelegramBridgeHtml,
   isAllowedTelegramFetchUrl,
+  mapTelegramBridgeIngestError,
   TELEGRAM_INGEST_BRIDGE_REQUIRED,
 } from './source-adapters/telegram-bridge';
 
@@ -593,7 +595,7 @@ export class SourceReaderService {
       const response = await this.safeRequest(bridge, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/html' },
-        body: JSON.stringify({ action: 'fetch', url: channelHistoryUrl }),
+        body: JSON.stringify(buildTelegramBridgeFetchPayload(channelHistoryUrl)),
         timeoutMs: 30_000,
         maxResponseBytes: MAX_FEED_BYTES,
         acceptedTypes: ['application/json', 'text/html', 'text/plain'],
@@ -603,7 +605,7 @@ export class SourceReaderService {
       if (contentType.includes('json')) {
         const body = response.json<Record<string, unknown>>();
         if (body.ok === false) {
-          throw new BadRequestException(String(body.error || body.detail || 'Worker تلگرام صفحه کانال را برنگرداند'));
+          throw new BadRequestException(mapTelegramBridgeIngestError(String(body.error || body.detail || body.description || '')));
         }
         const html = extractTelegramBridgeHtml(body);
         if (!html) throw new BadRequestException('Worker تلگرام پاسخ معتبری برای صفحه کانال برنگرداند');
