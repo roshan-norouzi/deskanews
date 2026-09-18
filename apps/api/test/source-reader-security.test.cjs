@@ -4,7 +4,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Readable } = require('node:stream');
 const { BadRequestException } = require('@nestjs/common');
+const { SafeHttpClient } = require('../dist/modules/smart-publishing/safe-http.client');
 const { SourceReaderService } = require('../dist/modules/smart-publishing/source-reader.service');
+
+function makeHttp() {
+  return new SafeHttpClient();
+}
+
+function makeReader() {
+  const http = makeHttp();
+  return { http, service: new SourceReaderService(http) };
+}
 
 function response(statusCode, headers = {}, body = '') {
   const stream = Readable.from(body ? [Buffer.from(body)] : []);
@@ -14,7 +24,7 @@ function response(statusCode, headers = {}, body = '') {
 }
 
 test('SourceReader rejects private, loopback, link-local and metadata IP representations', async () => {
-  const service = new SourceReaderService();
+  const http = makeHttp();
   const blockedUrls = [
     'http://0.0.0.0/',
     'http://10.0.0.1/',
@@ -38,7 +48,7 @@ test('SourceReader rejects private, loopback, link-local and metadata IP represe
 
   for (const url of blockedUrls) {
     await assert.rejects(
-      () => service.assertPublicUrl(url),
+      () => http.assertPublicUrl(url),
       (error) => error instanceof BadRequestException,
       `expected ${url} to be blocked`,
     );
@@ -46,31 +56,31 @@ test('SourceReader rejects private, loopback, link-local and metadata IP represe
 });
 
 test('SourceReader keeps globally routable IPv4 and IPv6 literals available', async () => {
-  const service = new SourceReaderService();
+  const http = makeHttp();
 
-  const ipv4 = await service.assertPublicUrl('https://8.8.8.8/feed');
-  const ipv6 = await service.assertPublicUrl('https://[2606:4700:4700::1111]/feed');
+  const ipv4 = await http.assertPublicUrl('https://8.8.8.8/feed');
+  const ipv6 = await http.assertPublicUrl('https://[2606:4700:4700::1111]/feed');
 
   assert.deepEqual(ipv4.addresses, [{ address: '8.8.8.8', family: 4 }]);
   assert.deepEqual(ipv6.addresses, [{ address: '2606:4700:4700::1111', family: 6 }]);
 });
 
 test('SourceReader rejects a hostname when any DNS answer is non-public', async () => {
-  const service = new SourceReaderService();
-  service.resolveAddresses = async () => [
+  const http = makeHttp();
+  http.resolveAddresses = async () => [
     { address: '93.184.216.34', family: 4 },
     { address: '::ffff:7f00:1', family: 6 },
   ];
 
   await assert.rejects(
-    () => service.assertPublicUrl('https://feeds.example/rss.xml'),
+    () => http.assertPublicUrl('https://feeds.example/rss.xml'),
     (error) => error instanceof BadRequestException,
   );
 });
 
 test('SourceReader pins the socket address while preserving HTTPS Host and SNI', () => {
-  const service = new SourceReaderService();
-  const options = service.createPinnedRequestOptions(
+  const http = makeHttp();
+  const options = http.createPinnedRequestOptions(
     new URL('https://feeds.example:8443/rss.xml?lang=fa'),
     { address: '93.184.216.34', family: 4 },
     { Accept: 'application/rss+xml' },
@@ -85,32 +95,32 @@ test('SourceReader pins the socket address while preserving HTTPS Host and SNI',
 });
 
 test('SourceReader validates every redirect before opening the next connection', async () => {
-  const service = new SourceReaderService();
+  const http = makeHttp();
   let connectionCount = 0;
-  service.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
-  service.requestAddress = async (_url, address) => {
+  http.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
+  http.requestAddress = async (_url, address) => {
     connectionCount += 1;
     assert.equal(address.address, '93.184.216.34');
     return response(302, { location: 'http://[::ffff:7f00:1]/admin' });
   };
 
   await assert.rejects(
-    () => service.safeFetchText('https://feeds.example/rss.xml', 1024, ['application/rss+xml']),
+    () => http.safeFetchText('https://feeds.example/rss.xml', 1024, ['application/rss+xml']),
     (error) => error instanceof BadRequestException,
   );
   assert.equal(connectionCount, 1, 'the internal redirect target must never be contacted');
 });
 
 test('credentialed outbound POST requests are pinned to the validated address', async () => {
-  const service = new SourceReaderService();
+  const http = makeHttp();
   let observed;
-  service.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
-  service.requestAddress = async (url, address, headers, _signal, method, body) => {
+  http.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
+  http.requestAddress = async (url, address, headers, _signal, method, body) => {
     observed = { url: url.toString(), address, headers, method, body: body.toString('utf8') };
     return response(200, { 'content-type': 'application/json' }, '{"ok":true}');
   };
 
-  const result = await service.safeRequest('https://api.example/v1/models', {
+  const result = await http.safeRequest('https://api.example/v1/models', {
     method: 'POST',
     headers: { Authorization: 'Bearer redacted', 'Content-Type': 'application/json' },
     body: '{"probe":true}',
@@ -126,16 +136,16 @@ test('credentialed outbound POST requests are pinned to the validated address', 
 });
 
 test('credentialed outbound requests never follow redirects', async () => {
-  const service = new SourceReaderService();
+  const http = makeHttp();
   let requests = 0;
-  service.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
-  service.requestAddress = async () => {
+  http.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
+  http.requestAddress = async () => {
     requests += 1;
     return response(302, { location: 'https://other.example/steal' });
   };
 
   await assert.rejects(
-    () => service.safeRequest('https://api.example/v1/models', {
+    () => http.safeRequest('https://api.example/v1/models', {
       headers: { Authorization: 'Bearer must-not-be-forwarded' },
     }),
     /آدرس نهایی سرویس/,
@@ -144,7 +154,7 @@ test('credentialed outbound requests never follow redirects', async () => {
 });
 
 test('SourceReader keeps RSS text when an article page cannot be extracted', async () => {
-  const service = new SourceReaderService();
+  const { service } = makeReader();
   service.readArticle = async () => {
     throw new BadRequestException('متن کامل خبر از صفحه منبع قابل استخراج نبود');
   };
@@ -167,9 +177,9 @@ test('SourceReader keeps RSS text when an article page cannot be extracted', asy
 });
 
 test('SourceReader distinguishes a feed summary from genuine full feed content', async () => {
-  const service = new SourceReaderService();
+  const { http, service } = makeReader();
   const longBody = `متن کامل خبر ${'با جزئیات دقیق و قابل انتشار '.repeat(55)}`;
-  service.safeFetchText = async () => `<?xml version="1.0" encoding="UTF-8"?>
+  http.safeFetchText = async () => `<?xml version="1.0" encoding="UTF-8"?>
     <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
       <item><title>خبر خلاصه</title><link>https://news.example/summary</link><description>فقط چکیده کوتاه خبر</description></item>
       <item><title>خبر کامل</title><link>https://news.example/full</link><description>چکیده کوتاه خبر کامل</description><content:encoded><![CDATA[${longBody}]]></content:encoded></item>
@@ -184,8 +194,8 @@ test('SourceReader distinguishes a feed summary from genuine full feed content',
 });
 
 test('SourceReader accepts RSS 1.0 RDF feeds and Atom feeds with alternate links', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async (url) => url.includes('rdf')
+  const { http, service } = makeReader();
+  http.safeFetchText = async (url) => url.includes('rdf')
     ? `<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><item><title>خبر RDF</title><link>/rdf-story</link><description>خلاصه RDF</description><dc:date xmlns:dc="http://purl.org/dc/elements/1.1/">2026-09-13T10:00:00Z</dc:date></item></rdf:RDF>`
     : `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>خبر اتم</title><link rel="self" href="/self"/><link rel="alternate" href="/atom-story"/><summary>خلاصه اتم</summary></entry></feed>`;
 
@@ -198,8 +208,8 @@ test('SourceReader accepts RSS 1.0 RDF feeds and Atom feeds with alternate links
 });
 
 test('SourceReader accepts JSON Feed documents', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async () => JSON.stringify({
+  const { http, service } = makeReader();
+  http.safeFetchText = async () => JSON.stringify({
     version: 'https://jsonfeed.org/version/1.1',
     items: [{
       id: 'json-1',
@@ -219,8 +229,8 @@ test('SourceReader accepts JSON Feed documents', async () => {
 });
 
 test('SourceReader extracts featured images from JSON feeds and page metadata', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async (url) => url.includes('json')
+  const { http, service } = makeReader();
+  http.safeFetchText = async (url) => url.includes('json')
     ? JSON.stringify({ items: [{ id: '1', url: 'https://news.example/story', title: 'خبر', image: '/images/cover.jpg' }] })
     : '<html><head><meta property="og:image" content="/images/og-cover.jpg"><script type="application/ld+json">'
       + JSON.stringify({ '@type': 'NewsArticle', image: { url: 'https://news.example/images/structured.jpg' } })
@@ -233,8 +243,8 @@ test('SourceReader extracts featured images from JSON feeds and page metadata', 
 });
 
 test('SourceReader monitors websites and blogs by discovering article pages', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async (url) => url === 'https://publisher.example'
+  const { http, service } = makeReader();
+  http.safeFetchText = async (url) => url === 'https://publisher.example'
     ? '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body></body></html>'
     : url.includes('feed.xml')
       ? '<rss><channel><item><title>خبر از RSS خودکار</title><link>/story</link><description>متن خبر</description></item></channel></rss>'
@@ -243,7 +253,7 @@ test('SourceReader monitors websites and blogs by discovering article pages', as
   const rssEntries = await service.readSource('website', 'https://publisher.example');
   assert.equal(rssEntries[0].canonicalUrl, 'https://publisher.example/story');
 
-  service.safeFetchText = async (url) => url === 'https://blog.example'
+  http.safeFetchText = async (url) => url === 'https://blog.example'
     ? '<html><body><main><article><a href="/post-1">عنوان مطلب وبلاگ</a></article></main></body></html>'
     : '<html><head><meta property="og:title" content="عنوان مطلب وبلاگ"><meta property="og:description" content="خلاصه مطلب وبلاگ"></head><body><article><p>متن مطلب وبلاگ در صفحهٔ مقصد قرار دارد و باید به‌عنوان ورودی منبع دریافت شود.</p></article></body></html>';
   const blogEntries = await service.readSource('blog', 'https://blog.example');
@@ -252,8 +262,8 @@ test('SourceReader monitors websites and blogs by discovering article pages', as
 });
 
 test('SourceReader monitors public Telegram channels and public X accounts', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async (url) => url.includes('t.me/s')
+  const { http, service } = makeReader();
+  http.safeFetchText = async (url) => url.includes('t.me/s')
     ? '<div class="tgme_widget_message"><div class="tgme_widget_message_text">خبر کانال تلگرام<br>جزئیات خبر</div><a class="tgme_widget_message_date" href="https://t.me/channel/42"><time datetime="2026-09-14T10:00:00+00:00"></time></a></div>'
     : '<div class="timeline-Tweet" data-tweet-id="123"><p class="timeline-Tweet-text">یک پست عمومی در حساب X برای پایش</p><a href="https://x.com/news/status/123">post</a><time datetime="2026-09-14T11:00:00Z"></time></div>';
 
@@ -266,8 +276,8 @@ test('SourceReader monitors public Telegram channels and public X accounts', asy
 });
 
 test('SourceReader extracts JSON-LD article bodies without executing source scripts', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async () => `<!doctype html><html><head>
+  const { http, service } = makeReader();
+  http.safeFetchText = async () => `<!doctype html><html><head>
     <script type="application/ld+json">${JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'NewsArticle',
@@ -285,9 +295,9 @@ test('SourceReader extracts JSON-LD article bodies without executing source scri
 });
 
 test('SourceReader uses browser-rendered HTML only after direct extraction fails', async () => {
-  const service = new SourceReaderService();
+  const { http, service } = makeReader();
   let browserCalls = 0;
-  service.safeFetchText = async () => '<html><body>Transferring to the website...</body></html>';
+  http.safeFetchText = async () => '<html><body>Transferring to the website...</body></html>';
   service.renderArticlePage = async () => {
     browserCalls += 1;
     return {
@@ -307,8 +317,8 @@ test('SourceReader uses browser-rendered HTML only after direct extraction fails
 });
 
 test('SourceReader skips browser rendering when ordinary HTML already contains the full article', async () => {
-  const service = new SourceReaderService();
-  service.safeFetchText = async () => `<html><head><title>خبر عادی</title></head><body><article>
+  const { http, service } = makeReader();
+  http.safeFetchText = async () => `<html><head><title>خبر عادی</title></head><body><article>
     <p>${'متن کامل خبر از همان پاسخ عادی و بدون اجرای مرورگر دریافت شده است. '.repeat(8)}</p>
   </article></body></html>`;
   service.renderArticlePage = async () => { throw new Error('browser should not run'); };

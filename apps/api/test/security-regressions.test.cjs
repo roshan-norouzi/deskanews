@@ -10,6 +10,12 @@ const { PlatformAdminService } = require('../dist/platform/admin/platform-admin.
 const { PublishingSettingsService } = require('../dist/modules/smart-publishing/publishing-settings.service');
 const { SocialStudioService } = require('../dist/modules/smart-publishing/social-studio.service');
 const { AuthService } = require('../dist/platform/auth/auth.service');
+const mockMfa = {
+  isSetupRequired: () => false,
+  createMfaToken: () => 'mfa-token',
+  verifyMfaToken: () => 'user-a',
+  verifyChallenge: async () => 'totp',
+};
 const { JwtStrategy } = require('../dist/common/strategies/jwt.strategy');
 const { NotificationService } = require('../dist/common/services/audit.service');
 const { APP_PERMISSIONS, getDefaultPermissionsForTenantRole } = require('@deska/shared');
@@ -438,7 +444,7 @@ test('refresh tokens are stored as SHA-256 hashes', async () => {
           : fallback
     ),
   };
-  const service = new AuthService(prisma, jwtService, config);
+  const service = new AuthService(prisma, jwtService, config, mockMfa);
 
   const result = await service.issueTokens('user-a', 'user@example.com', 'user');
 
@@ -477,7 +483,7 @@ test('login keeps bearer tokens out of the public response envelope', async () =
           : fallback
     ),
   };
-  const service = new AuthService(prisma, jwtService, config);
+  const service = new AuthService(prisma, jwtService, config, mockMfa);
 
   const result = await service.login({
     email: user.email,
@@ -505,7 +511,7 @@ test('changePassword invalidates existing sessions immediately', async () => {
     refreshToken: { deleteMany: async () => ({ count: 1 }) },
     $transaction: async (ops) => Promise.all(ops.map((op) => op)),
   };
-  const service = new AuthService(prisma, {}, {});
+  const service = new AuthService(prisma, {}, {}, mockMfa);
 
   await service.changePassword('user-a', {
     currentPassword: 'Current@12345678',
@@ -568,7 +574,7 @@ test('parallel failed logins increment atomically and lock the account', async (
       return callback(tx);
     },
   };
-  const service = new AuthService(prisma, {}, {});
+  const service = new AuthService(prisma, {}, {}, mockMfa);
 
   const attempts = await Promise.allSettled(
     Array.from({ length: 5 }, () => service.login({
@@ -627,7 +633,7 @@ test('a password-reset token can be consumed by only one concurrent request', as
     },
     $transaction: async (callback) => callback(tx),
   };
-  const service = new AuthService(prisma, {}, {});
+  const service = new AuthService(prisma, {}, {}, mockMfa);
   const dto = {
     token: 'single-use-token',
     password: 'New-secure-password-123!',
@@ -687,7 +693,7 @@ test('a refresh token can be rotated by only one concurrent request', async () =
   let accessCounter = 0;
   const jwtService = { sign: () => `access-${++accessCounter}` };
   const config = { get: (key, fallback) => key === 'JWT_REFRESH_EXPIRES' ? '7d' : fallback };
-  const service = new AuthService(prisma, jwtService, config);
+  const service = new AuthService(prisma, jwtService, config, mockMfa);
 
   const results = await Promise.allSettled([
     service.refresh({ refreshToken: 'single-use-refresh' }),

@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -9,7 +8,7 @@ import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
-import { LocalStorageService } from '../../common/services/local-storage.service';
+import { ObjectStorageService } from '../../common/services/object-storage.service';
 import { SignedUrlService } from '../../common/services/signed-url.service';
 
 export type SocialNetwork = 'telegram' | 'instagram' | 'linkedin' | 'facebook';
@@ -113,11 +112,13 @@ export class SocialNetworkPublisherService {
     private readonly outbound: SourceReaderService,
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
-    private readonly storage: LocalStorageService,
+    private readonly storage: ObjectStorageService,
     private readonly signedUrls: SignedUrlService,
   ) {}
 
-  private storagePath() { return this.storage.directory('social-publishing'); }
+  private socialKey(filename: string): string {
+    return this.storage.key('social-publishing', filename);
+  }
 
   async storePublicMedia(image: ImagePayload): Promise<{ filename: string }> {
     return this.storeMedia(image, true);
@@ -132,10 +133,12 @@ export class SocialNetworkPublisherService {
 
   private async storeMedia(image: ImagePayload, temporary: boolean): Promise<{ filename: string }> {
     const filename = `${randomUUID()}.${image.extension}`;
-    await fs.mkdir(this.storagePath(), { recursive: true });
-    await fs.writeFile(path.join(this.storagePath(), filename), image.buffer, { mode: 0o600 });
+    await this.storage.put(this.socialKey(filename), image.buffer, {
+      contentType: image.contentType,
+      mode: 0o600,
+    });
     if (temporary) {
-      const cleanup = () => void fs.rm(path.join(this.storagePath(), filename), { force: true });
+      const cleanup = () => void this.storage.delete(this.socialKey(filename)).catch(() => undefined);
       setTimeout(cleanup, 30 * 60 * 1000).unref();
     }
     return { filename };
@@ -145,8 +148,9 @@ export class SocialNetworkPublisherService {
     if (!/^[a-f0-9-]+\.(?:png|jpg|webp)$/iu.test(filename)) throw new NotFoundException();
     const extension = path.extname(filename).toLowerCase();
     const contentType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg';
-    try { return { buffer: await fs.readFile(path.join(this.storagePath(), path.basename(filename))), contentType }; }
-    catch { throw new NotFoundException(); }
+    try {
+      return { buffer: await this.storage.get(this.socialKey(path.basename(filename))), contentType };
+    } catch { throw new NotFoundException(); }
   }
 
   async publish(tenantId: string, articleId: string, network: string, caption: string, imageDataUrl: string): Promise<{ ok: true; network: SocialNetwork; message: string }> {

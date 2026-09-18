@@ -50,7 +50,14 @@ export interface TenantMembership {
 
 interface LoginResponse {
   user: AuthUser;
+  requiresMfa?: boolean;
+  mfaToken?: string;
+  mfaSetupRequired?: boolean;
 }
+
+export type LoginResult =
+  | { kind: 'authenticated'; user: AuthUser; mfaSetupRequired?: boolean }
+  | { kind: 'mfa_required'; user: AuthUser; mfaToken: string };
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -58,7 +65,8 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   isPlatformAdmin: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  verifyMfa: (mfaToken: string, code: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -88,14 +96,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void init();
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    await apiFetch<LoginResponse>('/auth/login', {
+  const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
+    const result = await apiFetch<LoginResponse>('/auth/login', {
       method: 'POST',
       body: { email, password },
       skipAuth: true,
       skipTenant: true,
     });
 
+    if (result.requiresMfa && result.mfaToken) {
+      return { kind: 'mfa_required', user: result.user, mfaToken: result.mfaToken };
+    }
+
+    const me = await apiFetch<AuthUser>('/auth/me');
+    setUser(me);
+    return { kind: 'authenticated', user: me, mfaSetupRequired: result.mfaSetupRequired };
+  }, []);
+
+  const verifyMfa = useCallback(async (mfaToken: string, code: string) => {
+    await apiFetch('/auth/mfa/verify', {
+      method: 'POST',
+      body: { mfaToken, code },
+      skipAuth: true,
+      skipTenant: true,
+    });
     const me = await apiFetch<AuthUser>('/auth/me');
     setUser(me);
     return me;
@@ -126,10 +150,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isPlatformAdmin:
         user?.role === PLATFORM_ROLES.SUPER_ADMIN || user?.role === PLATFORM_ROLES.ADMIN,
       login,
+      verifyMfa,
       logout,
       refresh,
     }),
-    [user, isLoading, login, logout, refresh],
+    [user, isLoading, login, verifyMfa, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

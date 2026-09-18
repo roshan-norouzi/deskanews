@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { AuthUser } from '../../common/decorators/params.decorator';
+import { ObjectStorageService } from '../../common/services/object-storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
 import type { CreatePlatformUserDto } from './dto/create-platform-user.dto';
@@ -18,6 +19,7 @@ export class PlatformAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    private readonly storage: ObjectStorageService,
   ) {}
 
   async overview(actor: AuthUser) {
@@ -388,16 +390,16 @@ export class PlatformAdminService {
   }
 
   private async cleanupOrganizationStorage(tenantId: string): Promise<boolean> {
-    const configuredRoot = process.env.STORAGE_PATH?.trim();
-    const roots = configuredRoot
-      ? [path.resolve(configuredRoot)]
-      : [path.resolve(process.cwd(), 'storage'), path.resolve(process.cwd(), 'uploads')];
-
     try {
-      for (const root of roots) {
-        await fs.rm(this.safeChildPath(root, tenantId), { recursive: true, force: true });
-        await fs.rm(this.safeChildPath(root, path.join('fonts', tenantId)), { recursive: true, force: true });
-        await fs.rm(this.safeChildPath(root, path.join('cover-images', tenantId)), { recursive: true, force: true });
+      await this.storage.deleteTenantObjects(tenantId);
+      if (this.storage.backend() === 'local') {
+        const configuredRoot = process.env.STORAGE_PATH?.trim();
+        const roots = configuredRoot
+          ? [path.resolve(configuredRoot)]
+          : [path.resolve(process.cwd(), 'storage'), path.resolve(process.cwd(), 'uploads')];
+        for (const root of roots) {
+          await fs.rm(this.safeChildPath(root, tenantId), { recursive: true, force: true });
+        }
       }
       return true;
     } catch (error) {

@@ -120,6 +120,18 @@ async function bootstrap() {
     exposedHeaders: ['X-Request-Id'],
   });
 
+  if (process.env.OPENAPI_ENABLED === 'true') {
+    const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('DESKA News API')
+      .setDescription('Platform and smart publishing endpoints')
+      .setVersion(process.env.APP_VERSION ?? '1.0.0')
+      .addCookieAuth('deska_access_token')
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
+
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
   console.log(`DESKA ERP API running on port ${port}`);

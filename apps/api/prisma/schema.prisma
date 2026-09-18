@@ -195,6 +195,10 @@ model User {
   lockedUntil            DateTime?
   passwordChangedAt      DateTime?
   sessionsInvalidatedAt  DateTime?
+  totpSecretEnc        String?
+  totpEnabled          Boolean              @default(false)
+  totpVerifiedAt       DateTime?
+  mfaRecoveryHashes    String[]             @default([])
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   refreshTokens          RefreshToken[]

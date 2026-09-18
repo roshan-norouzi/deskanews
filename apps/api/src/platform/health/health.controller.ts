@@ -1,13 +1,13 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { Public } from '../../common/decorators/metadata.decorator';
-import { LocalStorageService } from '../../common/services/local-storage.service';
+import { ObjectStorageService } from '../../common/services/object-storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller('health')
 export class HealthController {
   constructor(
     private prisma: PrismaService,
-    private storage: LocalStorageService,
+    private storage: ObjectStorageService,
   ) {}
 
   @Public()
@@ -45,7 +45,7 @@ export class HealthController {
     }
 
     try {
-      await this.storage.ensureWritable();
+      await this.storage.ensureReady();
     } catch {
       throw new ServiceUnavailableException('سرویس هنوز آماده نیست');
     }

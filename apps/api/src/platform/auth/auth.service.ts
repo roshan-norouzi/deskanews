@@ -16,6 +16,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { normalizeDigits } from '@deska/shared';
 import { Prisma } from '@prisma/client';
+import { MfaService } from './mfa.service';
 
 interface JwtPayload {
   sub: string;
@@ -29,6 +30,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private mfa: MfaService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -65,8 +67,41 @@ export class AuthService {
       data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: now },
     });
 
+    const userPayload = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      phone: user.phone,
+    };
+
+    if (user.totpEnabled) {
+      return {
+        user: userPayload,
+        requiresMfa: true,
+        mfaToken: this.mfa.createMfaToken(user.id),
+      };
+    }
+
     const tokens = await this.issueTokens(user.id, user.email, user.role);
 
+    return {
+      user: userPayload,
+      tokens,
+      mfaSetupRequired: this.mfa.isSetupRequired(user.role, user.totpEnabled),
+    };
+  }
+
+  async completeMfaLogin(mfaToken: string, code: string) {
+    const userId = this.mfa.verifyMfaToken(mfaToken);
+    await this.mfa.verifyChallenge(userId, code);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.isActive || user.status !== 'active') {
+      throw new UnauthorizedException('حساب کاربری غیرفعال است');
+    }
+    const tokens = await this.issueTokens(user.id, user.email, user.role);
     return {
       user: {
         id: user.id,
@@ -423,7 +458,7 @@ export class AuthService {
     ]);
   }
 
-  private async issueTokens(userId: string, email: string, role: string) {
+  async issueTokens(userId: string, email: string, role: string) {
     const tokenPair = this.createTokenPair(userId, email, role);
 
     await this.prisma.refreshToken.create({

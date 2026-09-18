@@ -23,6 +23,8 @@ import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { MfaDisableDto, MfaEnableDto, MfaVerifyDto } from './dto/mfa.dto';
+import { MfaService } from './mfa.service';
 
 const ACCESS_COOKIE_NAME = 'deska_access_token';
 const REFRESH_COOKIE_NAME = 'deska_refresh_token';
@@ -31,6 +33,7 @@ const REFRESH_COOKIE_NAME = 'deska_refresh_token';
 export class AuthController {
   constructor(
     private authService: AuthService,
+    private mfaService: MfaService,
     private config: ConfigService,
   ) {}
 
@@ -42,8 +45,60 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.authService.login(dto);
+    if ('requiresMfa' in result && result.requiresMfa) {
+      return { requiresMfa: true, mfaToken: result.mfaToken, user: result.user };
+    }
+    if (!result.tokens) {
+      throw new UnauthorizedException('ورود انجام نشد');
+    }
+    this.setAuthCookies(response, result.tokens.accessToken, result.tokens.refreshToken);
+    return {
+      user: result.user,
+      expiresIn: result.tokens.expiresIn,
+      mfaSetupRequired: result.mfaSetupRequired ?? false,
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mfa/verify')
+  async verifyMfa(
+    @Body() dto: MfaVerifyDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.completeMfaLogin(dto.mfaToken, dto.code);
     this.setAuthCookies(response, result.tokens.accessToken, result.tokens.refreshToken);
     return { user: result.user, expiresIn: result.tokens.expiresIn };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('mfa/status')
+  mfaStatus(@User() user: AuthUser) {
+    return this.mfaService.status(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/setup')
+  mfaSetup(@User() user: AuthUser) {
+    return this.mfaService.beginSetup(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/enable')
+  mfaEnable(@User() user: AuthUser, @Body() dto: MfaEnableDto) {
+    return this.mfaService.enable(user.id, dto.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/disable')
+  async mfaDisable(
+    @User() user: AuthUser,
+    @Body() dto: MfaDisableDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.mfaService.disable(user.id, dto.code, dto.password);
+    this.clearAuthCookies(response);
+    return result;
   }
 
   @Public()

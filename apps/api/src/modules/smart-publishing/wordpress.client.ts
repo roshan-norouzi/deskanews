@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
-import { SourceReaderService, type SafeHttpRequestOptions, type SafeHttpResponse } from './source-reader.service';
+import { SafeHttpClient, type SafeHttpRequestOptions, type SafeHttpResponse } from './safe-http.client';
 import { parseWordPressCategories, type WordPressCategory } from './wordpress-category';
 
 interface WordPressText {
@@ -51,7 +51,7 @@ type WordPressRestStyle = 'pretty' | 'query';
 export class WordPressClient {
   private readonly restStyles = new Map<string, WordPressRestStyle>();
 
-  constructor(private readonly sourceReader: SourceReaderService) {}
+  constructor(private readonly http: SafeHttpClient) {}
 
   private credentials(settings: PublishingSettings) {
     const siteUrl = String(settings.wp_site_url ?? '').trim().replace(/\/$/, '');
@@ -293,7 +293,7 @@ export class WordPressClient {
 
   private async uploadMedia(siteUrl: string, restStyle: WordPressRestStyle, authorization: string, imageUrl: string, title: string): Promise<number> {
     try {
-      const image = await this.sourceReader.proxyImage(imageUrl);
+      const image = await this.http.proxyImage(imageUrl);
       return (await this.uploadMediaBytes(siteUrl, restStyle, authorization, image.buffer, image.contentType, title)).id;
     } catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'آپلود تصویر شاخص انجام نشد'); }
   }
@@ -329,7 +329,7 @@ export class WordPressClient {
   }
 
   private request(url: string, options: SafeHttpRequestOptions = {}): Promise<SafeHttpResponse> {
-    return this.sourceReader.safeRequest(url, {
+    return this.http.safeRequest(url, {
       ...options,
       maxResponseBytes: options.maxResponseBytes ?? 2 * 1024 * 1024,
       allowLocalhostInDevelopment: true,

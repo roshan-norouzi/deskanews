@@ -123,6 +123,143 @@ export function AccountSettingsPanel() {
           </form>
         </CardContent>
       </Card>
+
+      <MfaSettingsPanel />
     </div>
+  );
+}
+
+interface MfaStatus {
+  enabled: boolean;
+  setupRequired: boolean;
+  pendingSetup: boolean;
+  recoveryCodesRemaining: number;
+}
+
+interface MfaSetupResult {
+  secret: string;
+  otpauthUrl: string;
+  recoveryCodes: string[];
+}
+
+function MfaSettingsPanel() {
+  const { logout } = useAuth();
+  const router = useRouter();
+  const [status, setStatus] = useState<MfaStatus | null>(null);
+  const [setup, setSetup] = useState<MfaSetupResult | null>(null);
+  const [enableCode, setEnableCode] = useState('');
+  const [disableCode, setDisableCode] = useState('');
+  const [disablePassword, setDisablePassword] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void apiFetch<MfaStatus>('/auth/mfa/status', { skipTenant: true })
+      .then(setStatus)
+      .catch(() => setError('وضعیت تأیید دو مرحله‌ای قابل دریافت نیست'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function beginSetup() {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await apiFetch<MfaSetupResult>('/auth/mfa/setup', { method: 'POST', skipTenant: true });
+      setSetup(result);
+      setStatus((current) => current ? { ...current, pendingSetup: true } : current);
+      setMessage('کلید و کدهای بازیابی را در جای امن ذخیره کنید، سپس کد ۶ رقمی را وارد کنید.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'راه‌اندازی تأیید دو مرحله‌ای انجام نشد');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function enableMfa(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch('/auth/mfa/enable', {
+        method: 'POST',
+        skipTenant: true,
+        body: { code: enableCode.trim() },
+      });
+      setSetup(null);
+      setEnableCode('');
+      setStatus({ enabled: true, setupRequired: false, pendingSetup: false, recoveryCodesRemaining: setup?.recoveryCodes.length ?? 0 });
+      setMessage('تأیید دو مرحله‌ای فعال شد.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'فعال‌سازی تأیید دو مرحله‌ای انجام نشد');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disableMfa(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch('/auth/mfa/disable', {
+        method: 'POST',
+        skipTenant: true,
+        body: { code: disableCode.trim(), password: disablePassword },
+      });
+      await logout();
+      router.replace('/login?reason=mfa-disabled');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'غیرفعال‌سازی تأیید دو مرحله‌ای انجام نشد');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b border-slate-100 bg-slate-50/70">
+        <CardTitle className="text-base">تأیید دو مرحله‌ای (MFA)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-6">
+        {loading ? (
+          <p className="text-sm text-slate-500">در حال بارگذاری...</p>
+        ) : (
+          <>
+            {status?.setupRequired && !status.enabled && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                برای نقش مدیریتی شما فعال‌سازی تأیید دو مرحله‌ای توصیه می‌شود.
+              </p>
+            )}
+            {status?.enabled ? (
+              <form onSubmit={disableMfa} className="space-y-3">
+                <p className="text-sm text-green-700">تأیید دو مرحله‌ای فعال است. کدهای بازیابی باقی‌مانده: {status.recoveryCodesRemaining}</p>
+                <Input label="کد تأیید" value={disableCode} onChange={(event) => setDisableCode(event.target.value)} required />
+                <Input label="رمز عبور" type="password" value={disablePassword} onChange={(event) => setDisablePassword(event.target.value)} required />
+                <Button type="submit" variant="outline" isLoading={busy}>غیرفعال‌سازی MFA</Button>
+              </form>
+            ) : (
+              <>
+                {!setup ? (
+                  <Button type="button" onClick={beginSetup} isLoading={busy}>شروع راه‌اندازی MFA</Button>
+                ) : (
+                  <form onSubmit={enableMfa} className="space-y-3">
+                    <p className="text-sm text-slate-600">کلید دستی: <code dir="ltr">{setup.secret}</code></p>
+                    <p className="text-sm text-slate-600 break-all">OTP URI: <code dir="ltr">{setup.otpauthUrl}</code></p>
+                    <p className="text-sm text-slate-600">کدهای بازیابی: {setup.recoveryCodes.join(' · ')}</p>
+                    <Input label="کد ۶ رقمی اپ Authenticator" value={enableCode} onChange={(event) => setEnableCode(event.target.value)} required />
+                    <Button type="submit" isLoading={busy}>فعال‌سازی MFA</Button>
+                  </form>
+                )}
+              </>
+            )}
+          </>
+        )}
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {message && <p className="text-sm text-green-600">{message}</p>}
+      </CardContent>
+    </Card>
   );
 }

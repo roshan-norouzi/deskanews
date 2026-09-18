@@ -11,6 +11,7 @@ import { DistributedLockService } from './services/distributed-lock.service';
 import { SignedUrlService } from './services/signed-url.service';
 import { AssetAccessService } from './services/asset-access.service';
 import { LocalStorageService } from './services/local-storage.service';
+import { ObjectStorageService } from './services/object-storage.service';
 
 @Global()
 @Module({
@@ -25,6 +26,7 @@ import { LocalStorageService } from './services/local-storage.service';
     SignedUrlService,
     AssetAccessService,
     LocalStorageService,
+    ObjectStorageService,
   ],
   exports: [
     AuditService,
@@ -37,6 +39,7 @@ import { LocalStorageService } from './services/local-storage.service';
     SignedUrlService,
     AssetAccessService,
     LocalStorageService,
+    ObjectStorageService,
   ],
 })
 export class CommonModule {}

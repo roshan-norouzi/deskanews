@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@deska/shared": "workspace:*",
+    "@aws-sdk/client-s3": "^3.888.0",
     "@nestjs/common": "^11.0.7",
+    "@nestjs/swagger": "^11.2.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.7",
     "@nestjs/event-emitter": "^3.0.0",
@@ -40,6 +42,7 @@
     "helmet": "^8.3.0",
     "jalaliday": "^2.3.0",
     "multer": "^2.3.0",
+    "otplib": "^12.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "playwright-core": "1.63.0",

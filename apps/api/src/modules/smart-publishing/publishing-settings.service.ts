@@ -8,6 +8,7 @@ import {
   type UpdatePublishingSettingsDto,
 } from './dto/publishing-settings.dto';
 import { SecretProtectionService } from './secret-protection.service';
+import { ObjectStorageService } from '../../common/services/object-storage.service';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -325,9 +326,12 @@ export class PublishingSettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly secrets: SecretProtectionService,
+    private readonly storage: ObjectStorageService,
   ) {}
 
-  private storagePath() { return process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'); }
+  private legacyLocalPath(kind: 'fonts' | 'cover-images', filename: string): string {
+    return path.join(process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'), kind, filename);
+  }
 
   async addFont(tenantId: string, file: { originalname: string; buffer: Buffer }, requestedName?: string, requestedVariant?: string): Promise<FontRecord> {
     if (!file) throw new BadRequestException('فایل فونت انتخاب نشده است');
@@ -339,8 +343,11 @@ export class PublishingSettingsService {
     const variant = normalizeFontVariant(requestedVariant);
     const id = randomUUID();
     const filename = `${id}${ext}`;
-    const dir = this.tenantAssetDirectory('fonts', tenantId);
-    await this.writeTenantAsset(dir, filename, file.buffer, 'فونت');
+    try {
+      await this.storage.put(this.storage.key('fonts', filename, tenantId), file.buffer);
+    } catch {
+      throw new BadRequestException('آپلود فونت در سرور انجام نشد. دوباره تلاش کنید.');
+    }
     const current = await this.getRaw(tenantId);
     const library = JSON.parse(normalizeFontLibrary(current.social_font_library || DEFAULTS.social_font_library!)) as FontRecord[];
     const record: FontRecord = { id, name, variant, weight: FONT_VARIANTS[variant], url: `/publishing/settings/fonts/file/${tenantId}/${filename}` };
@@ -348,7 +355,7 @@ export class PublishingSettingsService {
     const next = [...library.filter((font) => font.name.toLowerCase() !== name.toLowerCase() || font.variant !== variant), record];
     await this.save(tenantId, { social_font_library: JSON.stringify(next) });
     if (replaced?.url?.startsWith(`/publishing/settings/fonts/file/${tenantId}/`)) {
-      await fs.rm(path.join(dir, path.basename(replaced.url)), { force: true }).catch(() => undefined);
+      await this.storage.delete(this.storage.key('fonts', path.basename(replaced.url), tenantId)).catch(() => undefined);
     }
     return record;
   }
@@ -366,7 +373,7 @@ export class PublishingSettingsService {
       // metadata. Keep them readable rather than risking deletion of a file
       // referenced by another organization.
       if (found.url.startsWith(tenantPrefix)) {
-        await fs.rm(path.join(this.tenantAssetDirectory('fonts', tenantId), path.basename(found.url)), { force: true }).catch(() => undefined);
+        await this.storage.delete(this.storage.key('fonts', path.basename(found.url), tenantId)).catch(() => undefined);
       }
     }
   }
@@ -393,14 +400,18 @@ export class PublishingSettingsService {
     this.assertAssetPath(tenantId, filename, /\.(woff2?|ttf|otf)$/i);
     const ext = path.extname(filename).toLowerCase();
     const contentType = ext === '.woff2' ? 'font/woff2' : ext === '.woff' ? 'font/woff' : ext === '.ttf' ? 'font/ttf' : 'font/otf';
-    try { return { buffer: await fs.readFile(path.join(this.tenantAssetDirectory('fonts', tenantId), filename)), contentType }; } catch { throw new NotFoundException(); }
+    try {
+      return { buffer: await this.storage.get(this.storage.key('fonts', filename, tenantId)), contentType };
+    } catch { throw new NotFoundException(); }
   }
 
   async legacyFontFile(filename: string): Promise<{ buffer: Buffer; contentType: string }> {
     if (!/^[a-f0-9-]+\.(woff2?|ttf|otf)$/i.test(filename)) throw new NotFoundException();
     const ext = path.extname(filename).toLowerCase();
     const contentType = ext === '.woff2' ? 'font/woff2' : ext === '.woff' ? 'font/woff' : ext === '.ttf' ? 'font/ttf' : 'font/otf';
-    try { return { buffer: await fs.readFile(path.join(this.storagePath(), 'fonts', filename)), contentType }; } catch { throw new NotFoundException(); }
+    try {
+      return { buffer: await fs.readFile(this.legacyLocalPath('fonts', filename)), contentType };
+    } catch { throw new NotFoundException(); }
   }
 
   async addImage(tenantId: string, file: { originalname: string; mimetype?: string; buffer: Buffer }): Promise<{ url: string }> {
@@ -412,8 +423,11 @@ export class PublishingSettingsService {
     if (file.mimetype && file.mimetype.toLowerCase() !== contentTypes[ext]) throw new BadRequestException('پسوند و نوع فایل تصویر با یکدیگر سازگار نیستند');
     if (!this.hasImageSignature(file.buffer, contentTypes[ext])) throw new BadRequestException('محتوای فایل تصویر معتبر نیست');
     const filename = `${randomUUID()}${ext}`;
-    const dir = this.tenantAssetDirectory('cover-images', tenantId);
-    await this.writeTenantAsset(dir, filename, file.buffer, 'تصویر');
+    try {
+      await this.storage.put(this.storage.key('cover-images', filename, tenantId), file.buffer, { contentType: contentTypes[ext] });
+    } catch {
+      throw new BadRequestException('آپلود تصویر در سرور انجام نشد. دوباره تلاش کنید.');
+    }
     return { url: `/publishing/settings/images/file/${tenantId}/${filename}` };
   }
 
@@ -433,7 +447,7 @@ export class PublishingSettingsService {
     const filename = url.slice(prefix.length);
     this.assertAssetPath(tenantId, filename, /\.(jpe?g|png|webp|avif)$/i);
     try {
-      await fs.unlink(path.join(this.tenantAssetDirectory('cover-images', tenantId), filename));
+      await this.storage.delete(this.storage.key('cover-images', filename, tenantId));
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
       if (code !== 'ENOENT') throw error;
@@ -444,14 +458,18 @@ export class PublishingSettingsService {
     this.assertAssetPath(tenantId, filename, /\.(jpe?g|png|webp|avif)$/i);
     const ext = path.extname(filename).toLowerCase();
     const contentTypes: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif' };
-    try { return { buffer: await fs.readFile(path.join(this.tenantAssetDirectory('cover-images', tenantId), filename)), contentType: contentTypes[ext] }; } catch { throw new NotFoundException(); }
+    try {
+      return { buffer: await this.storage.get(this.storage.key('cover-images', filename, tenantId)), contentType: contentTypes[ext] };
+    } catch { throw new NotFoundException(); }
   }
 
   async legacyImageFile(filename: string): Promise<{ buffer: Buffer; contentType: string }> {
     if (!/^[a-f0-9-]+\.(jpe?g|png|webp|avif)$/i.test(filename)) throw new NotFoundException();
     const ext = path.extname(filename).toLowerCase();
     const contentTypes: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif' };
-    try { return { buffer: await fs.readFile(path.join(this.storagePath(), 'cover-images', filename)), contentType: contentTypes[ext] }; } catch { throw new NotFoundException(); }
+    try {
+      return { buffer: await fs.readFile(this.legacyLocalPath('cover-images', filename)), contentType: contentTypes[ext] };
+    } catch { throw new NotFoundException(); }
   }
 
   private hasImageSignature(buffer: Buffer, contentType: string): boolean {
@@ -460,24 +478,6 @@ export class PublishingSettingsService {
     if (contentType === 'image/webp') return buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
     if (contentType === 'image/avif') return buffer.length >= 16 && buffer.toString('ascii', 4, 8) === 'ftyp' && /(?:avif|avis)/u.test(buffer.toString('ascii', 8, Math.min(buffer.length, 40)));
     return false;
-  }
-
-  private tenantAssetDirectory(kind: 'fonts' | 'cover-images', tenantId: string): string {
-    if (!/^[a-zA-Z0-9_-]{10,64}$/u.test(tenantId)) throw new NotFoundException();
-    return path.join(this.storagePath(), kind, tenantId);
-  }
-
-  private async writeTenantAsset(directory: string, filename: string, buffer: Buffer, label: 'فونت' | 'تصویر'): Promise<void> {
-    try {
-      await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(path.join(directory, filename), buffer);
-    } catch (error) {
-      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
-      if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(code)) {
-        throw new BadRequestException(`ذخیره‌سازی ${label} در سرور ممکن نیست. دسترسی و فضای STORAGE_PATH را بررسی کنید.`);
-      }
-      throw new BadRequestException(`آپلود ${label} در سرور انجام نشد. دوباره تلاش کنید.`);
-    }
   }
 
   private assertAssetPath(tenantId: string, filename: string, extension: RegExp): void {
