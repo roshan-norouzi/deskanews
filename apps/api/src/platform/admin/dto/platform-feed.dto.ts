@@ -1,12 +1,13 @@
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 import { RIGHTS_MODES, SOURCE_TYPES } from '../../../modules/smart-publishing/dto/feed.dto';
+import { IsFeedSourceUrl } from '../../../modules/smart-publishing/validators/feed-source-url.validator';
 
 export class CreatePlatformFeedDto {
   @IsString()
   @Length(2, 120)
   name!: string;
 
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsFeedSourceUrl()
   url!: string;
 
   @IsOptional()
@@ -45,7 +46,7 @@ export class UpdatePlatformFeedDto {
   name?: string;
 
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsFeedSourceUrl()
   url?: string;
 
   @IsOptional()

@@ -30,6 +30,7 @@ test('feed source utils normalize source types and rights defaults', () => {
   assert.equal(defaultRightsMode('telegram'), 'rewrite_required');
   assert.equal(normalizeRightsMode(undefined, 'website'), 'rewrite_required');
   assert.equal(normalizeFeedUrl('@sample_channel', 'telegram'), 'https://t.me/sample_channel');
+  assert.equal(normalizeFeedUrl('t.me/Sample_Channel', 'telegram'), 'https://t.me/sample_channel');
   assert.deepEqual(parseAdapterConfig({ maxItems: 12, sitemapUrl: 'https://example.com/sitemap.xml' }), {
     maxItems: 12,
     sitemapUrl: 'https://example.com/sitemap.xml',

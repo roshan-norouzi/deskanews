@@ -169,6 +169,27 @@ test('source settings are stored independently for each source', async () => {
   assert.equal(updated.autoSendSocial, true);
 });
 
+test('addFeed stores telegram @username as normalized https://t.me URL', async () => {
+  let created;
+  const prisma = {
+    newsFeed: {
+      findFirst: async () => null,
+      create: async ({ data }) => { created = data; return { id: 'telegram-feed', ...data }; },
+    },
+    platformFeed: { findUnique: async () => null },
+  };
+  const newsroom = new NewsroomService(prisma, {}, {}, {}, {}, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
+  await newsroom.addFeed('tenant-a', {
+    name: 'کانال نمونه',
+    url: '@samplechannel',
+    purpose: 'news-room',
+    sourceType: 'telegram',
+  });
+  assert.equal(created.url, 'https://t.me/samplechannel');
+  assert.equal(created.sourceType, 'telegram');
+  assert.equal(created.rightsMode, 'rewrite_required');
+});
+
 test('full Persian articles use the dedicated full-text rewrite prompt', async () => {
   let requestBody;
   const outbound = {

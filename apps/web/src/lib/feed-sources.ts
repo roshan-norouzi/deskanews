@@ -22,8 +22,7 @@ export const IRAN_SOURCE_HELP = 'دسکا برای جمع‌آوری خبر از
 export function validateFeedUrl(url: string, sourceType: SourceType): string {
   const trimmed = url.trim();
   if (sourceType === 'telegram') {
-    const username = trimmed.replace(/^@/u, '').replace(/^https?:\/\/(?:www\.)?t\.me\//iu, '').split('/')[0];
-    if (/^[a-z][a-z\d_]{3,31}$/iu.test(username)) return '';
+    if (parseTelegramChannelUsername(trimmed)) return '';
   }
   try {
     const parsed = new URL(trimmed);
@@ -32,6 +31,26 @@ export function validateFeedUrl(url: string, sourceType: SourceType): string {
   } catch {
     return 'آدرس منبع باید کامل و معتبر باشد.';
   }
+}
+
+export function normalizeFeedUrlForSubmit(url: string, sourceType: SourceType): string {
+  const trimmed = url.trim();
+  if (sourceType === 'telegram') {
+    const username = parseTelegramChannelUsername(trimmed);
+    if (username) return `https://t.me/${username}`;
+  }
+  return trimmed;
+}
+
+function parseTelegramChannelUsername(value: string): string | null {
+  const trimmed = value.trim();
+  const username = trimmed
+    .replace(/^@/u, '')
+    .replace(/^https?:\/\/(?:www\.)?t\.me\//iu, '')
+    .replace(/^t\.me\//iu, '')
+    .split('/')[0];
+  if (/^[a-z][a-z\d_]{3,31}$/iu.test(username)) return username.toLowerCase();
+  return null;
 }
 
 export function sourceTypeLabel(sourceType?: string): string {

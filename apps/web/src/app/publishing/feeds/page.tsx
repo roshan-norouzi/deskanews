@@ -30,6 +30,7 @@ import {
   IRAN_SOURCE_HELP,
   RIGHTS_MODES,
   SOURCE_TYPES,
+  normalizeFeedUrlForSubmit,
   validateFeedUrl,
   sourceTypeLabel,
   type RightsMode,
@@ -252,7 +253,7 @@ export default function FeedsPage() {
         method: editing ? 'PATCH' : 'POST',
         body: {
           name: form.name.trim(),
-          url: form.url.trim(),
+          url: normalizeFeedUrlForSubmit(form.url, form.sourceType),
           sourceType: form.sourceType,
           purpose: form.purpose,
           rightsMode: form.rightsMode,

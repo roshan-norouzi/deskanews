@@ -1,4 +1,5 @@
-import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsFeedSourceUrl } from '../validators/feed-source-url.validator';
 
 export const FEED_PURPOSES = ['news-room', 'social-studio'] as const;
 export type FeedPurpose = (typeof FEED_PURPOSES)[number];
@@ -14,7 +15,7 @@ export class CreateFeedDto {
   @Length(2, 120)
   name!: string;
 
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsFeedSourceUrl()
   url!: string;
 
   @IsOptional()
@@ -58,7 +59,7 @@ export class UpdateFeedDto {
   name?: string;
 
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsFeedSourceUrl()
   url?: string;
 
   @IsOptional()

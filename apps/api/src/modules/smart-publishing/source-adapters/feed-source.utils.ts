@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { RIGHTS_MODES, SOURCE_TYPES, type RightsMode, type SourceType } from '../dto/feed.dto';
 import { parseAdapterConfig, type FeedReadTarget } from './adapter-config';
+import {
+  normalizeHttpFeedUrl,
+  normalizeTelegramChannelUrl,
+} from './feed-url.utils';
 
 export interface FeedSourceRecord {
   sourceType: string;
@@ -23,18 +27,13 @@ export function defaultRightsMode(sourceType: SourceType): RightsMode {
 }
 
 export function normalizeFeedUrl(value: string, sourceType?: SourceType): string {
-  const trimmed = value.trim();
   if (sourceType === 'telegram') {
-    const username = trimmed.replace(/^@/u, '').replace(/^https?:\/\/(?:www\.)?t\.me\//iu, '').replace(/^t\.me\//iu, '').split('/')[0];
-    if (/^[a-z][a-z\d_]{3,31}$/iu.test(username)) {
-      return `https://t.me/${username.toLowerCase()}`;
-    }
+    const telegramUrl = normalizeTelegramChannelUrl(value);
+    if (telegramUrl) return telegramUrl;
+    throw new BadRequestException('آدرس کانال تلگرام معتبر نیست؛ مانند @channel یا https://t.me/channel');
   }
   try {
-    const url = new URL(trimmed);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error();
-    url.hash = '';
-    return url.toString();
+    return normalizeHttpFeedUrl(value);
   } catch {
     throw new BadRequestException('آدرس منبع معتبر نیست');
   }
