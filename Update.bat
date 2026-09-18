@@ -8,6 +8,8 @@ echo   Deska News - Update from GitHub
 echo ========================================
 echo.
 
+echo.
+echo Pulling latest changes from main...
 git pull origin main
 if errorlevel 1 (
     echo git pull failed.
