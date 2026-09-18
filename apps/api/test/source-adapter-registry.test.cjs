@@ -44,13 +44,15 @@ test('feed source utils normalize source types and rights defaults', () => {
     sourceType: 'rss',
     url: 'https://publisher.example/rss.xml',
     adapterConfig: {},
+    telegramBridgeUrl: '',
   });
 });
 
-test('SourceAdapterRegistry reads telegram fixture through public t.me HTML', async () => {
+test('SourceAdapterRegistry reads telegram fixture through worker bridge', async () => {
   const reader = new SourceReaderService();
-  reader.safeFetchText = async (url) => {
-    assert.match(url, /t\.me\/s\/sample/u);
+  reader.fetchTelegramChannelHtml = async (channelUrl, bridgeUrl) => {
+    assert.equal(bridgeUrl, 'https://bridge.example');
+    assert.match(channelUrl, /t\.me\/s\/sample/u);
     return telegramFixture;
   };
   const registry = new SourceAdapterRegistry(reader);
@@ -58,11 +60,43 @@ test('SourceAdapterRegistry reads telegram fixture through public t.me HTML', as
     sourceType: 'telegram',
     url: 'https://t.me/sample',
     adapterConfig: { maxItems: 10 },
+    telegramBridgeUrl: 'https://bridge.example',
   });
   assert.equal(entries.length, 2);
   assert.match(entries[0].title, /خبر نمونه/u);
   assert.equal(entries[0].canonicalUrl, 'https://t.me/sample/101');
   assert.equal(entries[1].featuredImageUrl, 'https://cdn.example/photo.jpg');
+});
+
+test('telegram ingest without bridge returns Iran worker guidance', async () => {
+  const reader = new SourceReaderService();
+  await assert.rejects(
+    () => reader.readTelegramChannel('https://t.me/sample', 10, ''),
+    (error) => error instanceof BadRequestException && /Worker تلگرام/u.test(error.message),
+  );
+});
+
+test('website adapter extracts Iranian news index pages', async () => {
+  const isnaHome = readFileSync(join(__dirname, 'fixtures/isna-home.html'), 'utf8');
+  const isnaArticle = readFileSync(join(__dirname, 'fixtures/isna-article.html'), 'utf8');
+  const irnaHome = readFileSync(join(__dirname, 'fixtures/irna-home.html'), 'utf8');
+  const irnaArticle = readFileSync(join(__dirname, 'fixtures/irna-article.html'), 'utf8');
+  const reader = new SourceReaderService();
+  reader.discoverFeedUrl = async () => null;
+  reader.safeFetchText = async (url) => {
+    if (url === 'https://www.isna.ir/') return isnaHome;
+    if (url === 'https://www.isna.ir/news/14001234567/') return isnaArticle;
+    if (url === 'https://www.irna.ir/') return irnaHome;
+    if (url === 'https://www.irna.ir/News/1234567890123456/') return irnaArticle;
+    throw new Error(`unexpected url ${url}`);
+  };
+  const registry = new SourceAdapterRegistry(reader);
+  const isnaEntries = await registry.readEntries({ sourceType: 'website', url: 'https://www.isna.ir/', adapterConfig: {} });
+  const irnaEntries = await registry.readEntries({ sourceType: 'website', url: 'https://www.irna.ir/', adapterConfig: {} });
+  assert.equal(isnaEntries[0].title, 'تیتر خبر ایسنا در صفحه فهرست');
+  assert.match(isnaEntries[0].content, /متن کامل خبر ایسنا/u);
+  assert.equal(irnaEntries[0].title, 'تیتر خبر ایرنا در فهرست اخبار');
+  assert.match(irnaEntries[0].content, /متن کامل خبر ایرنا/u);
 });
 
 test('SourceAdapterRegistry reads sitemap fixture and article pages', async () => {

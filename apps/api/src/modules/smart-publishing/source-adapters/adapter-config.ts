@@ -12,6 +12,7 @@ export interface FeedReadTarget {
   sourceType: SourceType;
   url: string;
   adapterConfig?: AdapterConfig | null;
+  telegramBridgeUrl?: string;
 }
 
 export function parseAdapterConfig(value: unknown): AdapterConfig {

@@ -10,6 +10,6 @@ export class TelegramSourceAdapter implements SourceAdapter {
 
   readEntries(target: FeedReadTarget) {
     const maxItems = maxItemsFromConfig(target.adapterConfig || {}, 50);
-    return this.reader.readTelegramChannel(target.url, maxItems);
+    return this.reader.readTelegramChannel(target.url, maxItems, target.telegramBridgeUrl);
   }
 }

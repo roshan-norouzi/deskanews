@@ -12,6 +12,11 @@ import { isIP } from 'node:net';
 import { load } from 'cheerio';
 import { XMLParser } from 'fast-xml-parser';
 import type { SourceType } from './dto/feed.dto';
+import {
+  extractTelegramBridgeHtml,
+  isAllowedTelegramFetchUrl,
+  TELEGRAM_INGEST_BRIDGE_REQUIRED,
+} from './source-adapters/telegram-bridge';
 
 export interface FeedEntry {
   canonicalUrl: string;
@@ -385,21 +390,40 @@ export class SourceReaderService {
    * Attempts to locate a standard RSS/Atom/JSON feed URL for a website homepage.
    */
   async discoverFeedUrl(sourceUrl: string): Promise<string | null> {
-    const html = await this.safeFetchText(sourceUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
-    const $ = load(html);
-    const discoveredFeed = $('link[rel="alternate"]').map((_, node) => {
-      const rel = String($(node).attr('rel') || '').toLowerCase();
-      if (rel && rel !== 'alternate') return '';
-      const type = String($(node).attr('type') || '').toLowerCase();
-      return /rss|atom|json/u.test(type) ? normalizeUrl($(node).attr('href') || '', sourceUrl) : '';
-    }).get().find(Boolean);
-    if (!discoveredFeed) return null;
+    let htmlDiscovered: string | null = null;
     try {
-      const entries = await this.readFeed(discoveredFeed);
-      return entries.length ? discoveredFeed : null;
+      const html = await this.safeFetchText(sourceUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
+      const $ = load(html);
+      htmlDiscovered = $('link[rel="alternate"]').map((_, node) => {
+        const rel = String($(node).attr('rel') || '').toLowerCase();
+        if (rel && rel !== 'alternate') return '';
+        const type = String($(node).attr('type') || '').toLowerCase();
+        return /rss|atom|json/u.test(type) ? normalizeUrl($(node).attr('href') || '', sourceUrl) : '';
+      }).get().find(Boolean) || null;
     } catch {
-      return null;
+      htmlDiscovered = null;
     }
+
+    const candidates = [...new Set([
+      htmlDiscovered,
+      '/rss',
+      '/rss.xml',
+      '/rss/allnews',
+      '/rss/all',
+      '/feeds/rss',
+      '/feed',
+      '/feed.xml',
+    ].map((item) => item ? normalizeUrl(item, sourceUrl) : '').filter(Boolean))];
+
+    for (const candidate of candidates) {
+      try {
+        const entries = await this.readFeed(candidate);
+        if (entries.length) return candidate;
+      } catch {
+        // Try the next common feed location.
+      }
+    }
+    return null;
   }
 
   async readWebsiteSource(sourceUrl: string): Promise<FeedEntry[]> {
@@ -416,16 +440,7 @@ export class SourceReaderService {
 
     const html = await this.safeFetchText(sourceUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
     const $ = load(html);
-    const candidates = new Map<string, { title: string; score: number }>();
-    $('article a[href], main a[href], [itemprop="itemListElement"] a[href], a[href]').each((_, node) => {
-      const href = normalizeUrl($(node).attr('href') || '', sourceUrl);
-      const title = this.htmlToText($(node).text()).replace(/\s+/gu, ' ').trim();
-      if (!href || !title || title.length < 8 || title.length > 500 || this.isNavigationLink(href, sourceUrl, title)) return;
-      const score = ($(node).closest('article, [itemprop="itemListElement"]').length ? 5 : 0)
-        + ($(node).closest('main').length ? 2 : 0) + Math.min(3, Math.floor(title.length / 80));
-      const current = candidates.get(href);
-      if (!current || score > current.score || title.length > current.title.length) candidates.set(href, { title, score });
-    });
+    const candidates = this.collectWebsiteArticleCandidates($, sourceUrl);
 
     const previews = await Promise.all([...candidates.entries()]
       .sort(([, left], [, right]) => right.score - left.score)
@@ -439,6 +454,63 @@ export class SourceReaderService {
     throw new BadRequestException('در صفحه منبع، مطلب قابل پایشی پیدا نشد؛ آدرس RSS یا صفحه فهرست مطالب را وارد کنید');
   }
 
+  collectWebsiteArticleCandidates($: ReturnType<typeof load>, sourceUrl: string): Map<string, { title: string; score: number }> {
+    const candidates = new Map<string, { title: string; score: number }>();
+    const register = (href: string, title: string, score: number) => {
+      const normalized = normalizeUrl(href, sourceUrl);
+      const cleanedTitle = this.htmlToText(title).replace(/\s+/gu, ' ').trim();
+      if (!normalized || !cleanedTitle || cleanedTitle.length < 8 || cleanedTitle.length > 500 || this.isNavigationLink(normalized, sourceUrl, cleanedTitle)) return;
+      const current = candidates.get(normalized);
+      if (!current || score > current.score || cleanedTitle.length > current.title.length) {
+        candidates.set(normalized, { title: cleanedTitle, score });
+      }
+    };
+
+    const selectors = [
+      'article a[href]',
+      'main a[href]',
+      '[itemprop="itemListElement"] a[href]',
+      '.news-list a[href], .list-news a[href], .box-news a[href], .news-item a[href], .item-news a[href]',
+      '[class*="news"] a[href]',
+      'a[href*="/news/"]',
+      'a[href*="/News/"]',
+      'a[href*="/archive/"]',
+      'a[href]',
+    ];
+    for (const selector of selectors) {
+      $(selector).each((_, node) => {
+        const anchor = $(node);
+        const href = anchor.attr('href') || '';
+        const title = anchor.attr('title')
+          || anchor.find('h1,h2,h3,h4,.title,.news-title,.item-title').first().text()
+          || anchor.text();
+        const score = (anchor.closest('article, [itemprop="itemListElement"], .news-item, .item-news, li').length ? 5 : 0)
+          + (anchor.closest('main, .news-list, .list-news, [class*="news"]').length ? 3 : 0)
+          + (/\/news\/|\/News\/|\/archive\//iu.test(href) ? 4 : 0)
+          + (anchor.find('time, .date, .time').length ? 2 : 0)
+          + Math.min(3, Math.floor(this.htmlToText(title).length / 80));
+        register(href, title, score);
+      });
+    }
+
+    $('script[type="application/ld+json"]').each((_, node) => {
+      try {
+        const payload = JSON.parse($(node).text());
+        const items = array(payload).flatMap((item) => array((item as Record<string, unknown>).itemListElement));
+        for (const item of items) {
+          const record = item as Record<string, unknown>;
+          const url = text(record.url) || text((record.item as Record<string, unknown> | undefined)?.url);
+          const title = text(record.name) || text((record.item as Record<string, unknown> | undefined)?.name);
+          if (url && title) register(url, title, 8);
+        }
+      } catch {
+        // Ignore malformed JSON-LD blocks on index pages.
+      }
+    });
+
+    return candidates;
+  }
+
   private isNavigationLink(candidateUrl: string, sourceUrl: string, title: string): boolean {
     try {
       const candidate = new URL(candidateUrl);
@@ -446,8 +518,14 @@ export class SourceReaderService {
       if (candidate.origin !== source.origin) return true;
       if (candidate.pathname === source.pathname && candidate.search === source.search) return true;
       if (/^(ورود|ثبت.?نام|خانه|تماس با ما|درباره ما|بیشتر|ادامه|صفحه بعد|next|home|login|sign[ -]?up|about|contact)$/iu.test(title)) return true;
-      if (/\.(?:css|js|json|xml|pdf|zip|jpg|jpeg|png|gif|webp)$/iu.test(candidate.pathname)) return true;
-      return /(?:\/tag\/|\/category\/|\/author\/|\/page\/|[?&](?:page|paged|s)=)/iu.test(`${candidate.pathname}${candidate.search}`);
+      if (/\.(?:css|js|json|xml|pdf|zip|jpg|jpeg|png|gif|webp|mp4|mp3)$/iu.test(candidate.pathname)) return true;
+      if (/(?:\/tag\/|\/tags\/|\/category\/|\/categories\/|\/author\/|\/topics\/|\/topic\/)/iu.test(candidate.pathname)) return true;
+      if (/(?:\/page\/|[?&](?:page|paged|s)=)/iu.test(`${candidate.pathname}${candidate.search}`)) return true;
+      if (/(?:\/news\/|\/News\/|\/archive\/|\/post-|\/article\/|\/story\/)/iu.test(candidate.pathname)) return false;
+      if (/\/(?:rss|feed|sitemap|search|login|register|contact|about|ads|advert|multimedia|gallery|video|podcast)(?:\/|$)/iu.test(candidate.pathname)) return true;
+      const segments = candidate.pathname.split('/').filter(Boolean);
+      if (segments.length === 1 && segments[0]!.length >= 5) return false;
+      return segments.length < 1;
     } catch {
       return true;
     }
@@ -460,7 +538,19 @@ export class SourceReaderService {
       const title = this.htmlToText($('meta[property="og:title"]').attr('content') || $('h1').first().text() || fallbackTitle).slice(0, 1_000);
       const summary = this.htmlToText($('meta[property="og:description"], meta[name="description"]').first().attr('content') || '');
       $('script,style,noscript,svg,iframe,nav,header,footer,aside,form').remove();
-      const body = this.htmlToText($('[itemprop="articleBody"], article .entry-content, article .post-content, article, main').first().text()).slice(0, 80_000);
+      const body = this.htmlToText($([
+        '[itemprop="articleBody"]',
+        'article .entry-content',
+        'article .post-content',
+        '.item-body',
+        '.news-body',
+        '.news-content',
+        '.item-text',
+        '#news-body',
+        '.body',
+        'article',
+        'main',
+      ].join(', ')).first().text()).slice(0, 80_000);
       const content = body || summary;
       const published = $('meta[property="article:published_time"]').attr('content')
         || $('[itemprop="datePublished"]').attr('content')
@@ -485,9 +575,53 @@ export class SourceReaderService {
     }
   }
 
-  async readTelegramChannel(sourceUrl: string, maxItems = 50): Promise<FeedEntry[]> {
+  async readTelegramChannel(sourceUrl: string, maxItems = 50, bridgeUrl?: string): Promise<FeedEntry[]> {
     const channelUrl = this.telegramHistoryUrl(sourceUrl);
-    const html = await this.safeFetchText(channelUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
+    const html = await this.fetchTelegramChannelHtml(channelUrl, bridgeUrl);
+    return this.parseTelegramChannelHtml(html, channelUrl, maxItems);
+  }
+
+  async fetchTelegramChannelHtml(channelHistoryUrl: string, bridgeUrl?: string): Promise<string> {
+    const bridge = bridgeUrl?.trim();
+    if (!bridge) {
+      throw new BadRequestException(TELEGRAM_INGEST_BRIDGE_REQUIRED);
+    }
+    if (!isAllowedTelegramFetchUrl(channelHistoryUrl)) {
+      throw new BadRequestException('آدرس کانال تلگرام عمومی معتبر نیست؛ مانند https://t.me/channel');
+    }
+    try {
+      const response = await this.safeRequest(bridge, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/html' },
+        body: JSON.stringify({ action: 'fetch', url: channelHistoryUrl }),
+        timeoutMs: 30_000,
+        maxResponseBytes: MAX_FEED_BYTES,
+        acceptedTypes: ['application/json', 'text/html', 'text/plain'],
+        allowLocalhostInDevelopment: true,
+      });
+      const contentType = String(response.headers['content-type'] || '').toLowerCase();
+      if (contentType.includes('json')) {
+        const body = response.json<Record<string, unknown>>();
+        if (body.ok === false) {
+          throw new BadRequestException(String(body.error || body.detail || 'Worker تلگرام صفحه کانال را برنگرداند'));
+        }
+        const html = extractTelegramBridgeHtml(body);
+        if (!html) throw new BadRequestException('Worker تلگرام پاسخ معتبری برای صفحه کانال برنگرداند');
+        return html;
+      }
+      const html = response.text();
+      if (!html.trim()) throw new BadRequestException('Worker تلگرام پاسخ خالی برگرداند');
+      return html;
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      const timedOut = error instanceof Error && error.name === 'TimeoutError';
+      throw new BadRequestException(timedOut
+        ? 'Worker تلگرام در مهلت مقرر پاسخ نداد؛ وضعیت Worker را بررسی کنید.'
+        : 'دریافت صفحه کانال تلگرام از Worker ناموفق بود؛ آدرس Worker و دسترسی HTTPS را بررسی کنید.');
+    }
+  }
+
+  parseTelegramChannelHtml(html: string, channelUrl: string, maxItems = 50): FeedEntry[] {
     const $ = load(html);
     const entries = $('.tgme_widget_message').map((_, node) => {
       const message = $(node);

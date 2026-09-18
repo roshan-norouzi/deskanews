@@ -39,11 +39,15 @@ export function normalizeFeedUrl(value: string, sourceType?: SourceType): string
   }
 }
 
-export function effectiveReadTarget(feed: FeedSourceRecord): FeedReadTarget {
+export function effectiveReadTarget(
+  feed: FeedSourceRecord,
+  options?: { telegramBridgeUrl?: string },
+): FeedReadTarget {
   const sourceType = normalizeSourceType(feed.sourceType);
   const adapterConfig = parseAdapterConfig(feed.adapterConfig);
+  const telegramBridgeUrl = options?.telegramBridgeUrl?.trim() || '';
   if (sourceType === 'website' && feed.resolvedFeedUrl) {
-    return { sourceType: 'rss', url: feed.resolvedFeedUrl, adapterConfig };
+    return { sourceType: 'rss', url: feed.resolvedFeedUrl, adapterConfig, telegramBridgeUrl };
   }
-  return { sourceType, url: feed.url, adapterConfig };
+  return { sourceType, url: feed.url, adapterConfig, telegramBridgeUrl };
 }

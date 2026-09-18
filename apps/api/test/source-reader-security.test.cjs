@@ -234,30 +234,35 @@ test('SourceReader extracts featured images from JSON feeds and page metadata', 
 
 test('SourceReader monitors websites and blogs by discovering article pages', async () => {
   const service = new SourceReaderService();
-  service.safeFetchText = async (url) => url === 'https://publisher.example'
-    ? '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body></body></html>'
-    : url.includes('feed.xml')
-      ? '<rss><channel><item><title>خبر از RSS خودکار</title><link>/story</link><description>متن خبر</description></item></channel></rss>'
-      : '<html><head><meta property="og:title" content="خبر وبلاگ"><meta name="description" content="چکیده خبر وبلاگ"></head><body><article><p>متن کامل خبر وبلاگ که از صفحهٔ فهرست کشف شده است و برای پایش ذخیره می‌شود.</p></article></body></html>';
-
+  service.safeFetchText = async (url) => {
+    if (url === 'https://publisher.example') {
+      return '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body></body></html>';
+    }
+    if (url.startsWith('https://publisher.example') && (url.includes('feed.xml') || url.endsWith('/rss') || url.endsWith('/rss.xml'))) {
+      return '<rss><channel><item><title>خبر از RSS خودکار</title><link>/story</link><description>متن خبر</description></item></channel></rss>';
+    }
+    if (url === 'https://blog.example') {
+      return '<html><body><main><article><a href="/post-1">عنوان مطلب وبلاگ</a></article></main></body></html>';
+    }
+    return '<html><head><meta property="og:title" content="عنوان مطلب وبلاگ"><meta property="og:description" content="خلاصه مطلب وبلاگ"></head><body><article><p>متن مطلب وبلاگ در صفحهٔ مقصد قرار دارد و باید به‌عنوان ورودی منبع دریافت شود.</p></article></body></html>';
+  };
   const rssEntries = await service.readSource('website', 'https://publisher.example');
   assert.equal(rssEntries[0].canonicalUrl, 'https://publisher.example/story');
-
-  service.safeFetchText = async (url) => url === 'https://blog.example'
-    ? '<html><body><main><article><a href="/post-1">عنوان مطلب وبلاگ</a></article></main></body></html>'
-    : '<html><head><meta property="og:title" content="عنوان مطلب وبلاگ"><meta property="og:description" content="خلاصه مطلب وبلاگ"></head><body><article><p>متن مطلب وبلاگ در صفحهٔ مقصد قرار دارد و باید به‌عنوان ورودی منبع دریافت شود.</p></article></body></html>';
   const blogEntries = await service.readSource('blog', 'https://blog.example');
   assert.equal(blogEntries[0].title, 'عنوان مطلب وبلاگ');
   assert.equal(blogEntries[0].canonicalUrl, 'https://blog.example/post-1');
 });
 
-test('SourceReader monitors public Telegram channels and public X accounts', async () => {
+test('SourceReader monitors public Telegram channels through worker bridge', async () => {
   const service = new SourceReaderService();
-  service.safeFetchText = async (url) => url.includes('t.me/s')
-    ? '<div class="tgme_widget_message"><div class="tgme_widget_message_text">خبر کانال تلگرام<br>جزئیات خبر</div><a class="tgme_widget_message_date" href="https://t.me/channel/42"><time datetime="2026-09-14T10:00:00+00:00"></time></a></div>'
-    : '<div class="timeline-Tweet" data-tweet-id="123"><p class="timeline-Tweet-text">یک پست عمومی در حساب X برای پایش</p><a href="https://x.com/news/status/123">post</a><time datetime="2026-09-14T11:00:00Z"></time></div>';
+  service.fetchTelegramChannelHtml = async (channelUrl, bridgeUrl) => {
+    assert.equal(bridgeUrl, 'https://bridge.example');
+    assert.match(channelUrl, /t\.me\/s\/channel/u);
+    return '<div class="tgme_widget_message"><div class="tgme_widget_message_text">خبر کانال تلگرام<br>جزئیات خبر</div><a class="tgme_widget_message_date" href="https://t.me/channel/42"><time datetime="2026-09-14T10:00:00+00:00"></time></a></div>';
+  };
+  service.safeFetchText = async () => '<div class="timeline-Tweet" data-tweet-id="123"><p class="timeline-Tweet-text">یک پست عمومی در حساب X برای پایش</p><a href="https://x.com/news/status/123">post</a><time datetime="2026-09-14T11:00:00Z"></time></div>';
 
-  const telegram = await service.readSource('telegram', 'https://t.me/channel');
+  const telegram = await service.readTelegramChannel('https://t.me/channel', 50, 'https://bridge.example');
   const twitter = await service.readSource('twitter', 'https://x.com/news');
   assert.equal(telegram[0].canonicalUrl, 'https://t.me/channel/42');
   assert.equal(telegram[0].category, 'تلگرام');

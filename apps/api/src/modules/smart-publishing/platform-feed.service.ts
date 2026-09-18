@@ -106,7 +106,7 @@ export class PlatformFeedService {
 
   async test(id: string) {
     const feed = await this.findFeed(id);
-    const target = effectiveReadTarget(feed);
+    const target = effectiveReadTarget(feed, { telegramBridgeUrl: await this.resolveTelegramBridgeUrl(id) });
     const entries = await this.sourceAdapters.readEntries(target);
     const filtered = entries.filter((entry) => matchesWordFilters(
       entryFilterText(entry),
@@ -139,7 +139,7 @@ export class PlatformFeedService {
     if (!feed.enabled) throw new BadRequestException('این منبع پیش‌فرض غیرفعال است');
     const startedAt = Date.now();
     try {
-      const target = effectiveReadTarget(feed);
+      const target = effectiveReadTarget(feed, { telegramBridgeUrl: await this.resolveTelegramBridgeUrl(id) });
       const cutoff = new Date(Date.now() - PLATFORM_ARTICLE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
       const entries = (await this.sourceAdapters.readEntries(target))
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
@@ -441,6 +441,17 @@ export class PlatformFeedService {
         enabled: false,
       })),
     });
+  }
+
+  private async resolveTelegramBridgeUrl(platformFeedId: string): Promise<string> {
+    const subscription = await this.prisma.tenantPlatformFeed.findFirst({
+      where: { platformFeedId, enabled: true, tenant: { isActive: true, status: 'active' } },
+      select: { tenantId: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!subscription) return '';
+    const settings = await this.settings.getRaw(subscription.tenantId);
+    return settings.telegram_bridge_url?.trim() || '';
   }
 
   private async findFeed(id: string) {

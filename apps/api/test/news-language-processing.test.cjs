@@ -132,7 +132,7 @@ test('source health test returns the five latest items without saving them', asy
   const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '' }) } };
   const sourceReader = {};
   const sourceAdapters = { readEntries: async (target) => { assert.equal(target.sourceType, 'website'); assert.equal(target.url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, sourceAdapters, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
+  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, sourceAdapters, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 

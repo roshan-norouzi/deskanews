@@ -349,7 +349,7 @@ export class SocialNetworkPublisherService {
     }
   }
 
-  private async telegramBridgeRequest(url: string, payload: Record<string, unknown>): Promise<{ ok?: boolean; error?: string }> {
+  private async telegramBridgeRequest(url: string, payload: Record<string, unknown>): Promise<{ ok?: boolean; error?: string; html?: string }> {
     try {
       const response = await this.outbound.safeRequest(url, {
         method: 'POST',
@@ -381,9 +381,8 @@ export class SocialNetworkPublisherService {
         acceptedTypes: ['application/json'],
         allowLocalhostInDevelopment: true,
       });
-      // The current Worker requires token/chat_id/text or photo_base64. Its
-      // expected 400 response to an empty probe proves the relay is reachable
-      // without sending an unsolicited Telegram message.
+      // Worker supports publish payloads and `{ action: "fetch", url }` for public t.me HTML ingest.
+      // An empty probe still proves the relay is reachable without sending Telegram traffic.
       if (![400, 405].includes(response.status) && !response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
