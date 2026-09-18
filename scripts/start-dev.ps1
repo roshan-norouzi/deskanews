@@ -363,16 +363,16 @@ function Stop-DevelopmentProcesses {
         Remove-Item -LiteralPath $processStatePath -Force -ErrorAction SilentlyContinue
     }
 
+    $processes = @()
     try {
-        $processes = Get-CimInstance Win32_Process -ErrorAction Stop |
+        $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop |
             Where-Object {
                 $_.Name -in @('powershell.exe', 'pwsh.exe') -and
                 $_.CommandLine -match $escapedRoot -and
                 $_.CommandLine -match '(tsc\.cmd.*--watch|nest\.cmd\s+start\s+--watch|next\.cmd\s+dev)'
-            }
+            })
     } catch {
         Write-Host 'Unable to inspect previous development processes; port cleanup will still continue.' -ForegroundColor Yellow
-        return
     }
 
     $processIds = @($processes | Select-Object -ExpandProperty ProcessId -Unique)

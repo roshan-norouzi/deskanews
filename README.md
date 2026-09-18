@@ -37,15 +37,22 @@
 
 | فایل | کاربرد |
 |------|--------|
-| `Run.bat` | اولین اجرا — PostgreSQL + API + Web با Hot Reload |
-| `Update.bat` | دریافت آخرین تغییرات از GitHub، نصب وابستگی‌ها و اجرای مجدد |
-| `Install.bat` | فقط نصب وابستگی‌ها (معمولاً از طریق `Update.bat` فراخوانی می‌شود) |
+| `Run.bat` / `Run.ps1` | اولین اجرا — PostgreSQL + API + Web با Hot Reload |
+| `Update.bat` / `Update.ps1` | دریافت آخرین تغییرات از GitHub، نصب وابستگی‌ها و اجرای مجدد |
+| `Install.bat` / `Install.ps1` | فقط نصب وابستگی‌ها (معمولاً از طریق Update فراخوانی می‌شود) |
 
 1. Docker Desktop را باز کنید.
-2. برای **اولین بار:** `Run.bat`
-3. برای **آپدیت بعد از pull:** `Update.bat`
+2. برای **اولین بار:** `Run.bat` یا در PowerShell: `.\Run.ps1`
+3. برای **آپدیت بعد از pull:** `Update.bat` یا در PowerShell: `.\Update.ps1`
 
-اگر `Update.bat` را نمی‌بینید، یک بار `git pull origin main` بزنید — این فایل در ریشهٔ پروژه است.
+در **PowerShell** حتماً از `.\` قبل از نام فایل استفاده کنید:
+
+```powershell
+git pull origin main
+.\Update.ps1
+```
+
+در **CMD** می‌توانید مستقیم بنویسید:
 
 ```bat
 git pull origin main
