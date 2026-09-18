@@ -42,6 +42,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo.
+echo Stopping running Deska processes before update...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-dev.ps1"
+
 call "%~dp0Install.bat"
 if errorlevel 1 exit /b 1
 

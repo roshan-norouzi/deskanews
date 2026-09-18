@@ -1,7 +1,8 @@
 param(
     [switch]$SkipMigrate,
     [switch]$SkipSeed,
-    [switch]$FreshWebCache
+    [switch]$FreshWebCache,
+    [switch]$StopOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -375,11 +376,24 @@ function Stop-DevelopmentProcesses {
     }
 
     $processIds = @($processes | Select-Object -ExpandProperty ProcessId -Unique)
-    if ($processIds.Count -eq 0) { return }
+    if ($processIds.Count -gt 0) {
+        Write-Host "Stopping $($processIds.Count) previous DESKA development process(es)..." -ForegroundColor Yellow
+        foreach ($processId in $processIds) {
+            cmd.exe /d /c "taskkill /PID $processId /T /F >nul 2>&1"
+        }
+    }
 
-    Write-Host "Stopping $($processIds.Count) previous DESKA development process(es)..." -ForegroundColor Yellow
-    foreach ($processId in $processIds) {
-        cmd.exe /d /c "taskkill /PID $processId /T /F >nul 2>&1"
+    try {
+        $nodeProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -match $escapedRoot })
+        if ($nodeProcesses.Count -gt 0) {
+            Write-Host "Stopping $($nodeProcesses.Count) Node.js process(es) for this project..." -ForegroundColor Yellow
+        }
+        foreach ($nodeProcess in $nodeProcesses) {
+            cmd.exe /d /c "taskkill /PID $($nodeProcess.ProcessId) /T /F >nul 2>&1"
+        }
+    } catch {
+        Write-Host 'Unable to inspect Node.js development processes.' -ForegroundColor Yellow
     }
 }
 
@@ -455,17 +469,25 @@ Write-Host '  Deska News - Development Stack' -ForegroundColor Cyan
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
 
-if (-not (Test-Path '.env')) {
+if (-not $StopOnly -and -not (Test-Path '.env')) {
     Copy-Item '.env.example' '.env'
     Write-Host '.env created from .env.example' -ForegroundColor Yellow
 }
 
-Ensure-ComposeEnvironment
+if (-not $StopOnly) {
+    Ensure-ComposeEnvironment
+}
 $devPorts = Get-DevPorts
 
 Stop-DevelopmentProcesses
 Stop-DockerAppServices
 Stop-PortListeners -Ports @($devPorts.Web, $devPorts.Api)
+
+if ($StopOnly) {
+    Write-Host 'Stopped Deska development processes.' -ForegroundColor Green
+    exit 0
+}
+
 Reset-DevelopmentLogs
 
 $env:DATABASE_URL = Ensure-Postgres

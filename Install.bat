@@ -13,6 +13,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo Stopping running Deska processes before install...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-dev.ps1"
+if errorlevel 1 (
+    echo Warning: could not stop all development processes cleanly.
+)
+
 call pnpm.cmd install
 if errorlevel 1 goto :failed
 
@@ -20,7 +26,8 @@ echo.
 echo Building shared package and Prisma client...
 call pnpm.cmd --filter @deska/shared build
 if errorlevel 1 goto :failed
-call pnpm.cmd --filter @deska/api db:generate
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\prisma-generate.ps1"
 if errorlevel 1 goto :failed
 
 set EXITCODE=0
@@ -33,6 +40,7 @@ set EXITCODE=1
 echo.
 if not "%EXITCODE%"=="0" (
   echo Install failed.
+  echo Tip: close any open Deska/API/Next.js windows, then run Update.bat again.
   pause
   exit /b %EXITCODE%
 )
