@@ -33,7 +33,24 @@
 
 ### نصب
 
-**Windows:** Docker Desktop را باز کنید، سپس **`Run.bat`** را اجرا کنید.
+**Windows (توسعهٔ لوکال):**
+
+| فایل | کاربرد |
+|------|--------|
+| `Run.bat` | اولین اجرا — PostgreSQL + API + Web با Hot Reload |
+| `Update.bat` | دریافت آخرین تغییرات از GitHub، نصب وابستگی‌ها و اجرای مجدد |
+| `Install.bat` | فقط نصب وابستگی‌ها (معمولاً از طریق `Update.bat` فراخوانی می‌شود) |
+
+1. Docker Desktop را باز کنید.
+2. برای **اولین بار:** `Run.bat`
+3. برای **آپدیت بعد از pull:** `Update.bat`
+
+اگر `Update.bat` را نمی‌بینید، یک بار `git pull origin main` بزنید — این فایل در ریشهٔ پروژه است.
+
+```bat
+git pull origin main
+Update.bat
+```
 
 ```bash
 # Clone و نصب

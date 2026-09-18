@@ -8,7 +8,32 @@ echo   Deska News - Update from GitHub
 echo ========================================
 echo.
 
-echo.
+where git >nul 2>&1
+if errorlevel 1 (
+    echo Git not found. Install Git for Windows first: https://git-scm.com/download/win
+    pause
+    exit /b 1
+)
+
+where pnpm.cmd >nul 2>&1
+if errorlevel 1 (
+    echo pnpm not found. Install Node.js 20+ then run: npm install -g pnpm
+    pause
+    exit /b 1
+)
+
+if not exist "%~dp0Install.bat" (
+    echo Install.bat not found in project root: %~dp0
+    pause
+    exit /b 1
+)
+
+if not exist "%~dp0Run.bat" (
+    echo Run.bat not found in project root: %~dp0
+    pause
+    exit /b 1
+)
+
 echo Pulling latest changes from main...
 git pull origin main
 if errorlevel 1 (
