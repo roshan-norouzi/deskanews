@@ -51,7 +51,7 @@ export function TenantSwitcher() {
               <Building2 className="h-4 w-4 shrink-0 text-slate-400" />
               <div className="min-w-0 flex-1 text-right">
                 <p className="truncate font-medium text-slate-900">{tenant.name}</p>
-                <p className="truncate text-xs text-slate-500">{tenant.plan}</p>
+                <p className="truncate text-xs text-slate-500" dir="ltr">{tenant.slug}</p>
               </div>
               {activeTenant?.id === tenant.id && <Check className="h-4 w-4 shrink-0 text-primary-600" />}
             </button>

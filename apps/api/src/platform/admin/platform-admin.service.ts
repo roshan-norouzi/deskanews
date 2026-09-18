@@ -8,6 +8,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
 import type { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import { AuthService } from '../auth/auth.service';
+import { UsageTrackingService } from '../usage/usage-tracking.service';
+import type { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
 
 type ListQuery = { q?: string; status?: string; role?: string; page?: string; limit?: string };
 
@@ -18,6 +20,7 @@ export class PlatformAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    private readonly usageTracking: UsageTrackingService,
   ) {}
 
   async overview(actor: AuthUser) {
@@ -314,6 +317,23 @@ export class PlatformAdminService {
     const storageCleanupComplete = await this.cleanupOrganizationStorage(id);
 
     return { success: true, deletedOrganizationId: id, storageCleanupComplete };
+  }
+
+  async listUsageMetrics(actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.usageTracking.listMetricDefinitions();
+  }
+
+  async updateUsageMetrics(actor: AuthUser, dto: UpdateUsageMetricsDto) {
+    this.assertSuperAdmin(actor);
+    return this.usageTracking.updateMetricDefinitions(dto.metrics);
+  }
+
+  async getOrganizationUsage(actor: AuthUser, tenantId: string) {
+    this.assertAdmin(actor);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) throw new NotFoundException('سازمان یافت نشد');
+    return this.usageTracking.getTenantUsage(tenantId);
   }
 
   async transferOwnership(actor: AuthUser, tenantId: string, targetUserId: string) {

@@ -10,6 +10,7 @@ const { SocialCoverRendererService } = require('../dist/modules/smart-publishing
 
 const integrationHealth = { success: async () => ({}), failure: async () => ({}) };
 const workflow = { record: async () => ({}) };
+const usageTracking = { record: async () => {} };
 const platformFeeds = {
   listForTenant: async () => [],
   ensureSubscriptions: async () => {},
@@ -110,6 +111,7 @@ test('newsroom preparation fills a missing featured image from article metadata'
     integrationHealth,
     workflow,
     platformFeeds,
+    usageTracking,
   );
 
   await newsroom.summarize('tenant-a', article.id);
@@ -127,7 +129,7 @@ test('source health test returns the five latest items without saving them', asy
   }));
   const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '' }) } };
   const sourceReader = { readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 
@@ -149,7 +151,7 @@ test('source settings are stored independently for each source', async () => {
     platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
   const sourceReader = { discoverFeedUrl: async () => 'https://source.example/rss.xml' };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   await newsroom.addFeed('tenant-a', { name: 'منبع اختصاصی', url: 'https://source.example', purpose: 'news-room', sourceType: 'website', includeWords: ['فناوری'], pollIntervalMinutes: 15, autoPoll: true, autoPrepare: false, autoPublish: true, autoSendSocial: false });
   await newsroom.updateFeed('tenant-a', feed.id, { includeWords: ['اقتصاد'], pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
@@ -270,7 +272,7 @@ test('newsroom publishes with the category selected from live WordPress categori
     categories: async () => categories,
     publish: async (_settings, input) => { publishInput = input; return { postId: '42', url: 'https://destination.example/post' }; },
   };
-  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   await newsroom.publish('tenant-a', article.id);
 
@@ -300,7 +302,7 @@ test('newsroom never publishes an RSS summary as the full WordPress article', as
     readArticleOrFallback: async () => ({ text: article.originalSummary, featuredImageUrl: '', contentSource: 'feed', isFullText: false }),
   };
   const wordpress = { validateSettings: () => undefined, categories: async () => [] };
-  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking);
 
   await assert.rejects(() => newsroom.publish('tenant-a', article.id), /فقط چکیده خبر را ارائه می‌کند/);
 });
@@ -325,7 +327,7 @@ test('news automation durably queues social routing instead of publishing to Wor
       return { created: true, job: { id: 'job-a' } };
     },
   };
-  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds);
+  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds, usageTracking);
 
   const result = await newsroom.queueAutomation('tenant-a', 3);
 

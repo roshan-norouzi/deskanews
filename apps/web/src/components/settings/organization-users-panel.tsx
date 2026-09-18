@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Pencil, Plus, RefreshCw, Search, Trash2, UserCheck, Users, X } from 'lucide-react';
-import {
-  ORGANIZATIONAL_ROLES,
-  TENANT_ROLE_LABELS,
-  TENANT_ROLES,
-} from '@deska/shared';
+import { TENANT_ROLE_LABELS, TENANT_ROLES } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { PermissionBadges, PermissionPicker } from '@/components/settings/permission-picker';
 import { useApi } from '@/hooks/use-api';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/utils';
@@ -34,18 +31,9 @@ interface MemberUser {
 export interface OrganizationMember {
   userId: string;
   role: string;
+  permissions: string[];
   joinedAt: string;
   user: MemberUser;
-}
-
-interface OrganizationInvitation {
-  id: string;
-  email: string;
-  role: string;
-  status: string;
-  expiresAt: string;
-  createdAt: string;
-  invitedUser?: { id: string; name: string; email: string; phone?: string | null } | null;
 }
 
 interface PlatformUserSearchResult {
@@ -54,7 +42,6 @@ interface PlatformUserSearchResult {
   email: string;
   phone?: string | null;
   membershipStatus?: string | null;
-  pendingInvitationId?: string | null;
 }
 
 interface OrganizationUsersPanelProps {
@@ -65,50 +52,7 @@ interface OrganizationUsersPanelProps {
 
 type MemberModalMode = 'add' | 'edit';
 
-interface UserFormState {
-  role: string;
-}
-
-const EMPTY_FORM: UserFormState = {
-  role: TENANT_ROLES.MEMBER,
-};
-
-function roleBadgeVariant(role: string): 'default' | 'success' | 'warning' | 'info' {
-  if (role === TENANT_ROLES.OWNER) return 'success';
-  if (role === TENANT_ROLES.ADMIN) return 'info';
-  if (role === TENANT_ROLES.MANAGER) return 'warning';
-  return 'default';
-}
-
-function RoleSelect({
-  label,
-  value,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:bg-slate-50"
-      >
-        {ORGANIZATIONAL_ROLES.map((role) => (
-          <option key={role} value={role}>
-            {TENANT_ROLE_LABELS[role]}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
+const EMPTY_PERMISSIONS: string[] = ['dashboard.view', 'publishing.view'];
 
 export function OrganizationUsersPanel({
   tenantId,
@@ -117,17 +61,11 @@ export function OrganizationUsersPanel({
 }: OrganizationUsersPanelProps) {
   const { user: currentUser } = useAuth();
   const membersPath = tenantId ? `/tenants/${tenantId}/members` : null;
-  const invitationsPath =
-    tenantId && (memberRole === TENANT_ROLES.OWNER || memberRole === TENANT_ROLES.ADMIN)
-      ? `/tenants/${tenantId}/invitations`
-      : null;
-
   const { data, isLoading, error, refetch } = useApi<OrganizationMember[]>(membersPath);
-  const { data: invitationData, refetch: refetchInvitations } = useApi<OrganizationInvitation[]>(invitationsPath);
 
   const [modalMode, setModalMode] = useState<MemberModalMode | null>(null);
   const [editingMember, setEditingMember] = useState<OrganizationMember | null>(null);
-  const [formState, setFormState] = useState<UserFormState>(EMPTY_FORM);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(EMPTY_PERMISSIONS);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [requestSuccess, setRequestSuccess] = useState<string | null>(null);
@@ -138,16 +76,15 @@ export function OrganizationUsersPanel({
   const [searchingUsers, setSearchingUsers] = useState(false);
 
   const members = Array.isArray(data) ? data : [];
-  const invitations = Array.isArray(invitationData) ? invitationData : [];
-  const canManage = memberRole === TENANT_ROLES.OWNER || memberRole === TENANT_ROLES.ADMIN;
+  const canManage = memberRole === TENANT_ROLES.OWNER;
 
   useEffect(() => {
     if (modalMode === 'edit' && editingMember) {
-      setFormState({ role: editingMember.role });
+      setSelectedPermissions(editingMember.permissions ?? []);
       setSaveError(null);
     }
     if (modalMode === 'add') {
-      setFormState({ ...EMPTY_FORM });
+      setSelectedPermissions([...EMPTY_PERMISSIONS]);
       setSaveError(null);
     }
   }, [modalMode, editingMember]);
@@ -155,7 +92,7 @@ export function OrganizationUsersPanel({
   const closeModal = () => {
     setModalMode(null);
     setEditingMember(null);
-    setFormState(EMPTY_FORM);
+    setSelectedPermissions([...EMPTY_PERMISSIONS]);
     setSaveError(null);
     setUserSearchQuery('');
     setUserSearchResults([]);
@@ -176,10 +113,13 @@ export function OrganizationUsersPanel({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenantId || !modalMode) return;
+    if (!selectedPermissions.length) {
+      setSaveError('حداقل یک سطح دسترسی انتخاب کنید');
+      return;
+    }
 
     setSaving(true);
     setSaveError(null);
-    let invitationSent = false;
 
     try {
       if (modalMode === 'add') {
@@ -187,28 +127,22 @@ export function OrganizationUsersPanel({
           setSaveError('ابتدا یک کاربر پلتفرم را جستجو و انتخاب کنید');
           return;
         }
-        await apiFetch(`/tenants/${tenantId}/invite`, {
+        await apiFetch(`/tenants/${tenantId}/members`, {
           method: 'POST',
           body: {
             userId: selectedPlatformUser.id,
-            role: formState.role,
+            permissions: selectedPermissions,
           },
         });
-        invitationSent = true;
+        setRequestSuccess('کاربر با موفقیت به سازمان اضافه شد.');
       } else if (editingMember) {
         await apiFetch(`/tenants/${tenantId}/members/${editingMember.userId}`, {
           method: 'PATCH',
-          body: {
-            role: editingMember.role === TENANT_ROLES.OWNER ? undefined : formState.role,
-          },
+          body: { permissions: selectedPermissions },
         });
       }
       closeModal();
       await refetch();
-      await refetchInvitations();
-      if (invitationSent) {
-        setRequestSuccess('درخواست عضویت به پنل کاربر ارسال شد؛ پس از تأیید او به سازمان اضافه می‌شود.');
-      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'خطا در ذخیره');
     } finally {
@@ -236,23 +170,10 @@ export function OrganizationUsersPanel({
   };
 
   const selectPlatformUser = (platformUser: PlatformUserSearchResult) => {
-    if (platformUser.membershipStatus || platformUser.pendingInvitationId) return;
+    if (platformUser.membershipStatus) return;
     setSelectedPlatformUser(platformUser);
     setUserSearchResults([]);
     setSaveError(null);
-  };
-
-  const revokeInvitation = async (id: string) => {
-    if (!tenantId || !window.confirm('این دعوت‌نامه لغو شود؟')) return;
-    await apiFetch(`/tenants/${tenantId}/invitations/${id}`, { method: 'DELETE' });
-    await refetchInvitations();
-  };
-
-  const resendInvitation = async (id: string) => {
-    if (!tenantId) return;
-    await apiFetch(`/tenants/${tenantId}/invitations/${id}/resend`, { method: 'POST' });
-    window.alert('دعوت عضویت تمدید شد و در حساب کاربر قابل مشاهده است.');
-    await refetchInvitations();
   };
 
   const handleDeleteMember = async (member: OrganizationMember) => {
@@ -304,6 +225,7 @@ export function OrganizationUsersPanel({
               <TableHead>نام</TableHead>
               <TableHead>ایمیل</TableHead>
               <TableHead>نقش</TableHead>
+              <TableHead>دسترسی‌ها</TableHead>
               <TableHead>وضعیت حساب</TableHead>
               {canManage && <TableHead>عملیات</TableHead>}
             </TableRow>
@@ -311,7 +233,7 @@ export function OrganizationUsersPanel({
           <TableBody>
             {members.length === 0 ? (
               <TableEmpty
-                colSpan={canManage ? 5 : 4}
+                colSpan={canManage ? 6 : 5}
                 message="کاربری در این سازمان ثبت نشده است"
               />
             ) : (
@@ -324,10 +246,17 @@ export function OrganizationUsersPanel({
                     {member.user.email}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={roleBadgeVariant(member.role)}>
+                    <Badge variant={member.role === TENANT_ROLES.OWNER ? 'success' : 'default'}>
                       {TENANT_ROLE_LABELS[member.role as keyof typeof TENANT_ROLE_LABELS] ??
                         member.role}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {member.role === TENANT_ROLES.OWNER ? (
+                      <Badge variant="success">دسترسی کامل</Badge>
+                    ) : (
+                      <PermissionBadges permissions={member.permissions ?? []} />
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={member.user.isActive ? 'success' : 'default'}>
@@ -340,7 +269,7 @@ export function OrganizationUsersPanel({
                         {member.role !== TENANT_ROLES.OWNER && (
                           <Button variant="outline" size="sm" onClick={() => openEditModal(member)}>
                             <Pencil className="h-3.5 w-3.5" />
-                            ویرایش نقش
+                            ویرایش دسترسی
                           </Button>
                         )}
                         {canDeleteMember(member) && (
@@ -365,51 +294,12 @@ export function OrganizationUsersPanel({
         </Table>
       )}
 
-      {canManage && invitations.length > 0 && (
-        <section className="space-y-3 rounded-xl border border-slate-200 p-4">
-          <h3 className="font-semibold text-slate-900">دعوت‌نامه‌ها</h3>
-          {invitations.map((invitation) => (
-            <div key={invitation.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm">
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium text-slate-800">
-                  {invitation.invitedUser?.name ?? 'کاربر پلتفرم'}
-                </span>
-                <span className="block text-xs text-slate-500" dir="ltr">
-                  {invitation.email}
-                </span>
-              </span>
-              <Badge
-                variant={
-                  invitation.status === 'pending'
-                    ? 'warning'
-                    : invitation.status === 'accepted'
-                      ? 'success'
-                      : 'default'
-                }
-              >
-                {invitation.status}
-              </Badge>
-              {invitation.status === 'pending' && (
-                <>
-                  <Button size="sm" variant="outline" onClick={() => void resendInvitation(invitation.id)}>
-                    ارسال مجدد
-                  </Button>
-                  <Button size="sm" variant="danger" onClick={() => void revokeInvitation(invitation.id)}>
-                    لغو
-                  </Button>
-                </>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
               <h3 className="text-lg font-semibold">
-                {modalMode === 'add' ? 'دعوت کاربر' : 'ویرایش نقش کاربر'}
+                {modalMode === 'add' ? 'افزودن کاربر به سازمان' : 'ویرایش دسترسی کاربر'}
               </h3>
               <button
                 type="button"
@@ -427,7 +317,7 @@ export function OrganizationUsersPanel({
                   <div>
                     <h4 className="font-semibold text-slate-900">انتخاب کاربر پلتفرم</h4>
                     <p className="mt-1 text-sm text-slate-500">
-                      کاربر باید قبلاً در پلتفرم ثبت‌نام کرده باشد. درخواست در پنل او نمایش داده می‌شود.
+                      کاربر باید قبلاً توسط مدیر کل در پلتفرم ایجاد شده باشد.
                     </p>
                   </div>
                   {selectedPlatformUser ? (
@@ -473,8 +363,7 @@ export function OrganizationUsersPanel({
                       {userSearchResults.length > 0 && (
                         <div className="space-y-2">
                           {userSearchResults.map((platformUser) => {
-                            const unavailable =
-                              !!platformUser.membershipStatus || !!platformUser.pendingInvitationId;
+                            const unavailable = !!platformUser.membershipStatus;
                             return (
                               <button
                                 key={platformUser.id}
@@ -490,11 +379,7 @@ export function OrganizationUsersPanel({
                                     {platformUser.phone ? ` · ${platformUser.phone}` : ''}
                                   </p>
                                 </div>
-                                {unavailable && (
-                                  <Badge variant="default">
-                                    {platformUser.membershipStatus ? 'عضو سازمان' : 'دعوت شده'}
-                                  </Badge>
-                                )}
+                                {unavailable && <Badge variant="default">عضو سازمان</Badge>}
                               </button>
                             );
                           })}
@@ -506,12 +391,11 @@ export function OrganizationUsersPanel({
               )}
 
               {modalMode === 'edit' && editingMember?.role === TENANT_ROLES.OWNER ? (
-                <p className="text-sm text-slate-600">نقش مالک سازمان قابل تغییر نیست.</p>
+                <p className="text-sm text-slate-600">مالک سازمان همیشه دسترسی کامل دارد.</p>
               ) : (
-                <RoleSelect
-                  label="نقش در سازمان"
-                  value={formState.role}
-                  onChange={(role) => setFormState({ role })}
+                <PermissionPicker
+                  value={selectedPermissions}
+                  onChange={setSelectedPermissions}
                 />
               )}
 
@@ -522,7 +406,7 @@ export function OrganizationUsersPanel({
                   انصراف
                 </Button>
                 <Button type="submit" isLoading={saving}>
-                  {modalMode === 'add' ? 'ارسال دعوت' : 'ذخیره'}
+                  {modalMode === 'add' ? 'افزودن به سازمان' : 'ذخیره'}
                 </Button>
               </div>
             </form>
@@ -546,7 +430,7 @@ export function OrganizationUsersPanel({
           <div>
             <CardTitle>کاربران سازمان</CardTitle>
             <p className="mt-0.5 text-sm text-slate-500">
-              مدیریت اعضا و نقش‌های دسترسی
+              افزودن کاربران پلتفرم و تعیین سطح دسترسی
               {members.length > 0 ? ` — ${members.length} نفر` : ''}
             </p>
           </div>

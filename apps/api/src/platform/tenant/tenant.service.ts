@@ -10,11 +10,13 @@ import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { AddMemberDto } from './dto/add-member.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { PlatformFeedService } from '../../modules/smart-publishing/platform-feed.service';
+import { UsageTrackingService } from '../usage/usage-tracking.service';
 type InvitationWithTenant = Prisma.TenantInvitationGetPayload<{ include: { tenant: true } }>;
 
 @Injectable()
@@ -22,6 +24,7 @@ export class TenantService {
   constructor(
     private prisma: PrismaService,
     private readonly platformFeeds: PlatformFeedService,
+    private readonly usageTracking: UsageTrackingService,
   ) {}
 
   async findAll(userId: string, isSuperAdmin: boolean) {
@@ -64,14 +67,11 @@ export class TenantService {
       throw new ConflictException('این شناسه URL قبلاً استفاده شده است');
     }
 
-    const plan = dto.plan ?? 'starter';
-
     const tenant = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.tenant.create({
         data: {
           name: dto.name,
           slug: dto.slug.toLowerCase(),
-          plan,
           locale: dto.locale ?? 'fa-IR',
           status: 'active',
           createdByUserId: userId,
@@ -137,7 +137,6 @@ export class TenantService {
       where: { id: tenantId },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.plan !== undefined && { plan: dto.plan }),
         ...(dto.locale !== undefined && { locale: dto.locale }),
         ...(dto.settings !== undefined && {
           settings: dto.settings as Prisma.InputJsonValue,
@@ -147,7 +146,7 @@ export class TenantService {
   }
 
   async searchPlatformUsers(tenantId: string, query: string, memberRole: string) {
-    this.assertAdmin(memberRole);
+    this.assertOwner(memberRole);
     const normalizedQuery = query.trim().toLowerCase();
     const normalizedPhone = normalizeDigits(query).replace(/[^0-9+]/g, '');
     const rawPhone = query.trim().replace(/[\s()-]/g, '');
@@ -179,20 +178,68 @@ export class TenantService {
         phone: true,
         avatarUrl: true,
         tenantMembers: { where: { tenantId }, select: { status: true } },
-        receivedInvitations: {
-          where: { tenantId, status: 'pending', expiresAt: { gt: new Date() } },
-          select: { id: true },
-        },
       },
       orderBy: { name: 'asc' },
       take: 12,
     });
 
-    return users.map(({ tenantMembers, receivedInvitations, ...user }) => ({
+    return users.map(({ tenantMembers, ...user }) => ({
       ...user,
       membershipStatus: tenantMembers[0]?.status ?? null,
-      pendingInvitationId: receivedInvitations[0]?.id ?? null,
     }));
+  }
+
+  async addMember(
+    tenantId: string,
+    dto: AddMemberDto,
+    memberRole: string,
+    addedByUserId?: string,
+  ) {
+    this.assertOwner(memberRole);
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException('سازمان یافت نشد');
+    }
+
+    const platformUser = await this.prisma.user.findFirst({
+      where: { id: dto.userId, isActive: true, status: 'active' },
+      select: { id: true, email: true, name: true, phone: true },
+    });
+    if (!platformUser) throw new NotFoundException('کاربر فعال پلتفرم یافت نشد');
+
+    const membership = await this.prisma.tenantMember.findUnique({
+      where: { tenantId_userId: { tenantId, userId: platformUser.id } },
+    });
+    if (membership) throw new ConflictException('این کاربر قبلاً عضو سازمان است');
+
+    await this.prisma.tenantMember.create({
+      data: {
+        tenantId,
+        userId: platformUser.id,
+        role: TENANT_ROLES.MEMBER,
+        permissions: dto.permissions,
+        status: 'active',
+        jobTitle: dto.jobTitle?.trim() || null,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId,
+        userId: addedByUserId,
+        action: 'organization.member_added',
+        entityType: 'TenantMember',
+        entityId: platformUser.id,
+        changes: { permissions: dto.permissions },
+      },
+    });
+
+    return this.getMember(tenantId, platformUser.id);
+  }
+
+  async getUsage(tenantId: string) {
+    return this.usageTracking.getTenantUsage(tenantId);
   }
 
   async listMyInvitations(userId: string) {
@@ -235,7 +282,7 @@ export class TenantService {
     memberRole: string,
     invitedByUserId?: string,
   ) {
-    this.assertAdmin(memberRole);
+    this.assertOwner(memberRole);
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) {
@@ -466,6 +513,7 @@ export class TenantService {
     return members.map((member) => ({
       userId: member.userId,
       role: member.role,
+      permissions: member.permissions,
       status: member.status,
       jobTitle: member.jobTitle,
       joinedAt: member.joinedAt,
@@ -479,7 +527,7 @@ export class TenantService {
     dto: UpdateMemberDto,
     requesterRole: string,
   ) {
-    this.assertAdmin(requesterRole);
+    this.assertOwner(requesterRole);
 
     const member = await this.prisma.tenantMember.findUnique({
       where: { tenantId_userId: { tenantId, userId } },
@@ -500,18 +548,14 @@ export class TenantService {
       throw new NotFoundException('عضو یافت نشد');
     }
 
-    if (member.role === TENANT_ROLES.OWNER && dto.role && dto.role !== TENANT_ROLES.OWNER) {
-      throw new ForbiddenException('نقش مالک سازمان قابل تغییر نیست');
-    }
-
-    if (dto.role === TENANT_ROLES.OWNER) {
-      throw new ForbiddenException('امکان تعیین نقش مالک از این مسیر وجود ندارد');
+    if (member.role === TENANT_ROLES.OWNER) {
+      throw new ForbiddenException('دسترسی‌های مالک سازمان قابل تغییر نیست');
     }
 
     await this.prisma.tenantMember.update({
       where: { tenantId_userId: { tenantId, userId } },
       data: {
-        ...(dto.role && member.role !== TENANT_ROLES.OWNER ? { role: dto.role, roleChangedAt: new Date() } : {}),
+        ...(dto.permissions !== undefined ? { permissions: dto.permissions } : {}),
         ...(dto.jobTitle !== undefined ? { jobTitle: dto.jobTitle || null } : {}),
       },
     });
@@ -525,7 +569,7 @@ export class TenantService {
     requesterUserId: string,
     requesterRole: string,
   ) {
-    this.assertAdmin(requesterRole);
+    this.assertOwner(requesterRole);
 
     if (userId === requesterUserId) {
       throw new BadRequestException('امکان حذف حساب خودتان وجود ندارد');
@@ -573,6 +617,7 @@ export class TenantService {
     return {
       userId: member.userId,
       role: member.role,
+      permissions: member.permissions,
       status: member.status,
       jobTitle: member.jobTitle,
       joinedAt: member.joinedAt,
@@ -580,16 +625,9 @@ export class TenantService {
     };
   }
 
-  private assertAdmin(memberRole: string) {
-    const allowed = [TENANT_ROLES.OWNER, TENANT_ROLES.ADMIN];
-    if (!allowed.includes(memberRole as typeof TENANT_ROLES.OWNER)) {
-      throw new ForbiddenException('فقط مالک یا مدیر ارشد می‌تواند این عملیات را انجام دهد');
-    }
-  }
-
   private assertOwner(memberRole: string) {
     if (memberRole !== TENANT_ROLES.OWNER) {
-      throw new ForbiddenException('تنظیمات سازمان فقط در اختیار مالک سازمان است');
+      throw new ForbiddenException('این عملیات فقط در اختیار مالک سازمان است');
     }
   }
 
@@ -601,7 +639,7 @@ export class TenantService {
   }
 
   async listInvitations(tenantId: string, requesterRole: string) {
-    this.assertAdmin(requesterRole);
+    this.assertOwner(requesterRole);
     await this.prisma.tenantInvitation.updateMany({
       where: { tenantId, status: 'pending', expiresAt: { lt: new Date() } },
       data: { status: 'expired' },
@@ -624,7 +662,7 @@ export class TenantService {
   }
 
   async revokeInvitation(tenantId: string, invitationId: string, requesterRole: string) {
-    this.assertAdmin(requesterRole);
+    this.assertOwner(requesterRole);
     const invitation = await this.prisma.tenantInvitation.findFirst({
       where: { id: invitationId, tenantId },
     });
@@ -645,7 +683,7 @@ export class TenantService {
     requesterRole: string,
     invitedByUserId?: string,
   ) {
-    this.assertAdmin(requesterRole);
+    this.assertOwner(requesterRole);
     const invitation = await this.prisma.tenantInvitation.findFirst({
       where: { id: invitationId, tenantId },
     });

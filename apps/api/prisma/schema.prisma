@@ -291,6 +291,7 @@ model Tenant {
   automationJobs           AutomationJob[]
   integrationHealth        IntegrationHealth[]
   contentWorkflowEvents    ContentWorkflowEvent[]
+  usageCounters            TenantUsageCounter[]
 
   @@index([status])
   @@index([createdByUserId])
@@ -301,6 +302,7 @@ model TenantMember {
   tenantId      String
   userId        String
   role          String    @default("member")
+  permissions   String[]  @default([])
   status        String    @default("active")
   jobTitle      String?
   metadata      Json      @default("{}")
@@ -313,6 +315,30 @@ model TenantMember {
   @@id([tenantId, userId])
   @@index([userId])
   @@index([tenantId, status])
+}
+
+model UsageMetricDefinition {
+  key       String               @id
+  label     String
+  unitLabel String               @default("توکن")
+  unitCost  Float                @default(1)
+  enabled   Boolean              @default(true)
+  sortOrder Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  counters  TenantUsageCounter[]
+}
+
+model TenantUsageCounter {
+  tenantId  String
+  metricKey String
+  quantity  Int                  @default(0)
+  updatedAt DateTime             @updatedAt
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metric    UsageMetricDefinition @relation(fields: [metricKey], references: [key], onDelete: Restrict)
+
+  @@id([tenantId, metricKey])
+  @@index([tenantId])
 }
 
 model TenantInvitation {
