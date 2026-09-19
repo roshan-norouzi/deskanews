@@ -188,7 +188,7 @@ jobs:
             cache_scope: deska-web
             build_args: |-
               API_URL=http://api:3001
-              NEXT_PUBLIC_BASE_PATH=/deska
+              NEXT_PUBLIC_BASE_PATH=
 
     steps:
       - name: Checkout
