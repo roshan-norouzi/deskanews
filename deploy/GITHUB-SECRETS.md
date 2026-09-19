@@ -10,7 +10,7 @@
 |--------|-----------------|
 | `SERVER_HOST` | `94.101.184.39` (یا همان مقدار deska اگر `pixad.ir` است) |
 | `SERVER_USER` | `root` (همان deska) |
-| `SERVER_PORT` | `22` (همان deska — **32168 پورت پنل است، نه SSH**) |
+| `SERVER_PORT` | **`2435`** (پورت SSH در پنل — نه 22 و نه 32168) |
 | `SERVER_SSH_KEY` | همان کلید خصوصی deska |
 | `SERVER_SSH_KNOWN_HOSTS` | همان deska (یا `ssh-keyscan -H -p 22 94.101.184.39`) |
 | **`DEPLOY_PATH`** | **`/www/wwwroot/deska.ir/app`** |

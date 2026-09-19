@@ -4,7 +4,7 @@
   "branch": "main",
   "serverHost": "94.101.184.39",
   "serverUser": "root",
-  "serverPort": 22,
+  "serverPort": 2435,
   "panelUrl": "https://94.101.184.39:32168/",
   "siteDomain": "deska.ir",
   "publicUrl": "https://app.deska.ir",
