@@ -5,5 +5,8 @@
   "serverHost": "pixad.ir",
   "serverUser": "root",
   "serverPort": 22,
-  "deployPath": "/www/wwwroot/pixad.ir/deska"
+  "siteDomain": "deska.ir",
+  "publicUrl": "https://app.deska.ir",
+  "deployPath": "/www/wwwroot/deska.ir/app",
+  "composeProjectName": "deska-news"
 }

@@ -24,12 +24,22 @@
 
 Workflow `deploy.yml` روی شاخهٔ `main` اجرا می‌شود. اتصال واقعی با Secretهای GitHub انجام می‌شود:
 
-- `SERVER_HOST`
+- `SERVER_HOST` — همان سرور قبلی (مثلاً `pixad.ir`)
 - `SERVER_USER`
 - `SERVER_PORT`
 - `SERVER_SSH_KEY`
 - `SERVER_SSH_KNOWN_HOSTS` (اختیاری، توصیه‌شده)
-- `DEPLOY_PATH`
+- `DEPLOY_PATH` — **`/www/wwwroot/deska.ir/app`** (پوشهٔ `/app` روی سایت deska.ir)
+
+سرویس Docker با نام مستقل **`deska-news`** اجرا می‌شود (`COMPOSE_PROJECT_NAME=deska-news`) تا با سایر پروژه‌های روی همان سرور تداخل نداشته باشد.
+
+روی سرور، فایل `.env` در همان مسیر deploy باید حداقل این مقادیر را داشته باشد:
+
+```env
+CORS_ORIGIN=https://app.deska.ir
+COMPOSE_PROJECT_NAME=deska-news
+IMAGE_PREFIX=ghcr.io/roshan-norouzi/deskanews
+```
 
 برای بالاترین سطح امنیت، `SERVER_SSH_KNOWN_HOSTS` را با کلید میزبانِ تأییدشدهٔ سرور تنظیم کنید، نه مقداری که هنگام دیپلوی از شبکه دریافت شده است. آن را یک‌بار از یک مسیر قابل‌اعتماد (کنسول مستقیم سرور یا پنل ارائه‌دهنده) دریافت و با اثرانگشت اعلام‌شدهٔ سرور تطبیق دهید. می‌توانید کل خروجی دستور زیر را در Secret ذخیره کنید:
 

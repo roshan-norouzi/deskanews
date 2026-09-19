@@ -157,6 +157,7 @@ cp -p .env "$candidate_env"
 chmod 600 "$candidate_env"
 replace_env_value "$candidate_env" APP_VERSION "$VERSION"
 replace_env_value "$candidate_env" IMAGE_PREFIX "$IMAGE_PREFIX"
+replace_env_value "$candidate_env" COMPOSE_PROJECT_NAME "deska-news"
 
 jwt_secret_value="$(read_env_value "$candidate_env" JWT_SECRET)"
 settings_key_value="$(read_env_value "$candidate_env" SETTINGS_ENCRYPTION_KEY)"
@@ -201,7 +202,7 @@ printf 'target_version=%s\ncreated_at=%s\n' "$VERSION" "$(date -u +%Y-%m-%dT%H:%
 
 postgres_id="$(docker compose --env-file .env ps -q postgres 2>/dev/null || true)"
 if [ -n "$postgres_id" ]; then
-  timeout --foreground --kill-after=20s 180s docker compose --env-file .env exec -T postgres pg_dump -U deska -d deska_erp --format=custom > "$backup_dir/database.dump"
+  timeout --foreground --kill-after=20s 180s docker compose --env-file .env exec -T postgres pg_dump -U deska -d deska_news --format=custom > "$backup_dir/database.dump"
   test -s "$backup_dir/database.dump"
 else
   printf 'PostgreSQL was not running before this deployment.\n' > "$backup_dir/database-not-running.txt"
