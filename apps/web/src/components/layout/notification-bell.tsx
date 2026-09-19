@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Bell, CheckCheck } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { useApi } from '@/hooks/use-api';
+import { useVisibleInterval } from '@/hooks/use-visible-interval';
 import { apiFetch } from '@/lib/utils';
 import { formatJalaliDateTime } from '@/lib/date';
 
@@ -25,10 +26,7 @@ export function NotificationBell() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { data, refetch, mutate } = useApi<NotificationSummary>('/notifications/summary');
 
-  useEffect(() => {
-    const timer = window.setInterval(() => void refetch(), 30_000);
-    return () => window.clearInterval(timer);
-  }, [refetch]);
+  useVisibleInterval(() => { void refetch(); }, 60_000);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {

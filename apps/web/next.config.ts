@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   ...(process.env.DOCKER_BUILD === 'true' ? { output: 'standalone' as const } : {}),
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   transpilePackages: ['@deska/shared'],
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+  },
   async headers() {
     const production = process.env.NODE_ENV === 'production';
     const contentSecurityPolicy = [

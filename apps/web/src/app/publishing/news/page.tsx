@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { useApi } from '@/hooks/use-api';
+import { useVisibleInterval } from '@/hooks/use-visible-interval';
 import {
   NEWSROOM_FILTERS,
   newsroomFilterMeta,
@@ -40,10 +41,7 @@ export default function NewsPage() {
     draft: NewsPublishDraft | null;
   } | null>(null);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => { void executeArticles(); }, 15_000);
-    return () => window.clearInterval(timer);
-  }, [executeArticles]);
+  useVisibleInterval(() => { void executeArticles(); }, 30_000);
 
   const feeds = useMemo(
     () => (Array.isArray(feedData) ? feedData.filter((feed) => feed.purpose === 'news-room') : []),

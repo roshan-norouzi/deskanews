@@ -2,10 +2,13 @@
 
 import { ChevronDown, Building2, Check } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTenant } from '@/lib/tenant-context';
 import { cn } from '@/lib/utils';
 
 export function TenantSwitcher() {
+  const router = useRouter();
+  const pathname = usePathname();
   const { tenants, activeTenant, setActiveTenant, isLoading } = useTenant();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,9 +45,13 @@ export function TenantSwitcher() {
               key={tenant.id}
               type="button"
               onClick={() => {
+                if (tenant.id === activeTenant?.id) {
+                  setOpen(false);
+                  return;
+                }
                 setActiveTenant(tenant.id);
                 setOpen(false);
-                window.location.reload();
+                router.push(pathname);
               }}
               className="flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50"
             >

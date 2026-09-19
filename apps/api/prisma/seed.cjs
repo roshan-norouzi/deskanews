@@ -6,8 +6,13 @@ const { DEFAULT_PLATFORM_FEEDS, PLATFORM_FEED_CATALOG_VERSION } = require('@desk
 
 const prisma = new PrismaClient();
 
-async function rebuildPlatformFeedCatalog(tenantId) {
-  await prisma.platformFeed.deleteMany({});
+async function ensureDefaultPlatformFeedCatalog(tenantId) {
+  const feedCount = await prisma.platformFeed.count();
+  if (feedCount > 0) {
+    console.log(`Platform feed catalog already has ${feedCount} feed(s); preserving server data.`);
+    return;
+  }
+
   for (const feed of DEFAULT_PLATFORM_FEEDS) {
     const createdFeed = await prisma.platformFeed.create({
       data: {
@@ -75,7 +80,7 @@ async function main() {
     data: { status: 'active', isActive: true, createdByUserId: admin.id, primaryOwnerUserId: admin.id },
   });
 
-  await rebuildPlatformFeedCatalog(tenant.id);
+  await ensureDefaultPlatformFeedCatalog(tenant.id);
 
   console.log(`DESKA seed completed — platform feed catalog v${PLATFORM_FEED_CATALOG_VERSION} (${DEFAULT_PLATFORM_FEEDS.length} feeds)`);
 }

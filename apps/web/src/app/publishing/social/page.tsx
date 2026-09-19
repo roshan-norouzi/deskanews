@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { useApi } from '@/hooks/use-api';
+import { useVisibleInterval } from '@/hooks/use-visible-interval';
 import { ApiError, apiFetch, apiFetchBlob, cn, withBasePath } from '@/lib/utils';
 import { parseTemplateLibrary, renderCoverToDataUrl, type CoverFont } from '@/components/publishing/cover-template-builder';
 import { formatPersianDigits } from '@deska/shared';
@@ -73,7 +74,7 @@ export default function SocialPage() {
     || imageTemplateLibrary.templates.find((item) => item.id === imageTemplateLibrary.defaultTemplateId)
     || imageTemplateLibrary.templates[0];
 
-  useEffect(() => { const timer = window.setInterval(() => { void executeArticles(); void executeFeeds(); }, 15_000); return () => window.clearInterval(timer); }, [executeArticles, executeFeeds]);
+  useVisibleInterval(() => { void executeArticles(); void executeFeeds(); }, 30_000);
   useEffect(() => { setCaptions((current) => { const next = { ...current }; let changed = false; for (const article of articles) { const serverCaption = article.captionText || ''; const previousServerCaption = serverCaptionsRef.current[article.id]; if (!(article.id in next) || current[article.id] === previousServerCaption) { if (next[article.id] !== serverCaption) { next[article.id] = serverCaption; changed = true; } } serverCaptionsRef.current[article.id] = serverCaption; } return changed ? next : current; }); }, [articles]);
   const rows = useMemo(() => filter === 'all' ? articles : articles.filter((item) => item.status === filter), [articles, filter]);
 

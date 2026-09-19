@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { useApi } from '@/hooks/use-api';
+import { useVisibleInterval } from '@/hooks/use-visible-interval';
 import { apiFetch } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { formatJalaliDateTime } from '@/lib/date';
@@ -47,10 +48,7 @@ export default function PublishingOperationsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => void refetch(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [refetch]);
+  useVisibleInterval(() => { void refetch(); }, 30_000);
 
   const retry = async (jobId: string) => {
     setBusy(jobId); setActionError(null); setActionMessage(null);

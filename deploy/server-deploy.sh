@@ -246,7 +246,11 @@ chmod 600 .env
 release_switched=1
 
 run_deployment_stage 'Start updated services' 300 docker compose --env-file .env up -d --no-build --remove-orphans
-run_deployment_stage 'Seed system data' 180 docker compose --env-file .env run --rm api node prisma/seed.cjs
+if [ -f "$backup_dir/installed-version" ]; then
+  printf 'DESKA_DEPLOY_STAGE: skipping seed on upgrade; preserving existing server data\n'
+else
+  run_deployment_stage 'Seed system data' 180 docker compose --env-file .env run --rm api node prisma/seed.cjs
+fi
 
 current_deployment_stage='Verify API readiness'
 printf 'DESKA_DEPLOY_STAGE: Verify API readiness (maximum 120s)\n'

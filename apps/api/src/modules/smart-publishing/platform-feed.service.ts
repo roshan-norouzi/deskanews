@@ -66,10 +66,6 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     });
   }
 
-  private catalogSeedUrls(): string[] {
-    return [...new Set(DEFAULT_PLATFORM_FEEDS.map((feed) => feed.url))].sort();
-  }
-
   private async readStoredCatalogVersion(): Promise<number> {
     try {
       const row = await this.prisma.platformConfig.findUnique({ where: { id: 'default' } });
@@ -94,29 +90,13 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     });
   }
 
-  private async catalogNeedsRebuild(): Promise<boolean> {
-    const storedVersion = await this.readStoredCatalogVersion();
-    if (storedVersion !== PLATFORM_FEED_CATALOG_VERSION) return true;
-
-    const seedUrls = this.catalogSeedUrls();
-    const existing = await this.prisma.platformFeed.findMany({
-      select: { url: true, lastError: true },
-      orderBy: { url: 'asc' },
-    });
-    const existingUrls = existing.map((feed) => feed.url).sort();
-    if (seedUrls.length !== existingUrls.length) return true;
-    for (let index = 0; index < seedUrls.length; index += 1) {
-      if (seedUrls[index] !== existingUrls[index]) return true;
-    }
-    return existing.some((feed) => feed.lastError.includes('حذف شده'));
-  }
-
   async ensureDefaultPlatformFeeds() {
-    if (await this.catalogNeedsRebuild()) {
+    const storedVersion = await this.readStoredCatalogVersion();
+    const syncMetadataFromCode = storedVersion < PLATFORM_FEED_CATALOG_VERSION;
+    if (syncMetadataFromCode) {
       this.logger.log(
-        `Rebuilding platform feed catalog to version ${PLATFORM_FEED_CATALOG_VERSION} (${DEFAULT_PLATFORM_FEEDS.length} feeds)`,
+        `Syncing platform feed catalog to version ${PLATFORM_FEED_CATALOG_VERSION} (${DEFAULT_PLATFORM_FEEDS.length} default feeds)`,
       );
-      await this.prisma.platformFeed.deleteMany({});
     }
 
     for (const seed of DEFAULT_PLATFORM_FEEDS) {
@@ -125,34 +105,29 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(seed.url).catch(() => null)) || '';
       }
 
+      const metadata = {
+        name: seed.name,
+        url: seed.url,
+        sourceType: seed.sourceType,
+        catalogGroup: seed.catalogGroup,
+        resolvedFeedUrl,
+        sourceLanguage: seed.sourceLanguage,
+        pollIntervalMinutes: seed.pollIntervalMinutes,
+        enabled: true,
+        lastError: '',
+      };
+
       const feed = await this.prisma.platformFeed.upsert({
         where: { url: seed.url },
-        create: {
-          name: seed.name,
-          url: seed.url,
-          sourceType: seed.sourceType,
-          catalogGroup: seed.catalogGroup,
-          resolvedFeedUrl,
-          sourceLanguage: seed.sourceLanguage,
-          pollIntervalMinutes: seed.pollIntervalMinutes,
-          enabled: true,
-          lastError: '',
-        },
-        update: {
-          name: seed.name,
-          sourceType: seed.sourceType,
-          catalogGroup: seed.catalogGroup,
-          resolvedFeedUrl,
-          sourceLanguage: seed.sourceLanguage,
-          pollIntervalMinutes: seed.pollIntervalMinutes,
-          enabled: true,
-          lastError: '',
-        },
+        create: metadata,
+        update: syncMetadataFromCode ? metadata : {},
       });
       await this.ensureSubscriptionsForAllTenants(feed.id);
     }
 
-    await this.writeStoredCatalogVersion();
+    if (syncMetadataFromCode) {
+      await this.writeStoredCatalogVersion();
+    }
   }
 
   listAll() {    return this.prisma.platformFeed.findMany({ orderBy: { createdAt: 'desc' } });
