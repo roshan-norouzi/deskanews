@@ -21,6 +21,12 @@ if (Test-Path $configPath) {
   if ($config.branch) { $branch = [string]$config.branch }
   if ($config.githubOwner) { $owner = [string]$config.githubOwner }
   if ($config.repository) { $repository = [string]$config.repository }
+  Write-Host 'Deploy target (config.local.json):' -ForegroundColor Cyan
+  if ($config.serverHost) { Write-Host "  SSH: $($config.serverUser)@$($config.serverHost):$($config.serverPort)" -ForegroundColor DarkGray }
+  if ($config.deployPath) { Write-Host "  Path: $($config.deployPath)" -ForegroundColor DarkGray }
+  if ($config.publicUrl) { Write-Host "  URL: $($config.publicUrl)" -ForegroundColor DarkGray }
+  if ($config.composeProjectName) { Write-Host "  Docker: $($config.composeProjectName)" -ForegroundColor DarkGray }
+  Write-Host '  GitHub Secrets must match deploy/GITHUB-SECRETS.md' -ForegroundColor Yellow
 }
 
 function Test-SystemObservanceSnapshot([string]$Path) {
