@@ -33,9 +33,6 @@ interface PlatformFeed {
   sourceType: FeedSourceType;
   catalogGroup?: FeedCatalogGroup;
   resolvedFeedUrl: string;
-  includeWords: string[];
-  excludeWords: string[];
-  pollIntervalMinutes: number;
   sourceLanguage?: SourceLanguage;
   enabled: boolean;
   lastFetchedAt: string | null;
@@ -46,9 +43,6 @@ interface FeedForm {
   name: string;
   url: string;
   sourceType: FeedSourceType;
-  includeWords: string;
-  excludeWords: string;
-  pollIntervalMinutes: string;
   sourceLanguage: SourceLanguage;
   enabled: boolean;
 }
@@ -57,9 +51,6 @@ const EMPTY_FORM: FeedForm = {
   name: '',
   url: '',
   sourceType: 'rss',
-  includeWords: '',
-  excludeWords: '',
-  pollIntervalMinutes: '240',
   sourceLanguage: 'auto',
   enabled: true,
 };
@@ -77,14 +68,8 @@ interface HealthResult {
   items: HealthItem[];
 }
 
-function wordsToString(words?: string[]) {
-  return (words || []).join('، ');
-}
-
 function validateForm(form: FeedForm) {
   if (form.name.trim().length < 2) return 'نام منبع باید حداقل ۲ نویسه باشد.';
-  const interval = Number(form.pollIntervalMinutes);
-  if (!Number.isInteger(interval) || interval < 5 || interval > 1440) return 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.';
   try {
     const url = new URL(form.url.trim());
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
@@ -148,9 +133,6 @@ export default function PlatformFeedsPage() {
       name: feed.name,
       url: feed.url,
       sourceType: feed.sourceType,
-      includeWords: wordsToString(feed.includeWords),
-      excludeWords: wordsToString(feed.excludeWords),
-      pollIntervalMinutes: String(feed.pollIntervalMinutes),
       sourceLanguage: feed.sourceLanguage || 'auto',
       enabled: feed.enabled,
     });
@@ -173,8 +155,6 @@ export default function PlatformFeedsPage() {
           name: form.name.trim(),
           url: form.url.trim(),
           sourceType: form.sourceType,
-          includeWords: form.includeWords,
-          excludeWords: form.excludeWords,
         },
       });
       setHealth(result);
@@ -215,9 +195,6 @@ export default function PlatformFeedsPage() {
         url: form.url.trim(),
         sourceType: form.sourceType,
         catalogGroup: activeGroup,
-        includeWords: form.includeWords,
-        excludeWords: form.excludeWords,
-        pollIntervalMinutes: Number(form.pollIntervalMinutes),
         sourceLanguage: form.sourceLanguage,
         enabled: form.enabled,
       };
@@ -365,10 +342,8 @@ export default function PlatformFeedsPage() {
                   <p className="mt-3 text-xs leading-5 text-slate-500">{feedSourceTypeHint(form.sourceType)}</p>
                 </fieldset>
                 <Input label={FEED_SOURCE_UI[form.sourceType].label} required dir="ltr" placeholder={FEED_SOURCE_UI[form.sourceType].placeholder} value={form.url} onChange={(e) => setForm((c) => ({ ...c, url: e.target.value }))} />
-                <Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(e) => setForm((c) => ({ ...c, includeWords: e.target.value }))} />
-                <Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(e) => setForm((c) => ({ ...c, excludeWords: e.target.value }))} />
-                <Input label="فاصله پایش (دقیقه)" dir="ltr" value={form.pollIntervalMinutes} onChange={(e) => setForm((c) => ({ ...c, pollIntervalMinutes: e.target.value }))} />
                 <label className="grid gap-1.5 text-sm font-medium text-slate-700">زبان منبع<select value={form.sourceLanguage} onChange={(e) => setForm((c) => ({ ...c, sourceLanguage: e.target.value as SourceLanguage }))} className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20">{SOURCE_LANGUAGES.map((language) => <option key={language} value={language}>{SOURCE_LANGUAGE_LABELS[language]}</option>)}</select></label>
+                <p className="text-xs leading-5 text-slate-500">فیلتر کلمات و فاصله پایش را هر سازمان در بخش «منابع پیش‌فرض» تنظیم می‌کند.</p>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm((c) => ({ ...c, enabled: e.target.checked }))} /> فعال در سطح پلتفرم</label>
             </ModalBody>
             <ModalFooter className="flex items-center justify-between gap-2">

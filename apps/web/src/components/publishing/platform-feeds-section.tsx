@@ -6,6 +6,7 @@ import { formatPersianDigits } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
@@ -31,6 +32,12 @@ interface PlatformFeed {
   catalogGroup?: FeedCatalogGroup;
   pollIntervalMinutes?: number | null;
   pollIntervalOverride?: number | null;
+  catalogPollIntervalMinutes?: number | null;
+  settingsMode?: 'default' | 'custom';
+  includeWords?: string[];
+  excludeWords?: string[];
+  customIncludeWords?: string[];
+  customExcludeWords?: string[];
   sourceLanguage?: SourceLanguage;
   autoPoll?: boolean | null;
   autoPrepare?: boolean | null;
@@ -43,11 +50,18 @@ interface PlatformFeed {
 }
 
 interface FeedSettingsForm {
+  settingsMode: 'default' | 'custom';
+  includeWords: string;
+  excludeWords: string;
   pollIntervalMinutes: string;
   autoPoll: boolean;
   autoPrepare: boolean;
   autoPublish: boolean;
   autoSendSocial: boolean;
+}
+
+function wordsToString(words?: string[]) {
+  return (words || []).join('، ');
 }
 
 function sortFeeds(feeds: PlatformFeed[]) {
@@ -84,6 +98,9 @@ export function PlatformFeedsSection() {
   }, [feedsByGroup]);
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
   const [form, setForm] = useState<FeedSettingsForm>({
+    settingsMode: 'default',
+    includeWords: '',
+    excludeWords: '',
     pollIntervalMinutes: '240',
     autoPoll: true,
     autoPrepare: true,
@@ -109,7 +126,7 @@ export function PlatformFeedsSection() {
     event.preventDefault();
     if (!editing) return;
     const interval = Number(form.pollIntervalMinutes);
-    if (!Number.isInteger(interval) || interval < 5 || interval > 1440) {
+    if (form.settingsMode === 'custom' && (!Number.isInteger(interval) || interval < 5 || interval > 1440)) {
       setNotice({ type: 'error', text: 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.' });
       return;
     }
@@ -117,7 +134,10 @@ export function PlatformFeedsSection() {
       await apiFetch(`/publishing/platform-feeds/${editing.id}`, {
         method: 'PATCH',
         body: {
-          pollIntervalMinutes: interval,
+          settingsMode: form.settingsMode,
+          includeWords: form.settingsMode === 'custom' ? form.includeWords : [],
+          excludeWords: form.settingsMode === 'custom' ? form.excludeWords : [],
+          pollIntervalMinutes: form.settingsMode === 'custom' ? interval : null,
           autoPoll: form.autoPoll,
           autoPrepare: form.autoPrepare,
           autoPublish: form.autoPublish,
@@ -194,6 +214,7 @@ export function PlatformFeedsSection() {
                 <tr>
                   <th className="px-5 py-3 font-medium">منبع</th>
                   <th className="px-5 py-3 font-medium">زبان</th>
+                  <th className="px-5 py-3 font-medium">فیلتر</th>
                   <th className="px-5 py-3 font-medium">پایش</th>
                   <th className="px-5 py-3 font-medium">وضعیت</th>
                   <th className="px-5 py-3 font-medium">عملیات</th>
@@ -215,10 +236,19 @@ export function PlatformFeedsSection() {
                         {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
                       </td>
                       <td className="px-5 py-4 text-slate-600">{SOURCE_LANGUAGE_LABELS[feed.sourceLanguage || 'auto']}</td>
+                      <td className="px-5 py-4 text-xs text-slate-600">
+                        {feed.settingsMode === 'custom' ? (
+                          <>
+                            {feed.includeWords?.length ? <div>شامل: {feed.includeWords.join('، ')}</div> : null}
+                            {feed.excludeWords?.length ? <div>بدون: {feed.excludeWords.join('، ')}</div> : null}
+                            {!feed.includeWords?.length && !feed.excludeWords?.length ? 'اختصاصی (بدون فیلتر)' : null}
+                          </>
+                        ) : 'پیش‌فرض'}
+                      </td>
                       <td className="px-5 py-4 text-slate-600">
                         <div>
-                          هر {feed.pollIntervalMinutes ?? 240} دقیقه
-                          {feed.pollIntervalOverride != null ? ' (اختصاصی)' : ' (پیش‌فرض کاتالوگ)'}
+                          هر {feed.pollIntervalMinutes ?? feed.catalogPollIntervalMinutes ?? 240} دقیقه
+                          {feed.settingsMode === 'custom' ? ' (اختصاصی)' : ' (پیش‌فرض)'}
                         </div>
                         <div className="mt-1 text-xs text-slate-400">{feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}</div>
                       </td>
@@ -232,7 +262,15 @@ export function PlatformFeedsSection() {
                               <Button size="sm" variant="ghost" title="تنظیمات پایش" onClick={() => {
                                 setEditing(feed);
                                 setForm({
-                                  pollIntervalMinutes: String(feed.pollIntervalOverride ?? feed.pollIntervalMinutes ?? 240),
+                                  settingsMode: feed.settingsMode ?? 'default',
+                                  includeWords: wordsToString(feed.customIncludeWords ?? feed.includeWords),
+                                  excludeWords: wordsToString(feed.customExcludeWords ?? feed.excludeWords),
+                                  pollIntervalMinutes: String(
+                                    feed.pollIntervalOverride
+                                    ?? feed.pollIntervalMinutes
+                                    ?? feed.catalogPollIntervalMinutes
+                                    ?? 240,
+                                  ),
                                   autoPoll: feed.autoPoll ?? true,
                                   autoPrepare: feed.autoPrepare ?? true,
                                   autoPublish: feed.autoPublish ?? false,
@@ -270,22 +308,33 @@ export function PlatformFeedsSection() {
       <Modal open={!!editing} onClose={() => setEditing(null)} size="md" closeOnBackdrop={!busy}>
         {editing && (
           <form onSubmit={saveSettings} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ModalHeader title={`تنظیمات «${editing.name}»`} description="این تنظیمات بر پیش‌فرض‌های سازمان در تنظیمات انتشار اولویت دارند." onClose={() => setEditing(null)} />
+            <ModalHeader title={`تنظیمات «${editing.name}»`} description="نام و آدرس منبع فقط توسط مدیر کل قابل تغییر است." onClose={() => setEditing(null)} />
             <ModalBody className="space-y-4 p-6">
-              <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                فاصله پایش (دقیقه)
-                <input
-                  type="number"
-                  min="5"
-                  max="1440"
-                  required
-                  dir="ltr"
-                  className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-                  value={form.pollIntervalMinutes}
-                  onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value }))}
-                />
-                <span className="text-xs font-normal text-slate-500">بین ۵ دقیقه تا ۲۴ ساعت — پایش مرکزی کاتالوگ با این مقدار برای سازمان شما تنظیم می‌شود.</span>
-              </label>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">{editing.name}</p>
+                <p className="mt-1 truncate" dir="ltr">{editing.url}</p>
+              </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-700">نوع تنظیمات</legend>
+                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
+                  <input type="radio" name="settingsMode" checked={form.settingsMode === 'default'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'default' }))} className="mt-1" />
+                  <span><span className="block text-sm font-semibold text-slate-900">پیش‌فرض</span><span className="mt-1 block text-xs text-slate-500">بدون فیلتر کلمه؛ فاصله پایش مطابق کاتالوگ ({editing.catalogPollIntervalMinutes ?? 240} دقیقه)</span></span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
+                  <input type="radio" name="settingsMode" checked={form.settingsMode === 'custom'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'custom' }))} className="mt-1" />
+                  <span><span className="block text-sm font-semibold text-slate-900">اختصاصی این سازمان</span><span className="mt-1 block text-xs text-slate-500">فیلتر کلمات و فاصله پایش مخصوص این منبع</span></span>
+                </label>
+              </fieldset>
+              {form.settingsMode === 'custom' && (
+                <>
+                  <Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(event) => setForm((current) => ({ ...current, includeWords: event.target.value }))} />
+                  <Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(event) => setForm((current) => ({ ...current, excludeWords: event.target.value }))} />
+                  <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                    فاصله پایش (دقیقه)
+                    <input type="number" min="5" max="1440" required dir="ltr" className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value }))} />
+                  </label>
+                </>
+              )}
               {[
                 ['autoPoll', 'پایش خودکار', 'مطالب جدید این منبع بدون دخالت کاربر دریافت شوند.'],
                 ['autoPrepare', 'آماده‌سازی خودکار', 'مطالب جدید بدون دخالت کاربر آماده شوند.'],

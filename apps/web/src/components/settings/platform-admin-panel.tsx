@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Crown, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, Crown, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { PLATFORM_ROLES, TENANT_ROLE_LABELS, USAGE_UNIT_LABEL, formatPersianDigits, type TenantRole } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { apiFetch } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 
@@ -43,6 +44,12 @@ function StatusSelect({ value, onChange, kind }: { value: string; onChange: (val
   );
 }
 
+function splitDisplayName(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length <= 1) return { firstName: parts[0] ?? '', lastName: '' };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
 export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean }) {
   const { isSuperAdmin } = useAuth();
   const [tab, setTab] = useState<'users' | 'organizations'>('users');
@@ -58,6 +65,9 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [newUser, setNewUser] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', confirmPassword: '' });
+  const [editingUser, setEditingUser] = useState<PlatformUser | null>(null);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [savingUser, setSavingUser] = useState(false);
   const [organizationUsage, setOrganizationUsage] = useState<OrganizationUsageSummary | null>(null);
 
   const load = useCallback(async () => {
@@ -92,10 +102,47 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
     await apiFetch(`/platform/users/${id}/${field}`, { method: 'PATCH', body: { [field]: value }, skipTenant: true });
     await load();
   };
+
   const patchOrganization = async (id: string, status: string) => {
     await apiFetch(`/platform/organizations/${id}/status`, { method: 'PATCH', body: { status }, skipTenant: true });
     await load();
   };
+
+  const openEditUser = (user: PlatformUser) => {
+    const { firstName, lastName } = splitDisplayName(user.name);
+    setEditingUser(user);
+    setEditForm({ firstName, lastName, email: user.email, phone: '' });
+    setError('');
+    void apiFetch<{ phone?: string | null }>(`/platform/users/${user.id}`, { skipTenant: true })
+      .then((detail) => setEditForm((current) => ({ ...current, phone: detail.phone ?? '' })))
+      .catch(() => undefined);
+  };
+
+  const saveEditUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingUser) return;
+    setSavingUser(true);
+    setError('');
+    try {
+      await apiFetch(`/platform/users/${editingUser.id}`, {
+        method: 'PATCH',
+        skipTenant: true,
+        body: {
+          firstName: editForm.firstName.trim(),
+          lastName: editForm.lastName.trim(),
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim() || null,
+        },
+      });
+      setEditingUser(null);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'ویرایش کاربر انجام نشد');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
   const createUser = async (event: React.FormEvent) => {
     event.preventDefault();
     if (newUser.password !== newUser.confirmPassword) {
@@ -286,6 +333,12 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
                       <option value={PLATFORM_ROLES.SUPER_ADMIN}>مدیر کل</option>
                     </select>
                     <StatusSelect value={user.status} onChange={(value) => void patchUser(user.id, 'status', value)} kind="user" />
+                    {isSuperAdmin && (
+                      <Button variant="outline" onClick={() => openEditUser(user)}>
+                        <Pencil className="h-4 w-4" />
+                        ویرایش
+                      </Button>
+                    )}
                     <Button variant="danger" isLoading={deletingId === user.id} onClick={() => void deleteUser(user)}>
                       <Trash2 className="h-4 w-4" />
                       حذف دائمی
@@ -318,6 +371,26 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
           )}
         </CardContent>
       </Card>
+      {editingUser && (
+        <Modal open onClose={() => setEditingUser(null)} size="md">
+          <form onSubmit={saveEditUser} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ModalHeader title="ویرایش کاربر" description={editingUser.email} onClose={() => setEditingUser(null)} />
+            <ModalBody className="grid gap-3 p-6 sm:grid-cols-2">
+              <Input label="نام" value={editForm.firstName} onChange={(event) => setEditForm((current) => ({ ...current, firstName: event.target.value }))} required />
+              <Input label="نام خانوادگی" value={editForm.lastName} onChange={(event) => setEditForm((current) => ({ ...current, lastName: event.target.value }))} required />
+              <Input label="ایمیل" type="email" dir="ltr" className="sm:col-span-2" value={editForm.email} onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))} required />
+              <Input label="شماره موبایل (اختیاری)" dir="ltr" className="sm:col-span-2" value={editForm.phone} onChange={(event) => setEditForm((current) => ({ ...current, phone: event.target.value }))} />
+              <p className="sm:col-span-2 text-xs leading-5 text-slate-500">
+                برای تغییر ایمیل یا نام، از «ویرایش» استفاده کنید — «افزودن کاربر» فقط برای ایجاد حساب جدید است.
+              </p>
+            </ModalBody>
+            <ModalFooter className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>انصراف</Button>
+              <Button type="submit" isLoading={savingUser}>ذخیره</Button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
       {detail && (
         <Card>
           <CardHeader>

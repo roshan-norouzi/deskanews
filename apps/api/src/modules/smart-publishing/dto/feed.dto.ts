@@ -92,6 +92,16 @@ export class UpdateTenantPlatformFeedDto {
   @IsOptional() @IsBoolean() autoPublish?: boolean;
   @IsOptional() @IsBoolean() autoSendSocial?: boolean;
 
+  @IsOptional()
+  @IsIn(['default', 'custom'])
+  settingsMode?: 'default' | 'custom';
+
+  @IsOptional()
+  includeWords?: string | string[];
+
+  @IsOptional()
+  excludeWords?: string | string[];
+
   @IsOptional() @IsInt() @Min(5) @Max(1440)
   pollIntervalMinutes?: number | null;
 }

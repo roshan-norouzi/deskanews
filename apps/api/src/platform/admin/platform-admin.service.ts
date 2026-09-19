@@ -7,6 +7,7 @@ import type { AuthUser } from '../../common/decorators/params.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
 import type { CreatePlatformUserDto } from './dto/create-platform-user.dto';
+import type { UpdatePlatformUserDto } from './dto/update-platform-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { UsageTrackingService } from '../usage/usage-tracking.service';
 import type { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
@@ -121,6 +122,25 @@ export class PlatformAdminService {
     });
     if (!user) throw new NotFoundException('کاربر یافت نشد');
     return user;
+  }
+
+  async updateUser(actor: AuthUser, id: string, dto: UpdatePlatformUserDto) {
+    this.assertAdmin(actor);
+    const target = await this.prisma.user.findUnique({ where: { id } });
+    if (!target) throw new NotFoundException('کاربر یافت نشد');
+    this.assertCanManageTarget(actor, target.role);
+    const result = await this.authService.updateProfile(id, dto);
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: null,
+        userId: actor.id,
+        action: 'platform.user_updated',
+        entityType: 'User',
+        entityId: id,
+        changes: { email: dto.email, phone: dto.phone },
+      },
+    });
+    return result;
   }
 
   async updateUserStatus(actor: AuthUser, id: string, status: string) {

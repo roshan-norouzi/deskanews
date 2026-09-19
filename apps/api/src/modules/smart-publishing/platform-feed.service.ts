@@ -20,6 +20,90 @@ function subscriptionPollInterval(row: unknown): number | null | undefined {
   return typeof value === 'number' ? value : undefined;
 }
 
+type TenantSubscriptionRow = {
+  settingsMode?: string | null;
+  includeWords?: string[];
+  excludeWords?: string[];
+  pollIntervalMinutes?: number | null;
+};
+
+function resolveTenantFeedSettings(
+  subscription: TenantSubscriptionRow,
+  platformPollIntervalMinutes: number,
+) {
+  const catalogPoll = platformPollIntervalMinutes || 240;
+  if (subscription.settingsMode === 'custom') {
+    return {
+      settingsMode: 'custom' as const,
+      includeWords: subscription.includeWords ?? [],
+      excludeWords: subscription.excludeWords ?? [],
+      pollIntervalMinutes: subscriptionPollInterval(subscription) ?? catalogPoll,
+    };
+  }
+  return {
+    settingsMode: 'default' as const,
+    includeWords: [] as string[],
+    excludeWords: [] as string[],
+    pollIntervalMinutes: catalogPoll,
+  };
+}
+
+function mapTenantPlatformFeedRow(row: {
+  id: string;
+  enabled: boolean;
+  autoPoll: boolean | null;
+  autoPrepare: boolean | null;
+  autoPublish: boolean | null;
+  autoSendSocial: boolean | null;
+  settingsMode: string;
+  includeWords: string[];
+  excludeWords: string[];
+  pollIntervalMinutes: number | null;
+  platformFeed: {
+    id: string;
+    name: string;
+    url: string;
+    sourceType: string;
+    catalogGroup: string;
+    resolvedFeedUrl: string;
+    pollIntervalMinutes: number;
+    sourceLanguage: string;
+    enabled: boolean;
+    lastFetchedAt: Date | null;
+    lastError: string;
+  };
+}) {
+  const resolved = resolveTenantFeedSettings(row, row.platformFeed.pollIntervalMinutes);
+  return {
+    id: row.platformFeed.id,
+    scope: 'platform' as const,
+    subscriptionId: row.id,
+    name: row.platformFeed.name,
+    url: row.platformFeed.url,
+    sourceType: row.platformFeed.sourceType,
+    catalogGroup: row.platformFeed.catalogGroup,
+    resolvedFeedUrl: row.platformFeed.resolvedFeedUrl,
+    includeWords: resolved.includeWords,
+    excludeWords: resolved.excludeWords,
+    pollIntervalMinutes: resolved.pollIntervalMinutes,
+    pollIntervalOverride: row.settingsMode === 'custom' ? subscriptionPollInterval(row) ?? null : null,
+    settingsMode: resolved.settingsMode,
+    customIncludeWords: row.includeWords,
+    customExcludeWords: row.excludeWords,
+    catalogPollIntervalMinutes: row.platformFeed.pollIntervalMinutes,
+    sourceLanguage: row.platformFeed.sourceLanguage,
+    purpose: 'news-room' as const,
+    enabled: row.enabled,
+    platformEnabled: row.platformFeed.enabled,
+    lastFetchedAt: row.platformFeed.lastFetchedAt,
+    lastError: row.platformFeed.lastError,
+    autoPoll: row.autoPoll,
+    autoPrepare: row.autoPrepare,
+    autoPublish: row.autoPublish,
+    autoSendSocial: row.autoSendSocial,
+  };
+}
+
 function normalizeFeedUrl(value: string): string {
   try {
     const url = new URL(value.trim());
@@ -155,9 +239,9 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         sourceType,
         catalogGroup: normalizeCatalogGroup(sourceType, data.catalogGroup, sourceLanguage),
         resolvedFeedUrl,
-        includeWords: parseWordList(data.includeWords),
-        excludeWords: parseWordList(data.excludeWords),
-        pollIntervalMinutes: data.pollIntervalMinutes ?? 240,
+        includeWords: [],
+        excludeWords: [],
+        pollIntervalMinutes: 240,
         sourceLanguage,
         enabled: data.enabled ?? true,
       },
@@ -190,9 +274,6 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         sourceType,
         catalogGroup: normalizeCatalogGroup(sourceType, data.catalogGroup ?? feed.catalogGroup, sourceLanguage),
         resolvedFeedUrl,
-        ...(data.includeWords !== undefined ? { includeWords: parseWordList(data.includeWords) } : {}),
-        ...(data.excludeWords !== undefined ? { excludeWords: parseWordList(data.excludeWords) } : {}),
-        ...(data.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: data.pollIntervalMinutes } : {}),
         ...(data.sourceLanguage !== undefined ? { sourceLanguage: data.sourceLanguage } : {}),
         ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
       },
@@ -320,8 +401,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         resolvedFeedUrl: feed.resolvedFeedUrl,
       });
       const filtered = entries
-        .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
-          && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
+        .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
 
       let created = 0;
       for (const entry of filtered) {
@@ -382,30 +462,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       include: { platformFeed: true },
       orderBy: { platformFeed: { createdAt: 'desc' } },
     });
-    return rows.map((row) => ({
-      id: row.platformFeedId,
-      scope: 'platform' as const,
-      subscriptionId: row.id,
-      name: row.platformFeed.name,
-      url: row.platformFeed.url,
-      sourceType: row.platformFeed.sourceType,
-      catalogGroup: row.platformFeed.catalogGroup,
-      resolvedFeedUrl: row.platformFeed.resolvedFeedUrl,
-      includeWords: row.platformFeed.includeWords,
-      excludeWords: row.platformFeed.excludeWords,
-      pollIntervalMinutes: subscriptionPollInterval(row) ?? row.platformFeed.pollIntervalMinutes,
-      pollIntervalOverride: subscriptionPollInterval(row) ?? null,
-      sourceLanguage: row.platformFeed.sourceLanguage,
-      purpose: 'news-room' as const,
-      enabled: row.enabled,
-      platformEnabled: row.platformFeed.enabled,
-      lastFetchedAt: row.platformFeed.lastFetchedAt,
-      lastError: row.platformFeed.lastError,
-      autoPoll: row.autoPoll,
-      autoPrepare: row.autoPrepare,
-      autoPublish: row.autoPublish,
-      autoSendSocial: row.autoSendSocial,
-    }));
+    return rows.map((row) => mapTenantPlatformFeedRow(row));
   }
 
   async updateSubscriptionForTenant(
@@ -425,17 +482,30 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       throw new BadRequestException('این منبع پیش‌فرض توسط مدیر کل غیرفعال شده است');
     }
 
+    let payload = data;
+    if (payload.settingsMode === 'default') {
+      payload = {
+        ...payload,
+        settingsMode: 'default',
+        includeWords: [],
+        excludeWords: [],
+        pollIntervalMinutes: null,
+      };
+    }
+
     const updated = await this.prisma.tenantPlatformFeed.update({
       where: { id: subscription.id },
       data: {
-        ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-        ...(data.autoPoll !== undefined ? { autoPoll: data.autoPoll } : {}),
-        ...(data.autoPrepare !== undefined ? { autoPrepare: data.autoPrepare } : {}),
-        ...(data.autoPublish !== undefined ? { autoPublish: data.autoPublish } : {}),
-        ...(data.autoSendSocial !== undefined ? { autoSendSocial: data.autoSendSocial } : {}),
-        ...(data.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: data.pollIntervalMinutes } : {}),
-      // Prisma client must be regenerated after migration 20260919140000.
-      } as Parameters<PrismaService['tenantPlatformFeed']['update']>[0]['data'],
+        ...(payload.enabled !== undefined ? { enabled: payload.enabled } : {}),
+        ...(payload.autoPoll !== undefined ? { autoPoll: payload.autoPoll } : {}),
+        ...(payload.autoPrepare !== undefined ? { autoPrepare: payload.autoPrepare } : {}),
+        ...(payload.autoPublish !== undefined ? { autoPublish: payload.autoPublish } : {}),
+        ...(payload.autoSendSocial !== undefined ? { autoSendSocial: payload.autoSendSocial } : {}),
+        ...(payload.settingsMode !== undefined ? { settingsMode: payload.settingsMode } : {}),
+        ...(payload.includeWords !== undefined ? { includeWords: parseWordList(payload.includeWords) } : {}),
+        ...(payload.excludeWords !== undefined ? { excludeWords: parseWordList(payload.excludeWords) } : {}),
+        ...(payload.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: payload.pollIntervalMinutes } : {}),
+      },
       include: { platformFeed: true },
     });
 
@@ -444,29 +514,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       await this.queueSharedPreparation(platformFeedId, 10, tenantId);
     }
 
-    return {
-      id: updated.platformFeedId,
-      scope: 'platform' as const,
-      subscriptionId: updated.id,
-      name: updated.platformFeed.name,
-      url: updated.platformFeed.url,
-      sourceType: updated.platformFeed.sourceType,
-      resolvedFeedUrl: updated.platformFeed.resolvedFeedUrl,
-      includeWords: updated.platformFeed.includeWords,
-      excludeWords: updated.platformFeed.excludeWords,
-      pollIntervalMinutes: subscriptionPollInterval(updated) ?? updated.platformFeed.pollIntervalMinutes,
-      pollIntervalOverride: subscriptionPollInterval(updated) ?? null,
-      sourceLanguage: updated.platformFeed.sourceLanguage,
-      purpose: 'news-room' as const,
-      enabled: updated.enabled,
-      platformEnabled: updated.platformFeed.enabled,
-      lastFetchedAt: updated.platformFeed.lastFetchedAt,
-      lastError: updated.platformFeed.lastError,
-      autoPoll: updated.autoPoll,
-      autoPrepare: updated.autoPrepare,
-      autoPublish: updated.autoPublish,
-      autoSendSocial: updated.autoSendSocial,
-    };
+    return mapTenantPlatformFeedRow(updated);
   }
 
   async toggleForTenant(tenantId: string, platformFeedId: string, enabled?: boolean, isOwner = false) {
@@ -529,16 +577,29 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
 
   async syncFeedToTenant(tenantId: string, platformFeedId: string) {
     const feed = await this.findFeed(platformFeedId);
+    const subscription = await this.prisma.tenantPlatformFeed.findUnique({
+      where: { tenantId_platformFeedId: { tenantId, platformFeedId } },
+    });
+    const tenantSettings = resolveTenantFeedSettings(subscription ?? {}, feed.pollIntervalMinutes);
     const articles = await this.prisma.platformFeedArticle.findMany({
       where: { platformFeedId },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
       take: 200,
     });
-    if (!articles.length) return 0;
+    const filtered = articles.filter((article) => matchesWordFilters(
+      entryFilterText({
+        title: article.originalTitle,
+        summary: article.originalSummary,
+        content: article.originalContent,
+      }),
+      tenantSettings.includeWords,
+      tenantSettings.excludeWords,
+    ));
+    if (!filtered.length) return 0;
 
     const result = await this.prisma.newsArticle.createMany({
       skipDuplicates: true,
-      data: articles.map((article) => ({
+      data: filtered.map((article) => ({
         tenantId,
         platformFeedArticleId: article.id,
         canonicalUrl: article.canonicalUrl,
@@ -561,7 +622,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_MONITORED, result.count);
     }
 
-    for (const article of articles.filter((row) => row.prepStatus === 'ready')) {
+    for (const article of filtered.filter((row) => row.prepStatus === 'ready')) {
       await this.prisma.newsArticle.updateMany({
         where: { tenantId, platformFeedArticleId: article.id },
         data: {

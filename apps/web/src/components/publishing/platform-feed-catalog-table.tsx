@@ -12,9 +12,6 @@ export interface PlatformFeedRow {
   url: string;
   sourceType: string;
   resolvedFeedUrl?: string;
-  includeWords?: string[];
-  excludeWords?: string[];
-  pollIntervalMinutes: number;
   sourceLanguage?: string;
   enabled: boolean;
   lastFetchedAt: string | null;
@@ -56,8 +53,7 @@ export function PlatformFeedCatalogTable({
             <th className="px-5 py-3 font-medium">منبع</th>
             <th className="px-5 py-3 font-medium">نوع</th>
             <th className="px-5 py-3 font-medium">زبان</th>
-            <th className="px-5 py-3 font-medium">فیلتر کلمات</th>
-            <th className="px-5 py-3 font-medium">پایش</th>
+            <th className="px-5 py-3 font-medium">آخرین پایش</th>
             <th className="px-5 py-3 font-medium">وضعیت</th>
             <th className="px-5 py-3 font-medium">عملیات</th>
           </tr>
@@ -87,16 +83,8 @@ export function PlatformFeedCatalogTable({
                 <td className="px-5 py-4 text-slate-600">
                   {SOURCE_LANGUAGE_LABELS[(feed.sourceLanguage || 'auto') as keyof typeof SOURCE_LANGUAGE_LABELS]}
                 </td>
-                <td className="px-5 py-4 text-xs text-slate-600">
-                  {feed.includeWords?.length ? <div>شامل: {feed.includeWords.join('، ')}</div> : null}
-                  {feed.excludeWords?.length ? <div>بدون: {feed.excludeWords.join('، ')}</div> : null}
-                  {!feed.includeWords?.length && !feed.excludeWords?.length ? '—' : null}
-                </td>
                 <td className="px-5 py-4 text-slate-600">
-                  <div>هر {feed.pollIntervalMinutes} دقیقه</div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    {feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}
-                  </div>
+                  {feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}
                 </td>
                 <td className="px-5 py-4">
                   <Badge variant={feed.enabled ? 'success' : 'default'}>

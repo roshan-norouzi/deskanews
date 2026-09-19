@@ -9,6 +9,7 @@ import { UpdatePlatformUserRoleDto } from './dto/update-platform-user-role.dto';
 import { UpdateOrganizationStatusDto } from './dto/update-organization-status.dto';
 import { PlatformTransferOwnershipDto } from './dto/platform-transfer-ownership.dto';
 import { DeletePlatformEntityDto } from './dto/delete-platform-entity.dto';
+import { UpdatePlatformUserDto } from './dto/update-platform-user.dto';
 import { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import { CreatePlatformFeedDto, UpdatePlatformFeedDto } from './dto/platform-feed.dto';
 import { ProbeFeedDto } from '../../modules/smart-publishing/dto/feed.dto';
@@ -61,6 +62,15 @@ export class PlatformAdminController {
   @Get('users/:id')
   user(@User() actor: AuthUser, @Param('id') id: string) {
     return this.service.getUser(actor, id);
+  }
+
+  @Patch('users/:id')
+  updateUser(
+    @User() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdatePlatformUserDto,
+  ) {
+    return this.service.updateUser(actor, id, dto);
   }
 
   @Patch('users/:id/status')

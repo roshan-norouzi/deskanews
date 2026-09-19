@@ -20,18 +20,6 @@ export class CreatePlatformFeedDto {
   catalogGroup?: (typeof CATALOG_GROUPS)[number];
 
   @IsOptional()
-  includeWords?: string | string[];
-
-  @IsOptional()
-  excludeWords?: string | string[];
-
-  @IsOptional()
-  @IsInt()
-  @Min(5)
-  @Max(1440)
-  pollIntervalMinutes?: number;
-
-  @IsOptional()
   @IsBoolean()
   enabled?: boolean;
 
@@ -57,18 +45,6 @@ export class UpdatePlatformFeedDto {
   @IsOptional()
   @IsIn(CATALOG_GROUPS)
   catalogGroup?: (typeof CATALOG_GROUPS)[number];
-
-  @IsOptional()
-  includeWords?: string | string[];
-
-  @IsOptional()
-  excludeWords?: string | string[];
-
-  @IsOptional()
-  @IsInt()
-  @Min(5)
-  @Max(1440)
-  pollIntervalMinutes?: number;
 
   @IsOptional()
   @IsBoolean()
