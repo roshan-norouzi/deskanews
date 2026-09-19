@@ -1,0 +1,2 @@
+ALTER TABLE "NewsArticle"
+ADD COLUMN IF NOT EXISTS "originalContentIsFull" BOOLEAN NOT NULL DEFAULT false;

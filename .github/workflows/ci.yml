@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://deska:ci-only-password@localhost:5432/deska_erp_test
+      JWT_SECRET: ci-only-jwt-secret-that-is-longer-than-32-characters
+      SETTINGS_ENCRYPTION_KEY: ci-only-settings-key-that-is-longer-than-32-characters
+      CORS_ORIGIN: http://127.0.0.1:3000
+      STORAGE_PATH: /tmp/deska-e2e-uploads
+      SEED_ADMIN_EMAIL: e2e-admin@deska.local
+      SEED_ADMIN_PASSWORD: DESKA-e2e-only-password-2026
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: deska
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: deska_erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @deska/shared build
+
+      - name: Generate Prisma client
+        run: pnpm --filter @deska/api db:generate
+
+      - name: Verify clean migration chain
+        run: |
+          pnpm --filter @deska/api exec prisma migrate deploy
+          pnpm --filter @deska/api exec prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Audit tenant data integrity
+        run: pnpm db:audit
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm --filter @deska/api build
+      - run: pnpm --filter @deska/web build
+
+      - name: Install Chromium for browser tests
+        run: pnpm --filter @deska/web exec playwright install --with-deps chromium
+
+      - name: Seed end-to-end workspace
+        run: |
+          mkdir -p "$STORAGE_PATH"
+          pnpm --filter @deska/api db:seed
+
+      - name: Run critical browser journey
+        shell: bash
+        env:
+          E2E_ADMIN_EMAIL: e2e-admin@deska.local
+          E2E_ADMIN_PASSWORD: DESKA-e2e-only-password-2026
+          E2E_BASE_URL: http://127.0.0.1:3000
+          API_URL: http://127.0.0.1:3001
+          PORT: 3001
+        run: |
+          pnpm --filter @deska/api start > /tmp/deska-api-e2e.log 2>&1 &
+          api_pid=$!
+          pnpm --filter @deska/web start > /tmp/deska-web-e2e.log 2>&1 &
+          web_pid=$!
+          cleanup() {
+            kill "$api_pid" "$web_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3001/api/health/ready >/dev/null && curl -fsS http://127.0.0.1:3000/login >/dev/null; then
+              break
+            fi
+            if [ "$attempt" = 60 ]; then
+              tail -n 100 /tmp/deska-api-e2e.log || true
+              tail -n 100 /tmp/deska-web-e2e.log || true
+              exit 1
+            fi
+            sleep 2
+          done
+          if ! pnpm --filter @deska/web test:e2e; then
+            tail -n 100 /tmp/deska-api-e2e.log || true
+            tail -n 100 /tmp/deska-web-e2e.log || true
+            exit 1
+          fi
+
+      - name: Upload browser-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore

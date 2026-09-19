@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-elevated: 0 4px 6px -1px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --surface-page: #f8fafc;
+  --surface-card: #ffffff;
+  --brand: #4f46e5;
+}
+
+@layer base {
+  html {
+    direction: rtl;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    overflow-x: hidden;
+    font-feature-settings: 'ss01' on;
+    font-variant-numeric: proportional-nums;
+  }
+
+  input,
+  textarea,
+  select {
+    @apply transition-colors duration-150;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    @apply border-primary-500 outline-none ring-2 ring-primary-500/15;
+  }
+
+  input[inputmode='numeric'],
+  input[type='tel'],
+  input[type='time'] {
+    direction: ltr;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+
+  ::selection {
+    @apply bg-primary-100 text-primary-900;
+  }
+
+  * {
+    @apply border-slate-200;
+  }
+}
+
+@layer components {
+  .lytic-metric-label {
+    @apply text-xs font-medium uppercase tracking-wide text-slate-500;
+  }
+
+  .lytic-page-title {
+    @apply text-2xl font-bold tracking-tight text-slate-900;
+  }
+
+  .lytic-nav-item {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-text transition-colors;
+  }
+
+  .lytic-nav-item-active {
+    @apply bg-sidebar-active text-slate-900;
+  }
+
+  .lytic-nav-item-idle {
+    @apply hover:bg-sidebar-hover hover:text-slate-900;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+}

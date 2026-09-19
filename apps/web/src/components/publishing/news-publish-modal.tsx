@@ -1,0 +1,109 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Send } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
+
+export interface NewsPublishDraft {
+  titleFa: string;
+  summaryFa: string;
+  contentFa: string;
+}
+
+interface NewsPublishModalProps {
+  open: boolean;
+  articleTitle: string;
+  sourceName: string;
+  initialDraft: NewsPublishDraft | null;
+  busyTranslate: boolean;
+  busyPublish: boolean;
+  onClose: () => void;
+  onRetranslate: () => void;
+  onPublish: (draft: NewsPublishDraft) => void;
+}
+
+export function NewsPublishModal({
+  open,
+  articleTitle,
+  sourceName,
+  initialDraft,
+  busyTranslate,
+  busyPublish,
+  onClose,
+  onRetranslate,
+  onPublish,
+}: NewsPublishModalProps) {
+  const [draft, setDraft] = useState<NewsPublishDraft>({ titleFa: '', summaryFa: '', contentFa: '' });
+
+  useEffect(() => {
+    if (initialDraft) setDraft(initialDraft);
+  }, [initialDraft]);
+
+  const canPublish = Boolean(draft.titleFa.trim() && draft.summaryFa.trim() && draft.contentFa.trim());
+
+  return (
+    <Modal open={open} onClose={onClose} size="2xl" closeOnBackdrop={!busyTranslate && !busyPublish}>
+      <ModalHeader
+        title="بررسی متن کامل"
+        description={`${sourceName} — ${articleTitle}`}
+        onClose={busyTranslate || busyPublish ? undefined : onClose}
+      />
+      <ModalBody className="space-y-4 px-6 py-5">
+        {busyTranslate && !draft.contentFa ? (
+          <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-slate-600">
+            <span className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+            در حال آماده‌سازی متن کامل برای انتشار...
+          </div>
+        ) : (
+          <>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              تیتر
+              <input
+                className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                value={draft.titleFa}
+                onChange={(event) => setDraft((current) => ({ ...current, titleFa: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              لید / خلاصه
+              <textarea
+                className="min-h-24 rounded-xl border border-slate-300 px-3 py-2.5 leading-7 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                value={draft.summaryFa}
+                onChange={(event) => setDraft((current) => ({ ...current, summaryFa: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              متن کامل
+              <textarea
+                className="min-h-72 rounded-xl border border-slate-300 px-3 py-2.5 text-sm leading-8 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                value={draft.contentFa}
+                onChange={(event) => setDraft((current) => ({ ...current, contentFa: event.target.value }))}
+              />
+            </label>
+          </>
+        )}
+      </ModalBody>
+      <ModalFooter className="gap-2">
+        <Button variant="outline" onClick={onClose} disabled={busyTranslate || busyPublish}>
+          انصراف
+        </Button>
+        <Button variant="outline" onClick={onRetranslate} isLoading={busyTranslate} disabled={busyPublish}>
+          آماده‌سازی مجدد
+        </Button>
+        <Button
+          onClick={() => onPublish({
+            titleFa: draft.titleFa.trim(),
+            summaryFa: draft.summaryFa.trim(),
+            contentFa: draft.contentFa.trim(),
+          })}
+          isLoading={busyPublish}
+          disabled={busyTranslate || !canPublish}
+        >
+          <Send className="h-4 w-4" />
+          انتشار در سایت
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}

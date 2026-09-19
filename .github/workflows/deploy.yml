@@ -1,0 +1,363 @@
+name: Build and deploy DESKA
+
+on:
+  workflow_dispatch:
+
+# A running production deployment is never interrupted by a newer click.
+concurrency:
+  group: deska-production-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/roshan-norouzi/deskanews
+
+jobs:
+  prepare:
+    name: Validate release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read and validate version
+        id: release
+        shell: bash
+        run: |
+          version="$(sed '1s/^\xEF\xBB\xBF//' VERSION | tr -d '[:space:]')"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo 'DESKA_DEPLOY_ERROR: VERSION must use semantic x.y.z format.'
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify SSH pinning helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/prepare-known-hosts.sh
+          test_prefix="${RUNNER_TEMP:-/tmp}/deska-knownhosts-test."
+          test_dir="$(mktemp -d "${test_prefix}XXXXXX")"
+          cleanup() {
+            case "$test_dir" in
+              "${test_prefix}"*) rm -rf -- "$test_dir" ;;
+              *) echo 'DESKA_DEPLOY_ERROR: refusing to remove an unexpected helper-test directory.' >&2; exit 1 ;;
+            esac
+          }
+          trap cleanup EXIT
+          ssh-keygen -q -t ed25519 -N '' -f "$test_dir/host_key"
+          public_key="$(<"$test_dir/host_key.pub")"
+          printf '[203.0.113.9]:2222 %s\n' "$public_key" |
+            bash deploy/prepare-known-hosts.sh deska-deploy.test 2222 "$test_dir/custom_known_hosts"
+          ssh-keygen -F '[deska-deploy.test]:2222' -f "$test_dir/custom_known_hosts" >/dev/null
+          printf '%s\n' "$public_key" |
+            bash deploy/prepare-known-hosts.sh deska-deploy.test 22 "$test_dir/default_known_hosts"
+          ssh-keygen -F 'deska-deploy.test' -f "$test_dir/default_known_hosts" >/dev/null
+          printf '[203.0.113.9]:2222 %s\n' "$public_key" > "$test_dir/scanned_known_hosts"
+          ssh-keyscan() {
+            cat "$DESKA_TEST_SSH_SCAN_FILE"
+          }
+          export DESKA_TEST_SSH_SCAN_FILE="$test_dir/scanned_known_hosts"
+          export -f ssh-keyscan
+          sha256_fingerprint="$(printf '%s\n' "$public_key" | ssh-keygen -lf - -E sha256 | awk 'NR == 1 { print $2 }')"
+          printf 'Provider fingerprint: %s (ED25519)\n' "$sha256_fingerprint" |
+            bash deploy/prepare-known-hosts.sh deska-deploy.test 2222 "$test_dir/sha256_known_hosts"
+          ssh-keygen -F '[deska-deploy.test]:2222' -f "$test_dir/sha256_known_hosts" >/dev/null
+          md5_fingerprint="$(printf '%s\n' "$public_key" | ssh-keygen -lf - -E md5 | awk 'NR == 1 { print $2 }')"
+          printf '%s\n' "$md5_fingerprint" |
+            bash deploy/prepare-known-hosts.sh deska-deploy.test 2222 "$test_dir/md5_known_hosts"
+          ssh-keygen -F '[deska-deploy.test]:2222' -f "$test_dir/md5_known_hosts" >/dev/null
+          printf 'legacy host-key setting\n' |
+            bash deploy/prepare-known-hosts.sh deska-deploy.test 2222 "$test_dir/discovered_known_hosts"
+          ssh-keygen -F '[deska-deploy.test]:2222' -f "$test_dir/discovered_known_hosts" >/dev/null
+          ssh-keygen -q -t ed25519 -N '' -f "$test_dir/unrelated_host_key"
+          unrelated_fingerprint="$(ssh-keygen -lf "$test_dir/unrelated_host_key.pub" -E sha256 | awk 'NR == 1 { print $2 }')"
+          if printf '%s\n' "$unrelated_fingerprint" |
+            bash deploy/prepare-known-hosts.sh deska-deploy.test 2222 "$test_dir/rejected_known_hosts"; then
+            echo 'DESKA_DEPLOY_ERROR: the helper accepted a mismatching pinned fingerprint.' >&2
+            exit 1
+          fi
+
+  preflight-server:
+    name: Verify server access
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate server configuration
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          for name in SERVER_HOST SERVER_USER SERVER_SSH_KEY DEPLOY_PATH SERVER_PORT; do
+            if [ -z "${!name}" ]; then
+              echo "DESKA_DEPLOY_ERROR: missing required secret ${name}."
+              exit 1
+            fi
+          done
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+
+      - name: Install server host key
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+        run: |
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" |
+            bash deploy/prepare-known-hosts.sh "$SERVER_HOST" "$SERVER_PORT" "$HOME/.ssh/known_hosts"
+
+      - name: Verify server prerequisites
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$DEPLOY_PATH" |
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=45 -o ConnectionAttempts=1 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" '
+              IFS= read -r deploy_path
+              if [ -z "$deploy_path" ] || [ "$deploy_path" = "/" ] || [ ! -d "$deploy_path" ]; then
+                echo "DESKA_DEPLOY_ERROR: DEPLOY_PATH does not exist or is unsafe on the server."
+                exit 1
+              fi
+              if [ ! -w "$deploy_path" ]; then
+                echo "DESKA_DEPLOY_ERROR: SERVER_USER cannot write to DEPLOY_PATH."
+                exit 1
+              fi
+              if [ ! -f "$deploy_path/.env" ]; then
+                echo "DESKA_DEPLOY_ERROR: server .env is missing at DEPLOY_PATH."
+                exit 1
+              fi
+              for command_name in docker curl openssl sha256sum timeout tar; do
+                if ! command -v "$command_name" >/dev/null 2>&1; then
+                  echo "DESKA_DEPLOY_ERROR: required server command is unavailable: ${command_name}."
+                  exit 1
+                fi
+              done
+              if ! docker compose version >/dev/null 2>&1; then
+                echo "DESKA_DEPLOY_ERROR: Docker Compose plugin is unavailable to SERVER_USER."
+                exit 1
+              fi
+              echo "DESKA_DEPLOY_STAGE: server prerequisites verified."
+            '
+
+  build-images:
+    name: Build and push ${{ matrix.component }}
+    needs: [prepare, preflight-server]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - component: API
+            image: api
+            dockerfile: apps/api/Dockerfile
+            cache_scope: deska-api
+            build_args: ''
+          - component: Web
+            image: web
+            dockerfile: apps/web/Dockerfile
+            cache_scope: deska-web
+            build_args: |-
+              API_URL=http://api:3001
+              NEXT_PUBLIC_BASE_PATH=/deska
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push immutable image
+        id: image_build
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          build-args: |-
+            ${{ matrix.build_args }}
+            NEXT_PUBLIC_APP_VERSION=${{ env.VERSION }}
+          tags: |-
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ env.VERSION }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
+          provenance: false
+
+      # Registry and runner network failures are usually transient. A second
+      # attempt reuses the BuildKit cache and therefore finishes quickly.
+      - name: Retry build and push immutable image
+        if: steps.image_build.outcome == 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          build-args: |-
+            ${{ matrix.build_args }}
+            NEXT_PUBLIC_APP_VERSION=${{ env.VERSION }}
+          tags: |-
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ env.VERSION }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
+          provenance: false
+
+  deploy:
+    name: Deploy on server
+    needs: [prepare, preflight-server, build-images]
+    runs-on: ubuntu-latest
+    # Backups and registry pulls have their own bounded timeouts. Keep the job
+    # envelope larger than their sum so GitHub never kills a healthy rollback.
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          for name in SERVER_HOST SERVER_USER SERVER_SSH_KEY DEPLOY_PATH SERVER_PORT; do
+            if [ -z "${!name}" ]; then
+              echo "DESKA_DEPLOY_ERROR: missing required secret ${name}."
+              exit 1
+            fi
+          done
+
+      - name: Prepare small deployment manifest
+        shell: bash
+        run: |
+          cp docker-compose.yml ".deska-compose-${VERSION}.yml"
+          cp deploy/server-deploy.sh ".deska-server-deploy-${VERSION}.sh"
+          sha256sum ".deska-compose-${VERSION}.yml" ".deska-server-deploy-${VERSION}.sh" > ".deska-deploy-${VERSION}.sha256"
+          echo 'DESKA_DEPLOY_STAGE: deployment manifest prepared; application images are already in the registry'
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+
+      - name: Install server host key
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+        run: |
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" |
+            bash deploy/prepare-known-hosts.sh "$SERVER_HOST" "$SERVER_PORT" "$HOME/.ssh/known_hosts"
+
+      - name: Upload deployment configuration
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh_options=(
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o GlobalKnownHostsFile=/dev/null
+            -o ConnectTimeout=45
+            -o ConnectionAttempts=1
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+          )
+          upload_file() {
+            local deployment_file="$1"
+            for attempt in 1 2 3; do
+              echo "DESKA_DEPLOY_STAGE: uploading ${deployment_file} (attempt ${attempt}/3)"
+              if scp -q "${ssh_options[@]}" -P "$SERVER_PORT" "$deployment_file" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/$deployment_file"; then
+                return 0
+              fi
+              sleep $((attempt * 10))
+            done
+            echo "DESKA_DEPLOY_ERROR: upload of ${deployment_file} failed after 3 attempts."
+            return 1
+          }
+          upload_file ".deska-compose-${VERSION}.yml"
+          upload_file ".deska-server-deploy-${VERSION}.sh"
+          upload_file ".deska-deploy-${VERSION}.sha256"
+
+      - name: Deploy and verify on server
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          # The short-lived registry token travels over SSH stdin and is never
+          # embedded in a command, workflow log, server file, or compose file.
+          printf '%s\n%s\n%s\n%s\n%s\n' "$REGISTRY_TOKEN" "$REGISTRY_USER" "$DEPLOY_PATH" "$VERSION" "$IMAGE_PREFIX" |
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=60 -o ServerAliveInterval=20 -o ServerAliveCountMax=6 -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" '
+              IFS= read -r registry_token
+              IFS= read -r registry_user
+              IFS= read -r deploy_path
+              IFS= read -r version
+              IFS= read -r image_prefix
+              if ! printf "%s" "$registry_token" | docker login ghcr.io -u "$registry_user" --password-stdin >/dev/null; then
+                echo "DESKA_DEPLOY_ERROR: server could not authenticate with the image registry."
+                exit 1
+              fi
+              unset registry_token
+              trap "docker logout ghcr.io >/dev/null 2>&1 || true" EXIT
+              DEPLOY_PATH="$deploy_path" VERSION="$version" IMAGE_PREFIX="$image_prefix" bash "$deploy_path/.deska-server-deploy-${version}.sh"
+            '

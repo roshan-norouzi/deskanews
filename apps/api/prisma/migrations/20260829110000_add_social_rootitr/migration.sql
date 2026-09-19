@@ -1,0 +1,1 @@
+ALTER TABLE "SocialArticle" ADD COLUMN IF NOT EXISTS "rootitr" TEXT;

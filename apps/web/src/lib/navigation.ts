@@ -1,0 +1,147 @@
+import {
+  Activity,
+  Bot,
+  Cloud,
+  Gauge,
+  ImageIcon,
+  LayoutDashboard,
+  Newspaper,
+  Rss,
+  Settings,
+  Share2,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+
+export interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  superAdminOnly?: boolean;
+  ownerOnly?: boolean;
+}
+
+export interface NavSection {
+  id: string;
+  label: string;
+  items: NavItem[];
+  superAdminOnly?: boolean;
+}
+
+/** @deprecated Use NavSection separators in NAV_SECTIONS */
+export interface NavSeparator {
+  type: 'separator';
+}
+
+export type NavEntry = NavItem | NavSeparator;
+
+export const NAV_SECTIONS: NavSection[] = [
+  {
+    id: 'home',
+    label: 'خانه',
+    items: [{ href: '/dashboard', label: 'داشبورد', icon: LayoutDashboard }],
+  },
+  {
+    id: 'content',
+    label: 'محتوا',
+    items: [
+      { href: '/publishing/feeds', label: 'منابع خبری', icon: Rss },
+      { href: '/publishing/news', label: 'اتاق خبر', icon: Newspaper },
+      { href: '/publishing/social', label: 'استودیوی اجتماعی', icon: Share2 },
+      { href: '/publishing/media', label: 'فایل‌ها', icon: ImageIcon },
+    ],
+  },
+  {
+    id: 'config',
+    label: 'پیکربندی',
+    items: [
+      { href: '/publishing/settings', label: 'تنظیمات انتشار', icon: Settings, ownerOnly: true },
+      { href: '/publishing/operations', label: 'مرکز عملیات', icon: Activity },
+      { href: '/settings', label: 'تنظیمات سازمان', icon: Settings },
+    ],
+  },
+  {
+    id: 'platform-management',
+    label: 'مدیریت پلتفرم',
+    superAdminOnly: true,
+    items: [
+      { href: '/platform', label: 'کاربران و سازمان‌ها', icon: Users, superAdminOnly: true },
+      { href: '/platform/feeds', label: 'کاتالوگ منابع پیش‌فرض', icon: Rss, superAdminOnly: true },
+    ],
+  },
+  {
+    id: 'platform-settings',
+    label: 'تنظیمات پلتفرم',
+    superAdminOnly: true,
+    items: [
+      { href: '/platform/ai-settings', label: 'تنظیمات هوش مصنوعی', icon: Bot, superAdminOnly: true },
+      { href: '/platform/source-fetch', label: 'Worker دریافت منبع', icon: Cloud, superAdminOnly: true },
+      { href: '/platform/usage-metrics', label: 'تعرفه مصرف', icon: Gauge, superAdminOnly: true },
+    ],
+  },
+];
+
+/** Flat list for legacy consumers */
+export const NAV_ENTRIES: NavEntry[] = NAV_SECTIONS.flatMap((section, index) => {
+  const items: NavEntry[] = section.items.map((item) => ({ ...item }));
+  if (index < NAV_SECTIONS.length - 1) items.push({ type: 'separator' });
+  return items;
+});
+
+/** @deprecated Use NAV_SECTIONS */
+export interface NavGroup {
+  id: string;
+  label: string;
+  items: NavItem[];
+}
+
+function isSeparator(entry: NavEntry): entry is NavSeparator {
+  return 'type' in entry && entry.type === 'separator';
+}
+
+function filterNavItem(item: NavItem, isSuperAdmin: boolean, isOwner: boolean): boolean {
+  if (item.superAdminOnly && !isSuperAdmin) return false;
+  if (item.ownerOnly && !isSuperAdmin && !isOwner) return false;
+  return true;
+}
+
+export function filterNavSections(isSuperAdmin: boolean, isOwner: boolean): NavSection[] {
+  return NAV_SECTIONS
+    .filter((section) => !section.superAdminOnly || isSuperAdmin)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => filterNavItem(item, isSuperAdmin, isOwner)),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+export function filterNavEntries(isSuperAdmin: boolean, isOwner: boolean): NavEntry[] {
+  const sections = filterNavSections(isSuperAdmin, isOwner);
+  const result: NavEntry[] = [];
+
+  sections.forEach((section, index) => {
+    result.push(...section.items);
+    if (index < sections.length - 1) result.push({ type: 'separator' });
+  });
+
+  return result;
+}
+
+/** @deprecated Use filterNavEntries */
+export function filterNavItems(isSuperAdmin: boolean, isOwner: boolean): NavItem[] {
+  return filterNavEntries(isSuperAdmin, isOwner).filter((entry): entry is NavItem => !isSeparator(entry));
+}
+
+export function filterNavGroups(isSuperAdmin: boolean, isOwner: boolean): NavGroup[] {
+  return filterNavSections(isSuperAdmin, isOwner).map((section) => ({
+    id: section.id,
+    label: section.label,
+    items: section.items,
+  }));
+}
+
+/** @deprecated Flat navigation only */
+export const NAV_GROUPS: NavGroup[] = [{ id: 'main', label: 'منو', items: NAV_ENTRIES.filter((e): e is NavItem => !isSeparator(e)) }];
+
+/** @deprecated Use NAV_SECTIONS */
+export const NAV_ITEMS: NavItem[] = NAV_ENTRIES.filter((entry): entry is NavItem => !isSeparator(entry));

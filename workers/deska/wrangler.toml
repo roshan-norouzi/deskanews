@@ -1,0 +1,5 @@
+name = "deska"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+account_id = "f90724eb97d194e96a7730a3bfe78947"
+workers_dev = true

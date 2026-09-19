@@ -1,0 +1,505 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ SMART PUBLISHING ============
+
+model NewsFeed {
+  id                  String          @id @default(cuid())
+  tenantId            String
+  name                String
+  url                 String
+  sourceType          String          @default("rss")
+  resolvedFeedUrl     String          @default("")
+  includeWords        String[]        @default([])
+  excludeWords        String[]        @default([])
+  pollIntervalMinutes Int?
+  autoPoll            Boolean?
+  autoPrepare         Boolean?
+  autoPublish         Boolean?
+  autoSendSocial      Boolean?
+  purpose             String          @default("news-room")
+  sourceLanguage      String          @default("auto")
+  enabled             Boolean         @default(true)
+  lastFetchedAt       DateTime?
+  lastError           String          @default("")
+  createdAt           DateTime        @default(now())
+  articles            NewsArticle[]
+  socialArticles      SocialArticle[]
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, url])
+  @@index([tenantId, enabled])
+  @@index([tenantId, purpose])
+}
+
+model PlatformConfig {
+  id        String   @id @default("default")
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt
+}
+
+model PlatformFeed {
+  id                  String                 @id @default(cuid())
+  name                String
+  url                 String                 @unique
+  sourceType          String                 @default("rss")
+  catalogGroup        String                 @default("media-domestic")
+  resolvedFeedUrl     String                 @default("")
+  includeWords        String[]               @default([])
+  excludeWords        String[]               @default([])
+  pollIntervalMinutes Int                    @default(240)
+  sourceLanguage      String                 @default("auto")
+  enabled             Boolean                @default(true)
+  lastFetchedAt       DateTime?
+  lastError           String                 @default("")
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  articles            PlatformFeedArticle[]
+  subscriptions       TenantPlatformFeed[]
+}
+
+model TenantPlatformFeed {
+  id             String       @id @default(cuid())
+  tenantId       String
+  platformFeedId String
+  enabled        Boolean      @default(false)
+  autoPoll             Boolean?
+  autoPrepare          Boolean?
+  autoPublish          Boolean?
+  autoSendSocial       Boolean?
+  pollIntervalMinutes  Int?
+  createdAt            DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  platformFeed   PlatformFeed @relation(fields: [platformFeedId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, platformFeedId])
+  @@index([tenantId, enabled])
+}
+
+model PlatformFeedArticle {
+  id                    String              @id @default(cuid())
+  platformFeedId        String
+  canonicalUrl          String
+  originalUrl           String              @default("")
+  guid                  String              @default("")
+  originalTitle         String              @default("")
+  originalSummary       String              @default("")
+  originalContent       String              @default("")
+  originalContentIsFull Boolean             @default(false)
+  featuredImageUrl      String              @default("")
+  sourceName            String              @default("")
+  publishedAtSource     DateTime?
+  titleFa               String              @default("")
+  summaryFa             String              @default("")
+  prepStatus            String              @default("new")
+  prepLastError         String              @default("")
+  preparedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  platformFeed          PlatformFeed        @relation(fields: [platformFeedId], references: [id], onDelete: Cascade)
+  tenantArticles        NewsArticle[]
+
+  @@unique([platformFeedId, canonicalUrl])
+  @@index([platformFeedId, prepStatus])
+}
+
+model NewsArticle {
+  id                    String               @id @default(cuid())
+  tenantId              String
+  feedId                String?
+  platformFeedArticleId String?
+  canonicalUrl          String
+  originalUrl           String    @default("")
+  guid                  String    @default("")
+  originalTitle         String    @default("")
+  originalSummary       String    @default("")
+  originalContent       String    @default("")
+  originalContentIsFull Boolean   @default(false)
+  titleFa               String    @default("")
+  summaryFa             String    @default("")
+  contentFa             String    @default("")
+  featuredImageUrl      String    @default("")
+  status                String    @default("new")
+  sourceName            String    @default("")
+  publishedAtSource     DateTime?
+  rejectedAt            DateTime?
+  purgeAfter            DateTime?
+  processingStartedAt   DateTime?
+  publishedAt           DateTime?
+  wordpressPostId       String    @default("")
+  wordpressPostUrl      String    @default("")
+  lastError             String    @default("")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feed                  NewsFeed?            @relation(fields: [feedId], references: [id], onDelete: SetNull)
+  platformFeedArticle   PlatformFeedArticle? @relation(fields: [platformFeedArticleId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, canonicalUrl])
+  @@index([platformFeedArticleId])
+  @@index([tenantId, status])
+  @@index([status, purgeAfter])
+}
+
+model SocialArticle {
+  id                       String    @id @default(cuid())
+  tenantId                 String
+  feedId                   String?
+  title                    String
+  link                     String
+  author                   String?
+  category                 String?
+  publishedAt              DateTime?
+  featuredImageUrl         String?
+  generatedImageUrl        String?
+  generatedImageTemplateId String?
+  authorImageUrl           String?
+  originalText             String?
+  leadText                 String?
+  summaryText              String?
+  rewrittenText            String?
+  shortUrl                 String?
+  captionText              String?
+  readingTime              Int?
+  status                   String    @default("pending")
+  processingStartedAt      DateTime?
+  lastError                String    @default("")
+  telegramSentAt           DateTime?
+  instagramSentAt          DateTime?
+  linkedinSentAt           DateTime?
+  facebookSentAt           DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  tenant                   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feed                     NewsFeed? @relation(fields: [feedId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, link])
+  @@index([tenantId, status])
+  @@index([feedId])
+}
+
+// ============ PLATFORM CORE ============
+
+model User {
+  id                     String               @id @default(cuid())
+  email                  String               @unique
+  phone                  String?              @unique
+  passwordHash           String
+  name                   String
+  role                   String               @default("user")
+  status                 String               @default("active")
+  avatarUrl              String?
+  firstName              String?
+  lastName               String?
+  nationalId             String?
+  fatherName             String?
+  motherName             String?
+  birthCertificateNumber String?
+  birthCertificateDate   DateTime?            @db.Date
+  birthDate              DateTime?            @db.Date
+  maritalStatus          String?
+  address                String?
+  postalCode             String?
+  mobilePhone            String?
+  landlinePhone          String?
+  bankAccountNumber      String?
+  bankCardNumber         String?
+  iban                   String?
+  bankName               String?
+  insuranceNumber        String?
+  isActive               Boolean              @default(true)
+  emailVerifiedAt        DateTime?
+  lastLoginAt            DateTime?
+  failedLoginAttempts    Int                  @default(0)
+  lockedUntil            DateTime?
+  passwordChangedAt      DateTime?
+  sessionsInvalidatedAt  DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  refreshTokens          RefreshToken[]
+  passwordResetTokens    PasswordResetToken[]
+  tenantMembers          TenantMember[]
+  receivedInvitations    TenantInvitation[]   @relation("TenantInvitationUser")
+  createdTenants         Tenant[]             @relation("TenantCreatedBy")
+  primaryOwnedTenants    Tenant[]             @relation("TenantPrimaryOwner")
+  notifications          Notification[]
+  auditLogs              AuditLog[]           @relation("AuditUser")
+  activities             Activity[]           @relation("ActivityUser")
+  userDocuments          UserDocument[]
+
+  @@index([nationalId])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model UserDocument {
+  id           String   @id @default(cuid())
+  userId       String
+  kind         String
+  name         String
+  originalName String
+  mimeType     String
+  size         Int
+  path         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
+  @@index([userId, createdAt])
+}
+
+model Tenant {
+  id                       String                    @id @default(cuid())
+  name                     String
+  slug                     String                    @unique
+  plan                     String                    @default("starter")
+  status                   String                    @default("active")
+  settings                 Json                      @default("{}")
+  locale                   String                    @default("fa-IR")
+  isActive                 Boolean                   @default(true)
+  createdByUserId          String?
+  primaryOwnerUserId       String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  createdBy                User?                     @relation("TenantCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  primaryOwner             User?                     @relation("TenantPrimaryOwner", fields: [primaryOwnerUserId], references: [id], onDelete: Restrict)
+  members                  TenantMember[]
+  invitations              TenantInvitation[]
+  newsFeeds                NewsFeed[]
+  platformFeedSubscriptions TenantPlatformFeed[]
+  newsArticles             NewsArticle[]
+  socialArticles           SocialArticle[]
+  auditLogs                AuditLog[]
+  activities               Activity[]
+  notifications            Notification[]
+  automationJobs           AutomationJob[]
+  integrationHealth        IntegrationHealth[]
+  contentWorkflowEvents    ContentWorkflowEvent[]
+  usageCounters            TenantUsageCounter[]
+
+  @@index([status])
+  @@index([createdByUserId])
+  @@index([primaryOwnerUserId])
+}
+
+model TenantMember {
+  tenantId      String
+  userId        String
+  role          String    @default("member")
+  permissions   String[]  @default([])
+  status        String    @default("active")
+  jobTitle      String?
+  metadata      Json      @default("{}")
+  joinedAt      DateTime  @default(now())
+  roleChangedAt DateTime?
+  leftAt        DateTime?
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId])
+  @@index([userId])
+  @@index([tenantId, status])
+}
+
+model UsageMetricDefinition {
+  key       String               @id
+  label     String
+  unitLabel String               @default("توکن")
+  unitCost  Float                @default(1)
+  enabled   Boolean              @default(true)
+  sortOrder Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  counters  TenantUsageCounter[]
+}
+
+model TenantUsageCounter {
+  tenantId  String
+  metricKey String
+  quantity  Int                  @default(0)
+  updatedAt DateTime             @updatedAt
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  metric    UsageMetricDefinition @relation(fields: [metricKey], references: [key], onDelete: Restrict)
+
+  @@id([tenantId, metricKey])
+  @@index([tenantId])
+}
+
+model TenantInvitation {
+  id              String    @id @default(cuid())
+  tenantId        String
+  email           String
+  role            String    @default("member")
+  token           String    @unique
+  tokenHash       String?   @unique
+  status          String    @default("pending")
+  invitedByUserId String?
+  invitedUserId   String?
+  metadata        Json      @default("{}")
+  expiresAt       DateTime
+  accepted        Boolean   @default(false)
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedUser     User?     @relation("TenantInvitationUser", fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, email])
+  @@index([tenantId, status])
+  @@index([invitedUserId, status])
+}
+
+// ============ AUDIT & ACTIVITY ============
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  changes    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User?    @relation("AuditUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+}
+
+model Activity {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String?
+  type       String
+  title      String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User?    @relation("ActivityUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entityType, entityId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  tenantId  String
+  userId    String
+  title     String
+  message   String
+  type      String    @default("info")
+  link      String?
+  dedupeKey String?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, dedupeKey])
+  @@index([userId, isRead])
+  @@index([tenantId, userId, isRead, createdAt])
+}
+
+model AutomationJob {
+  id          String    @id @default(cuid())
+  tenantId    String
+  type        String
+  status      String    @default("queued")
+  payload     Json      @default("{}")
+  result      Json?
+  dedupeKey   String?
+  priority    Int       @default(0)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  availableAt DateTime  @default(now())
+  startedAt   DateTime?
+  lockedAt    DateTime?
+  lockedBy    String?
+  completedAt DateTime?
+  lastError   String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, type, dedupeKey])
+  @@index([status, availableAt, priority])
+  @@index([tenantId, status, createdAt])
+}
+
+model IntegrationHealth {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  key                 String
+  type                String
+  name                String
+  status              String    @default("unknown")
+  configured          Boolean   @default(true)
+  consecutiveFailures Int       @default(0)
+  latencyMs           Int?
+  lastCheckedAt       DateTime?
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  lastError           String    @default("")
+  metadata            Json      @default("{}")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@index([tenantId, status, updatedAt])
+  @@index([type, status])
+}
+
+model ContentWorkflowEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  fromStatus String?
+  toStatus   String
+  stage      String
+  action     String
+  actorType  String   @default("system")
+  actorId    String?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId, createdAt])
+}

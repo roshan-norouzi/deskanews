@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deska
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: deska_news
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deska -d deska_news"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # A named Docker volume is mounted after the image is built, so the chown
+  # performed in the Dockerfile does not apply to a newly created volume.
+  # Prepare it as root once before the non-root API process starts.
+  api-storage-init:
+    image: ${IMAGE_PREFIX:-deskanews}/api:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: "no"
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /app/uploads && chown -R 1001:1001 /app/uploads"]
+    volumes:
+      - api_uploads:/app/uploads
+
+  api:
+    image: ${IMAGE_PREFIX:-deskanews}/api:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${API_PORT:-3001}:3001"
+    environment:
+      DATABASE_URL: postgresql://deska:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/deska_news
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?SETTINGS_ENCRYPTION_KEY must be set}
+      SETTINGS_ENCRYPTION_KEY_PREVIOUS: ${SETTINGS_ENCRYPTION_KEY_PREVIOUS:-}
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 7d
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN must be set}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      PORT: 3001
+      TENANT_MODE: multi
+      STORAGE_TYPE: local
+      STORAGE_PATH: /app/uploads
+      NEWS_BROWSER_RENDERING: ${NEWS_BROWSER_RENDERING:-true}
+      CHROMIUM_EXECUTABLE_PATH: ${CHROMIUM_EXECUTABLE_PATH:-/usr/bin/chromium-browser}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@deska.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    volumes:
+      - api_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api-storage-init:
+        condition: service_completed_successfully
+
+  web:
+    image: ${IMAGE_PREFIX:-deskanews}/web:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_URL: http://api:3001
+        NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-1.0.0}
+        NEXT_PUBLIC_BASE_PATH: ${BASE_PATH:-}
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    environment:
+      API_URL: http://api:3001
+      NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-1.0.0}
+      NEXT_PUBLIC_BASE_PATH: ${BASE_PATH:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  api_uploads:

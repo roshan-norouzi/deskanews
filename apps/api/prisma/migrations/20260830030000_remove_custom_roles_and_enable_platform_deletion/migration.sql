@@ -1,0 +1,76 @@
+-- This migration intentionally changes organization deletion from RESTRICT to
+-- CASCADE. The API protects the operation with authorization and three
+-- independent confirmations before issuing Tenant.delete().
+
+ALTER TABLE "Activity" DROP CONSTRAINT "Activity_tenantId_fkey";
+ALTER TABLE "Activity" DROP CONSTRAINT "Activity_userId_fkey";
+ALTER TABLE "AuditLog" DROP CONSTRAINT "AuditLog_tenantId_fkey";
+ALTER TABLE "AuditLog" DROP CONSTRAINT "AuditLog_userId_fkey";
+ALTER TABLE "CalendarEvent" DROP CONSTRAINT "CalendarEvent_tenantId_fkey";
+ALTER TABLE "Contact" DROP CONSTRAINT "Contact_tenantId_fkey";
+ALTER TABLE "ContactBankAccount" DROP CONSTRAINT "ContactBankAccount_tenantId_fkey";
+ALTER TABLE "CustomFieldDefinition" DROP CONSTRAINT "CustomFieldDefinition_tenantId_fkey";
+ALTER TABLE "CustomFieldValue" DROP CONSTRAINT "CustomFieldValue_tenantId_fkey";
+ALTER TABLE "DailyReport" DROP CONSTRAINT "DailyReport_tenantId_fkey";
+ALTER TABLE "DailyReportArticleDecision" DROP CONSTRAINT "DailyReportArticleDecision_tenantId_fkey";
+ALTER TABLE "DailyReportItem" DROP CONSTRAINT "DailyReportItem_tenantId_fkey";
+ALTER TABLE "Department" DROP CONSTRAINT "Department_tenantId_fkey";
+ALTER TABLE "DocumentFile" DROP CONSTRAINT "DocumentFile_tenantId_fkey";
+ALTER TABLE "DocumentFolder" DROP CONSTRAINT "DocumentFolder_tenantId_fkey";
+ALTER TABLE "Employee" DROP CONSTRAINT "Employee_tenantId_fkey";
+ALTER TABLE "Employee" DROP CONSTRAINT "Employee_userId_fkey";
+ALTER TABLE "JobOpening" DROP CONSTRAINT "JobOpening_tenantId_fkey";
+ALTER TABLE "NewsArticle" DROP CONSTRAINT "NewsArticle_tenantId_fkey";
+ALTER TABLE "NewsFeed" DROP CONSTRAINT "NewsFeed_tenantId_fkey";
+ALTER TABLE "Notification" DROP CONSTRAINT "Notification_tenantId_fkey";
+ALTER TABLE "NumberSequence" DROP CONSTRAINT "NumberSequence_tenantId_fkey";
+ALTER TABLE "Project" DROP CONSTRAINT "Project_tenantId_fkey";
+ALTER TABLE "PublishArticle" DROP CONSTRAINT "PublishArticle_tenantId_fkey";
+ALTER TABLE "PublishChannel" DROP CONSTRAINT "PublishChannel_tenantId_fkey";
+ALTER TABLE "RoleDefinition" DROP CONSTRAINT "RoleDefinition_tenantId_fkey";
+ALTER TABLE "RolePermission" DROP CONSTRAINT "RolePermission_roleId_fkey";
+ALTER TABLE "SocialArticle" DROP CONSTRAINT "SocialArticle_tenantId_fkey";
+ALTER TABLE "SocialFeed" DROP CONSTRAINT "SocialFeed_tenantId_fkey";
+ALTER TABLE "Task" DROP CONSTRAINT "Task_tenantId_fkey";
+ALTER TABLE "Tenant" DROP CONSTRAINT "Tenant_primaryOwnerUserId_fkey";
+ALTER TABLE "TenantInvitation" DROP CONSTRAINT "TenantInvitation_invitedUserId_fkey";
+ALTER TABLE "TenantInvitation" DROP CONSTRAINT "TenantInvitation_tenantId_fkey";
+ALTER TABLE "TenantMember" DROP CONSTRAINT "TenantMember_tenantId_fkey";
+ALTER TABLE "TenantModule" DROP CONSTRAINT "TenantModule_tenantId_fkey";
+
+DROP TABLE "RolePermission";
+DROP TABLE "RoleDefinition";
+
+ALTER TABLE "Project" ADD CONSTRAINT "Project_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Task" ADD CONSTRAINT "Task_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PublishChannel" ADD CONSTRAINT "PublishChannel_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "PublishArticle" ADD CONSTRAINT "PublishArticle_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "NewsFeed" ADD CONSTRAINT "NewsFeed_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "NewsArticle" ADD CONSTRAINT "NewsArticle_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DailyReport" ADD CONSTRAINT "DailyReport_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DailyReportArticleDecision" ADD CONSTRAINT "DailyReportArticleDecision_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DailyReportItem" ADD CONSTRAINT "DailyReportItem_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SocialFeed" ADD CONSTRAINT "SocialFeed_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SocialArticle" ADD CONSTRAINT "SocialArticle_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Tenant" ADD CONSTRAINT "Tenant_primaryOwnerUserId_fkey" FOREIGN KEY ("primaryOwnerUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TenantMember" ADD CONSTRAINT "TenantMember_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TenantInvitation" ADD CONSTRAINT "TenantInvitation_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TenantInvitation" ADD CONSTRAINT "TenantInvitation_invitedUserId_fkey" FOREIGN KEY ("invitedUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TenantModule" ADD CONSTRAINT "TenantModule_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CustomFieldDefinition" ADD CONSTRAINT "CustomFieldDefinition_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CustomFieldValue" ADD CONSTRAINT "CustomFieldValue_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "NumberSequence" ADD CONSTRAINT "NumberSequence_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Contact" ADD CONSTRAINT "Contact_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ContactBankAccount" ADD CONSTRAINT "ContactBankAccount_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DocumentFolder" ADD CONSTRAINT "DocumentFolder_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "DocumentFile" ADD CONSTRAINT "DocumentFile_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CalendarEvent" ADD CONSTRAINT "CalendarEvent_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Activity" ADD CONSTRAINT "Activity_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Activity" ADD CONSTRAINT "Activity_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Notification" ADD CONSTRAINT "Notification_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Department" ADD CONSTRAINT "Department_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Employee" ADD CONSTRAINT "Employee_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Employee" ADD CONSTRAINT "Employee_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "JobOpening" ADD CONSTRAINT "JobOpening_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
