@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { DEFAULT_PLATFORM_FEEDS, FEED_CATALOG_GROUP_ORDER, PLATFORM_FEED_CATALOG_VERSION, USAGE_METRIC_KEYS, feedCatalogGroupFromSourceType, normalizeFeedSourceType, resolveFeedLogoUrl, shouldUsePersianRewrite, type FeedCatalogGroup } from '@deska/shared';
+import { DEFAULT_PLATFORM_FEEDS, FEED_CATALOG_GROUP_ORDER, PLATFORM_FEED_CATALOG_VERSION, USAGE_METRIC_KEYS, detectSourceLanguageFromItems, feedCatalogGroupFromSourceType, mergeSourceLanguageCatalog, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, shouldUsePersianRewrite, sourceLanguageLabel, type FeedCatalogGroup } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SourceReaderService } from './source-reader.service';
@@ -60,7 +60,7 @@ function mapCatalogFeed(feed: {
     logoUrlOverride: feed.logoUrl,
     enabled: feed.enabled,
     lastFetchedAt: feed.lastFetchedAt,
-    lastError: feed.lastError,
+    lastError: feed.healthStatus === 'degraded' || feed.healthStatus === 'down' ? (feed.healthError || '') : '',
     healthStatus: feed.healthStatus || 'unknown',
     healthCheckedAt: feed.healthCheckedAt,
     healthItemCount: feed.healthItemCount ?? 0,
@@ -121,7 +121,7 @@ function mapTenantPlatformFeedRow(row: {
     enabled: row.enabled,
     platformEnabled: row.platformFeed.enabled,
     lastFetchedAt: row.lastSyncedAt ?? row.platformFeed.lastFetchedAt,
-    lastError: row.platformFeed.lastError,
+    lastError: '',
     autoPoll: row.autoPoll,
     autoPrepare: row.autoPrepare,
     autoPublish: row.autoPublish,
@@ -157,10 +157,34 @@ function normalizeCatalogGroup(
   return feedCatalogGroupFromSourceType(sourceType, mediaScope);
 }
 
+const PLATFORM_FEED_LIST_SELECT = {
+  id: true,
+  name: true,
+  url: true,
+  sourceType: true,
+  catalogGroup: true,
+  resolvedFeedUrl: true,
+  sourceLanguage: true,
+  logoUrl: true,
+  enabled: true,
+  lastFetchedAt: true,
+  lastError: true,
+  healthStatus: true,
+  healthCheckedAt: true,
+  healthItemCount: true,
+  healthError: true,
+  healthFailSince: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 @Injectable()
-export class PlatformFeedService implements OnModuleInit {  private readonly logger = new Logger(PlatformFeedService.name);
+export class PlatformFeedService implements OnModuleInit {
+  private readonly logger = new Logger(PlatformFeedService.name);
   private maintenanceRunning = false;
   private healthMaintenanceRunning = false;
+  private socialPhotoBackfillRunning = false;
+  private readonly subscriptionEnsureInflight = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -253,9 +277,25 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
   }
 
   async listAll() {
-    const feeds = await this.prisma.platformFeed.findMany({ orderBy: { name: 'asc' } });
-    await this.backfillSocialProfilePhotos(feeds);
+    const feeds = await this.prisma.platformFeed.findMany({
+      orderBy: { name: 'asc' },
+      select: PLATFORM_FEED_LIST_SELECT,
+    });
+    this.scheduleSocialPhotoBackfill(feeds);
     return feeds.map(mapCatalogFeed);
+  }
+
+  async listSourceLanguageCatalog() {
+    const learned = await this.settings.listLearnedSourceLanguages();
+    const [platform, tenant] = await Promise.all([
+      this.prisma.platformFeed.findMany({ select: { sourceLanguage: true }, distinct: ['sourceLanguage'] }),
+      this.prisma.newsFeed.findMany({ select: { sourceLanguage: true }, distinct: ['sourceLanguage'] }),
+    ]);
+    return mergeSourceLanguageCatalog([
+      ...learned,
+      ...platform.map((row) => row.sourceLanguage),
+      ...tenant.map((row) => row.sourceLanguage),
+    ]).map((code) => ({ code, label: sourceLanguageLabel(code) }));
   }
 
   async create(data: CreatePlatformFeedDto) {
@@ -270,7 +310,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     }
 
-    const sourceLanguage = data.sourceLanguage ?? 'auto';
+    const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage);
     const profilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : '';
@@ -290,6 +330,9 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       },
     });
     await this.ensureSubscriptionsForAllTenants(feed.id);
+    if (sourceLanguage !== 'auto') {
+      await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
+    }
     return mapCatalogFeed(feed);
   }
 
@@ -308,7 +351,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       resolvedFeedUrl = '';
     }
 
-    const sourceLanguage = data.sourceLanguage ?? feed.sourceLanguage;
+    const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage ?? feed.sourceLanguage);
     const updated = await this.prisma.platformFeed.update({
       where: { id },
       data: {
@@ -317,11 +360,14 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         sourceType,
         catalogGroup: normalizeCatalogGroup(sourceType, data.catalogGroup ?? feed.catalogGroup, sourceLanguage),
         resolvedFeedUrl,
-        ...(data.sourceLanguage !== undefined ? { sourceLanguage: data.sourceLanguage } : {}),
+        ...(data.sourceLanguage !== undefined ? { sourceLanguage } : {}),
         ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
         ...(data.logoUrl !== undefined ? { logoUrl: String(data.logoUrl).trim() } : {}),
       },
     });
+    if (data.sourceLanguage !== undefined && sourceLanguage !== 'auto') {
+      await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
+    }
     return mapCatalogFeed(updated);
   }
 
@@ -407,6 +453,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     url: string;
     sourceType: string;
     resolvedFeedUrl: string;
+    sourceLanguage?: string;
     healthFailSince?: Date | null;
   }) {
     try {
@@ -419,7 +466,10 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         totalEntries: entries.length,
         previousFailSince: feed.healthFailSince,
       });
-      await this.persistFeedHealth(feed.id, evaluation, items.length);
+      await this.persistFeedHealth(feed.id, evaluation, items.length, {
+        currentLanguage: feed.sourceLanguage,
+        items,
+      });
       return {
         feedId: feed.id,
         name: feed.name,
@@ -453,7 +503,17 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     feedId: string,
     evaluation: { status: PlatformFeedHealthStatus; failSince: Date | null; errorMessage: string },
     itemCount: number,
+    options?: {
+      currentLanguage?: string;
+      items?: Array<{ title?: string; summary?: string }>;
+    },
   ) {
+    const detectedLanguage = evaluation.status === 'healthy'
+      ? detectSourceLanguageFromItems(options?.items || [])
+      : 'auto';
+    const currentLanguage = String(options?.currentLanguage || 'auto').trim() || 'auto';
+    const shouldWriteLanguage = currentLanguage === 'auto' && detectedLanguage !== 'auto';
+
     await this.prisma.platformFeed.update({
       where: { id: feedId },
       data: {
@@ -462,8 +522,13 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         healthItemCount: itemCount,
         healthError: evaluation.errorMessage,
         healthFailSince: evaluation.failSince,
+        lastError: evaluation.status === 'healthy' ? '' : evaluation.errorMessage,
+        ...(shouldWriteLanguage ? { sourceLanguage: detectedLanguage } : {}),
       },
     });
+    if (detectedLanguage !== 'auto') {
+      await this.settings.rememberSourceLanguages([detectedLanguage]).catch(() => undefined);
+    }
   }
 
   private async shouldRunScheduledCatalogHealth(now = new Date()): Promise<boolean> {
@@ -611,11 +676,25 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     await this.ensureSubscriptions(tenantId);
     const rows = await this.prisma.tenantPlatformFeed.findMany({
       where: { tenantId },
-      include: { platformFeed: true },
+      include: { platformFeed: { select: PLATFORM_FEED_LIST_SELECT } },
       orderBy: { platformFeed: { name: 'asc' } },
     });
-    await this.backfillSocialProfilePhotos(rows.map((row) => row.platformFeed));
+    this.scheduleSocialPhotoBackfill(rows.map((row) => row.platformFeed));
     return rows.map((row) => mapTenantPlatformFeedRow(row));
+  }
+
+  private scheduleSocialPhotoBackfill(
+    feeds: Array<{ id: string; url: string; sourceType: string; logoUrl: string }>,
+  ) {
+    if (this.socialPhotoBackfillRunning) return;
+    const pending = feeds.filter(
+      (feed) => !String(feed.logoUrl || '').trim() && feed.sourceType === 'twitter',
+    );
+    if (!pending.length) return;
+    this.socialPhotoBackfillRunning = true;
+    void this.backfillSocialProfilePhotos(pending).finally(() => {
+      this.socialPhotoBackfillRunning = false;
+    });
   }
 
   private async backfillSocialProfilePhotos(
@@ -990,6 +1069,21 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
   }
 
   async ensureSubscriptions(tenantId: string) {
+    const inflight = this.subscriptionEnsureInflight.get(tenantId);
+    if (inflight) return inflight;
+    const task = this.ensureSubscriptionsNow(tenantId).finally(() => {
+      this.subscriptionEnsureInflight.delete(tenantId);
+    });
+    this.subscriptionEnsureInflight.set(tenantId, task);
+    return task;
+  }
+
+  private async ensureSubscriptionsNow(tenantId: string) {
+    const [feedCount, subscriptionCount] = await Promise.all([
+      this.prisma.platformFeed.count(),
+      this.prisma.tenantPlatformFeed.count({ where: { tenantId } }),
+    ]);
+    if (!feedCount || subscriptionCount >= feedCount) return;
     const feeds = await this.prisma.platformFeed.findMany({ select: { id: true } });
     if (!feeds.length) return;
     await this.prisma.tenantPlatformFeed.createMany({

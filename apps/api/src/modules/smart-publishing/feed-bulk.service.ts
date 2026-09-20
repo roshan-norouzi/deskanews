@@ -1,16 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { normalizeFeedSourceType, type FeedCatalogGroup, type SourceLanguage } from '@deska/shared';
+import { normalizeFeedSourceType, SOURCE_LANGUAGES, type FeedCatalogGroup, type SourceLanguage } from '@deska/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PlatformFeedService } from './platform-feed.service';
 import { NewsroomService } from './newsroom.service';
 import {
   ALLOWED_CATALOG_GROUPS,
-  ALLOWED_SOURCE_LANGUAGES,
   ALLOWED_SOURCE_TYPES,
   buildWorkbook,
   parseBooleanCell,
   parseWorkbookRows,
   parseWordsCell,
+  validateSourceLanguage,
   PLATFORM_BULK_COLUMNS,
   TENANT_BULK_COLUMNS,
   validateEnum,
@@ -64,7 +64,7 @@ export class FeedBulkService {
       '• شناسه را برای منابع موجود دست نزنید؛ ردیف جدید با شناسه خالی اضافه می‌شود.',
       '• آدرس، نوع، زبان و دسته قابل ویرایش هستند.',
       '• نوع منبع: rss, website, blog, telegram, twitter',
-      `• زبان: ${ALLOWED_SOURCE_LANGUAGES.join(', ')}`,
+      `• زبان: auto یا کد ISO دو حرفی (مثل ${SOURCE_LANGUAGES.filter((code) => code !== 'auto').slice(0, 8).join(', ')})`,
       `• دسته: ${ALLOWED_CATALOG_GROUPS.join(', ')}`,
       '• فعال: بله / خیر',
       '• پس از آپلود، منابعی که در فایل نیستند حذف می‌شوند.',
@@ -107,7 +107,7 @@ export class FeedBulkService {
         if (id) idsKept.add(id);
         continue;
       }
-      const languageError = validateEnum(sourceLanguage, ALLOWED_SOURCE_LANGUAGES, 'زبان');
+      const languageError = validateSourceLanguage(sourceLanguage);
       if (languageError) {
         errors.push({ row: row.rowNumber, message: languageError });
         if (id) idsKept.add(id);
@@ -252,7 +252,7 @@ export class FeedBulkService {
         if (id) idsKept.add(id);
         continue;
       }
-      const languageError = validateEnum(sourceLanguage, ALLOWED_SOURCE_LANGUAGES, 'زبان');
+      const languageError = validateSourceLanguage(sourceLanguage);
       if (languageError) {
         errors.push({ row: row.rowNumber, message: languageError });
         if (id) idsKept.add(id);

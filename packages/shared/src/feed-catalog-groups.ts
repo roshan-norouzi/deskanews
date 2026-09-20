@@ -19,7 +19,7 @@ export const FEED_CATALOG_GROUPS: Record<
   },
   'media-international': {
     label: 'رسانه‌های بین‌المللی',
-    description: 'رسانه‌های بومی‌زبان (انگلیسی، عربی، فرانسوی، آلمانی، ترکی، عبری، چینی، ژاپنی)',
+    description: 'رسانه‌های بومی‌زبان جهان؛ زبان‌های تازه‌شناسایی‌شده به دانش سیستم اضافه می‌شوند',
     sourceTypes: ['rss', 'website', 'blog'],
   },
   'orgs-companies': {

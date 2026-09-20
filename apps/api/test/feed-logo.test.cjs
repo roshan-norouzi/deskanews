@@ -12,10 +12,10 @@ test('extractFeedDomain strips www prefix', () => {
   assert.equal(extractFeedDomain('https://www.isna.ir/rss'), 'isna.ir');
 });
 
-test('buildAutoFeedLogoUrl uses Google favicon service', () => {
+test('buildAutoFeedLogoUrl uses the local source-icon proxy', () => {
   assert.equal(
     buildAutoFeedLogoUrl('https://isna.ir'),
-    'https://www.google.com/s2/favicons?domain=isna.ir&sz=128',
+    '/api/publishing/source-icons/isna.ir',
   );
 });
 
@@ -24,7 +24,7 @@ test('resolveFeedLogoUrl prefers stored override', () => {
     resolveFeedLogoUrl('https://isna.ir', 'https://cdn.example/logo.png'),
     'https://cdn.example/logo.png',
   );
-  assert.match(resolveFeedLogoUrl('https://isna.ir', ''), /isna\.ir/);
+  assert.equal(resolveFeedLogoUrl('https://isna.ir', ''), '/api/publishing/source-icons/isna.ir');
 });
 
 test('resolveFeedLogoUrl uses telegram profile photo instead of favicon', () => {

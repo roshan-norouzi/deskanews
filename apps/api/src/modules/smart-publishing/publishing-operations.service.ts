@@ -78,27 +78,24 @@ export class PublishingOperationsService {
       updatedAt: null,
     });
 
-    const feedHealth = feeds.map((feed) => {
-      const record = known.get(`feed:${feed.id}`);
-      return record ?? {
-        id: `feed:${feed.id}`,
-        tenantId,
-        key: `feed:${feed.id}`,
-        type: 'feed',
-        name: feed.name,
-        configured: feed.enabled,
-        status: !feed.enabled ? 'disabled' : feed.lastError ? 'degraded' : feed.lastFetchedAt ? 'healthy' : 'unknown',
-        consecutiveFailures: feed.lastError ? 1 : 0,
-        latencyMs: null,
-        lastCheckedAt: feed.lastFetchedAt,
-        lastSuccessAt: feed.lastError ? null : feed.lastFetchedAt,
-        lastFailureAt: feed.lastError ? feed.lastFetchedAt : null,
-        lastError: feed.lastError,
-        metadata: { purpose: feed.purpose, url: feed.url },
-        createdAt: null,
-        updatedAt: feed.lastFetchedAt,
-      };
-    });
+    const feedHealth = feeds.map((feed) => ({
+      id: `feed:${feed.id}`,
+      tenantId,
+      key: `feed:${feed.id}`,
+      type: 'feed',
+      name: feed.name,
+      configured: feed.enabled,
+      status: !feed.enabled ? 'disabled' : feed.lastFetchedAt ? 'healthy' : 'unknown',
+      consecutiveFailures: 0,
+      latencyMs: null,
+      lastCheckedAt: feed.lastFetchedAt,
+      lastSuccessAt: feed.lastFetchedAt,
+      lastFailureAt: null,
+      lastError: '',
+      metadata: { purpose: feed.purpose, url: feed.url },
+      createdAt: null,
+      updatedAt: feed.lastFetchedAt,
+    }));
 
     return {
       queue,

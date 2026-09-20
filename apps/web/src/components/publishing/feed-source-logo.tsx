@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { usesFeedProfilePhoto } from '@deska/shared';
-import { cn } from '@/lib/utils';
+import { cn, withBasePath } from '@/lib/utils';
 import { feedSourceMeta } from '@/lib/feed-source-types';
 
 interface FeedSourceLogoProps {
@@ -26,6 +26,22 @@ const iconClasses = {
   lg: 'h-6 w-6',
 } as const;
 
+function displayLogoSrc(logoUrl?: string) {
+  const value = String(logoUrl || '').trim();
+  if (!value) return '';
+  if (value.startsWith('/')) return withBasePath(value);
+  try {
+    const parsed = new URL(value);
+    if ((parsed.hostname === 'www.google.com' || parsed.hostname === 'google.com') && parsed.pathname.includes('/s2/favicons')) {
+      const domain = parsed.searchParams.get('domain');
+      if (domain) return withBasePath(`/api/publishing/source-icons/${encodeURIComponent(domain)}`);
+    }
+  } catch {
+    return value;
+  }
+  return value;
+}
+
 function logoImageClass(sourceType: string | undefined, enabled: boolean) {
   const profile = usesFeedProfilePhoto(sourceType);
   return cn(
@@ -48,11 +64,15 @@ export function FeedSourceLogo({
   const Icon = meta.icon;
   const profile = usesFeedProfilePhoto(sourceType);
 
-  if (logoUrl && !failed) {
+  const src = displayLogoSrc(logoUrl);
+  if (src && !failed) {
     return (
       <img
-        src={logoUrl}
+        src={src}
         alt=""
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
         className={cn(logoImageClass(sourceType, enabled), sizeClasses[size], className)}
         onError={() => setFailed(true)}
       />
@@ -96,18 +116,22 @@ export function FeedSourceLogoWithFallback({
   const Icon = meta.icon;
   const profile = usesFeedProfilePhoto(sourceType);
 
-  if (logoUrl && !failed) {
+  const src = displayLogoSrc(logoUrl);
+  if (src && !failed) {
     return (
       <img
-        src={logoUrl}
+        src={src}
         alt=""
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
         className={cn(logoImageClass(sourceType, enabled), sizeClasses[size], className)}
         onError={() => setFailed(true)}
       />
     );
   }
 
-  if (logoUrl && failed) {
+  if (src && failed) {
     return (
       <div
         className={cn(

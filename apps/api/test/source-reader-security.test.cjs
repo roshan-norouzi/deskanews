@@ -183,6 +183,25 @@ test('SourceReader distinguishes a feed summary from genuine full feed content',
   assert.match(entries[1].content, /جزئیات دقیق/);
 });
 
+test('SourceReader accepts RSS served as application/xhtml+xml or text/html', async () => {
+  const rss = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
+    <item><title>Africa news</title><link>https://www.africanews.com/story</link><description>Latest story</description></item>
+  </channel></rss>`;
+  const service = new SourceReaderService();
+  service.resolveAddresses = async () => [{ address: '93.184.216.34', family: 4 }];
+  service.requestAddress = async () => response(200, { 'content-type': 'application/xhtml+xml' }, rss);
+
+  const xhtmlEntries = await service.readFeed('https://www.africanews.com/feed/rss');
+  assert.equal(xhtmlEntries.length, 1);
+  assert.equal(xhtmlEntries[0].title, 'Africa news');
+  assert.equal(xhtmlEntries[0].canonicalUrl, 'https://www.africanews.com/story');
+
+  service.requestAddress = async () => response(200, { 'content-type': 'text/html; charset=UTF-8' }, rss);
+  const htmlEntries = await service.readFeed('https://www.africanews.com/feed/rss');
+  assert.equal(htmlEntries.length, 1);
+  assert.equal(htmlEntries[0].title, 'Africa news');
+});
+
 test('SourceReader accepts RSS 1.0 RDF feeds and Atom feeds with alternate links', async () => {
   const service = new SourceReaderService();
   service.safeFetchText = async (url) => url.includes('rdf')
@@ -309,6 +328,47 @@ test('SourceReader parses embedded X syndication JSON when legacy DOM selectors 
   assert.equal(twitter[0].canonicalUrl, 'https://x.com/news/status/9876543210');
   assert.match(twitter[0].content, /خبر مهم از X/);
   assert.equal(twitter[0].author, '@news');
+});
+
+test('SourceReader retries geo-blocked international RSS through Worker', async () => {
+  const service = new SourceReaderService({
+    getResolvedSourceFetchBridge: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+    }),
+  });
+  service.safeFetchTextDirect = async () => {
+    throw new BadRequestException('منبع با خطای HTTP 403 پاسخ داد');
+  };
+  service.safeFetchTextViaBridge = async () => `<?xml version="1.0"?><rss version="2.0"><channel><item><title>BBC story</title><link>https://www.bbc.com/news/1</link><description>Summary</description></item></channel></rss>`;
+
+  const entries = await service.readFeed('https://www.bbc.com/news/rss.xml');
+  assert.equal(entries.length, 1);
+  assert.match(entries[0].title, /BBC story/);
+  assert.equal(entries[0].canonicalUrl, 'https://www.bbc.com/news/1');
+});
+
+test('SourceReader scrapes international websites through Worker when RSS is missing', async () => {
+  const service = new SourceReaderService({
+    getResolvedSourceFetchBridge: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+    }),
+  });
+  service.safeFetchTextDirect = async () => {
+    throw new BadRequestException('منبع با خطای HTTP 451 پاسخ داد');
+  };
+  service.safeFetchTextViaBridge = async (url) => {
+    if (url.includes('/article-1')) {
+      return '<html><head><meta property="og:title" content="Blocked outlet story"><meta property="og:description" content="Full article from outside Iran"></head><body><article><p>Full article from outside Iran</p></article></body></html>';
+    }
+    return '<html><body><main><article><h2><a href="https://www.nytimes.com/article-1">Blocked outlet story</a></h2></article></main></body></html>';
+  };
+  service.discoverFeedUrl = async () => null;
+
+  const result = await service.readSourceWithMeta('website', 'https://www.nytimes.com/');
+  assert.ok(result.entries.length >= 1);
+  assert.match(result.entries[0].title, /Blocked outlet story/);
 });
 
 test('SourceReader routes Telegram and X through the source fetch bridge', async () => {

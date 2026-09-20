@@ -17,6 +17,7 @@ import {
   normalizeCatalogHealthIntervalHours,
   parseCatalogHealthEnabled,
 } from './platform-feed-health';
+import { mergeSourceLanguageCatalog, normalizeSourceLanguage } from '@deska/shared';
 import { SecretProtectionService } from './secret-protection.service';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -878,6 +879,46 @@ export class PublishingSettingsService implements OnModuleInit {
       create: { settings: inputJson({ ...settings, catalog_health: next }) },
       update: { settings: inputJson({ ...settings, catalog_health: next }) },
     });
+  }
+
+  private async loadLearnedSourceLanguagesStored(): Promise<string[]> {
+    if (!this.prisma.platformConfig?.findUnique) return [];
+    try {
+      const row = await this.prisma.platformConfig.findUnique({ where: { id: 'default' } });
+      const settings = cleanObject(row?.settings);
+      const stored = Array.isArray(settings.source_languages) ? settings.source_languages : [];
+      return stored.map((item) => normalizeSourceLanguage(item)).filter((code) => code !== 'auto');
+    } catch (error) {
+      this.logger.warn(`Learned source languages could not be loaded: ${error instanceof Error ? error.message : 'unknown error'}`);
+      return [];
+    }
+  }
+
+  async listLearnedSourceLanguages(): Promise<string[]> {
+    return this.loadLearnedSourceLanguagesStored();
+  }
+
+  async rememberSourceLanguages(codes: string[]): Promise<string[]> {
+    const incoming = codes.map((code) => normalizeSourceLanguage(code)).filter((code) => code !== 'auto');
+    if (!incoming.length) return this.listLearnedSourceLanguages();
+
+    const learned = mergeSourceLanguageCatalog([...(await this.loadLearnedSourceLanguagesStored()), ...incoming])
+      .filter((code) => code !== 'auto');
+    let row: { settings?: unknown } | null = null;
+    if (this.prisma.platformConfig?.findUnique) {
+      try {
+        row = await this.prisma.platformConfig.findUnique({ where: { id: 'default' } });
+      } catch {
+        row = null;
+      }
+    }
+    const settings = cleanObject(row?.settings);
+    await this.prisma.platformConfig?.upsert?.({
+      where: { id: 'default' },
+      create: { settings: inputJson({ ...settings, source_languages: learned }) },
+      update: { settings: inputJson({ ...settings, source_languages: learned }) },
+    });
+    return learned;
   }
 
   async ensurePlatformSourceFetchSettings() {

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
+import { feedTogglePowerClass } from '@/components/publishing/feed-source-card';
 import type { SourceLanguage } from '@deska/shared';
 import { FEED_SOURCE_UI, feedSourceMeta, feedSourceTypeHint, type FeedSourceType } from '@/lib/feed-source-types';
 
@@ -156,7 +157,6 @@ export default function SocialFeedsPage() {
                         <td className="px-5 py-4">
                           <div className="font-semibold text-slate-900">{feed.name}</div>
                           <div className="mt-1 truncate text-xs text-slate-500" dir="ltr">{feed.url}</div>
-                          {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
                         </td>
                         <td className="px-5 py-4"><span className="inline-flex items-center gap-1.5"><Icon className="h-4 w-4" />{meta.shortLabel}</span></td>
                         <td className="px-5 py-4 text-slate-600">هر {feed.pollIntervalMinutes ?? 240} دقیقه</td>
@@ -165,7 +165,7 @@ export default function SocialFeedsPage() {
                           <div className="flex gap-1">
                             <Button size="sm" variant="ghost" isLoading={busy === `fetch-${feed.id}`} onClick={() => run(`fetch-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/fetch`, { method: 'POST' }); await refetch(); })}><RefreshCw className="h-4 w-4" /></Button>
                             <Button size="sm" variant="ghost" onClick={() => { setEditing(feed); setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || 'telegram', sourceLanguage: feed.sourceLanguage || 'auto', pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? true, autoPublish: feed.autoPublish ?? false }); setModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                            <Button size="sm" variant="ghost" onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}><Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}><Power className={feedTogglePowerClass(feed.enabled)} /></Button>
                             <Button size="sm" variant="ghost" className="text-red-600" onClick={() => { if (window.confirm(`«${feed.name}» حذف شود؟`)) run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}`, { method: 'DELETE' }); await refetch(); }); }}><Trash2 className="h-4 w-4" /></Button>
                           </div>
                         </td>

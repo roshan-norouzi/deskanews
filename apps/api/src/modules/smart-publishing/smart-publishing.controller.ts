@@ -22,6 +22,7 @@ import { PublishingOperationsService } from './publishing-operations.service';
 import { FeedBulkService } from './feed-bulk.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { DestinationCategoryService } from './destination-category.service';
+import { SourceIconService } from './source-icon.service';
 import { BulkApproveDestinationCategoriesDto, CreateDestinationCategoryDto, SyncDestinationCategoriesDto, UpdateDestinationCategoryDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
 @Controller('publishing')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
@@ -111,6 +112,7 @@ export class SmartPublishingController {
   @Get('proxy/image') async proxyImage(@Query('url') url: string, @Res() response: Response) { const result = await this.sourceReader.proxyImage(String(url || '')); response.setHeader('Content-Type', result.contentType); response.setHeader('Cache-Control', 'private, max-age=3600'); return response.send(result.buffer); }
 
   @Get('feeds') feeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId); }
+  @Get('source-languages') sourceLanguages() { return this.newsroom.listSourceLanguages(); }
   @Get('platform-feeds') platformFeeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.listPlatformFeeds(tenant.tenantId); }
   @Patch('platform-feeds/:id') @RequirePermission('publishing.manage') updatePlatformFeedSubscription(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateTenantPlatformFeedDto) {
     return this.newsroom.updatePlatformFeedSubscription(tenant.tenantId, id, body);
@@ -242,6 +244,24 @@ export class PublishingImageFileController {
     const result = await this.settingsService.legacyImageFile(filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return response.send(result.buffer);
+  }
+}
+
+@Public()
+@Controller('publishing/source-icons')
+export class PublishingSourceIconController {
+  constructor(private readonly sourceIcons: SourceIconService) {}
+
+  @Get(':domain')
+  async file(@Param('domain') domain: string, @Res() response: Response) {
+    const result = await this.sourceIcons.getIcon(domain);
+    if (!result) {
+      response.status(404).end();
+      return;
+    }
+    response.setHeader('Content-Type', result.contentType);
+    response.setHeader('Cache-Control', 'public, max-age=604800');
     return response.send(result.buffer);
   }
 }

@@ -106,11 +106,12 @@ export class SocialStudioService {
     }).catch((error) => this.logger.warn(`Workflow history could not be recorded: ${error instanceof Error ? error.message : 'unknown error'}`));
   }
 
-  feeds(tenantId: string) {
-    return this.prisma.newsFeed.findMany({
+  async feeds(tenantId: string) {
+    const feeds = await this.prisma.newsFeed.findMany({
       where: { tenantId, purpose: 'social-studio' },
       orderBy: { createdAt: 'desc' },
     });
+    return feeds.map((feed) => ({ ...feed, lastError: '' }));
   }
 
   articles(tenantId: string, status?: string) {

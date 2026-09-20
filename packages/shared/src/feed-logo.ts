@@ -38,10 +38,12 @@ export function buildTelegramProfilePhotoUrl(sourceUrl: string): string {
   return username ? `https://t.me/i/userpic/320/${username}.jpg` : '';
 }
 
+export const SOURCE_ICON_PATH_PREFIX = '/api/publishing/source-icons/';
+
 export function buildAutoFeedLogoUrl(sourceUrl: string): string {
   const domain = extractFeedDomain(sourceUrl);
   if (!domain) return '';
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+  return `${SOURCE_ICON_PATH_PREFIX}${encodeURIComponent(domain)}`;
 }
 
 export function usesFeedProfilePhoto(sourceType?: string): boolean {

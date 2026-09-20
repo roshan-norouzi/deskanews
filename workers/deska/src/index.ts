@@ -5,7 +5,7 @@ export interface Env {
 /** Telegram channel pages can be huge; keep the tail (recent posts) and cap JSON payload size. */
 const MAX_UPSTREAM_BODY_CHARS = 2_500_000;
 
-const ALLOWED_HOSTS = [
+const SOCIAL_HOSTS = [
   't.me',
   'telegram.me',
   'x.com',
@@ -14,6 +14,57 @@ const ALLOWED_HOSTS = [
   'syndication.twitter.com',
   'cdn.syndication.twimg.com',
 ];
+
+export function isSocialFetchHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/u, '');
+  return SOCIAL_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+export function isBlockedFetchHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/u, '').replace(/^\[|\]$/gu, '');
+  if (!host) return true;
+  if (
+    host === 'localhost'
+    || host === 'metadata.google.internal'
+    || host.endsWith('.localhost')
+    || host.endsWith('.local')
+    || host.endsWith('.internal')
+    || host.endsWith('.lan')
+    || host.endsWith('.home')
+  ) {
+    return true;
+  }
+
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host)) {
+    const parts = host.split('.').map((part) => Number(part));
+    if (parts.some((part) => Number.isNaN(part) || part > 255)) return true;
+    const [a, b] = parts;
+    return a === 0
+      || a === 10
+      || a === 127
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || (a === 100 && b >= 64 && b <= 127);
+  }
+
+  if (host.includes(':')) {
+    const normalized = host.replace(/^::ffff:/iu, '');
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(normalized)) return isBlockedFetchHost(normalized);
+    return host === '::1'
+      || host === '::'
+      || host.startsWith('fc')
+      || host.startsWith('fd')
+      || host.startsWith('fe80')
+      || host.startsWith('ff');
+  }
+
+  return false;
+}
+
+function hostAllowed(hostname: string): boolean {
+  return isSocialFetchHost(hostname) || !isBlockedFetchHost(hostname);
+}
 
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -25,11 +76,6 @@ function json(status: number, body: Record<string, unknown>): Response {
       'access-control-allow-headers': 'content-type, authorization, x-bridge-secret',
     },
   });
-}
-
-function hostAllowed(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/u, '');
-  return ALLOWED_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
 function extractXHandle(url: URL): string | null {
@@ -162,13 +208,13 @@ ${items}
 </body></html>`;
 }
 
-async function fetchUpstream(url: URL, accept: string, userAgent: string): Promise<Response> {
+async function fetchUpstream(url: URL, accept: string, userAgent: string, referer?: string): Promise<Response> {
   const headers: Record<string, string> = {
     'User-Agent': userAgent,
     Accept: accept,
     'Accept-Language': 'en-US,en;q=0.9,fa;q=0.8',
     'Cache-Control': 'no-cache',
-    Referer: 'https://x.com/',
+    Referer: referer || `${url.origin}/`,
   };
 
   let lastError: unknown = null;
@@ -218,7 +264,7 @@ async function fetchXTimelineUpstream(
   let lastBody = '';
 
   for (const candidate of candidates) {
-    const upstream = await fetchUpstream(candidate, accept, userAgent);
+    const upstream = await fetchUpstream(candidate, accept, userAgent, 'https://x.com/');
     const body = await upstream.text();
     lastResponse = upstream;
     lastBody = body;
@@ -324,11 +370,13 @@ export default {
       /(?:^|\.)(?:x|twitter)\.com$/iu.test(new URL(targetRaw).hostname);
 
     let tweetCount = 0;
+    let contentType = upstreamContentType;
     if (isX) {
       const tweets = extractTweetsFromSyndicationHtml(body, normalized.xHandle);
       tweetCount = tweets.length;
       if (tweets.length) {
         body = renderTweetsAsLegacyHtml(tweets);
+        contentType = 'text/html; charset=utf-8';
       }
     } else {
       body = trimBodyForBridge(body, isTelegram);
@@ -337,7 +385,7 @@ export default {
     return json(200, {
       ok: true,
       status: upstream.status,
-      content_type: 'text/html; charset=utf-8',
+      content_type: contentType,
       body,
       final_url: finalUrl.toString(),
       worker: 'deska',

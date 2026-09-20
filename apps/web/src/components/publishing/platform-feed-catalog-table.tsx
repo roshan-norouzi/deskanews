@@ -1,7 +1,7 @@
 'use client';
 
 import { HeartPulse, RefreshCw, Trash2 } from 'lucide-react';
-import { SOURCE_LANGUAGE_LABELS } from '@deska/shared';
+import { sourceLanguageLabel } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
@@ -123,7 +123,9 @@ export function PlatformFeedCatalogTable({
                           {typeof feed.healthItemCount === 'number' ? ` · ${feed.healthItemCount} مطلب` : ''}
                         </div>
                       )}
-                      {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
+                      {(healthStatus === 'degraded' || healthStatus === 'down') && feed.healthError ? (
+                        <div className="mt-1 text-xs text-red-600">{feed.healthError}</div>
+                      ) : null}
                     </div>
                   </div>
                 </td>
@@ -134,7 +136,7 @@ export function PlatformFeedCatalogTable({
                   </span>
                 </td>
                 <td className="px-5 py-4 text-slate-600">
-                  {SOURCE_LANGUAGE_LABELS[(feed.sourceLanguage || 'auto') as keyof typeof SOURCE_LANGUAGE_LABELS]}
+                  {sourceLanguageLabel(feed.sourceLanguage || 'auto')}
                 </td>
                 <td className="px-5 py-4 text-slate-600">
                   {feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}

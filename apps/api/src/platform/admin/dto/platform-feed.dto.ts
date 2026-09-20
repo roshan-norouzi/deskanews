@@ -1,5 +1,5 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
-import { FEED_CATALOG_GROUP_ORDER, SOURCE_LANGUAGES } from '@deska/shared';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, Min } from 'class-validator';
+import { FEED_CATALOG_GROUP_ORDER, SOURCE_LANGUAGE_CODE_PATTERN } from '@deska/shared';
 import { SOURCE_TYPES } from '../../../modules/smart-publishing/dto/feed.dto';
 
 const CATALOG_GROUPS = FEED_CATALOG_GROUP_ORDER;
@@ -24,8 +24,8 @@ export class CreatePlatformFeedDto {
   enabled?: boolean;
 
   @IsOptional()
-  @IsIn(SOURCE_LANGUAGES)
-  sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+  @Matches(SOURCE_LANGUAGE_CODE_PATTERN, { message: 'زبان منبع معتبر نیست' })
+  sourceLanguage?: string;
 
   @IsOptional()
   @IsString()
@@ -55,8 +55,8 @@ export class UpdatePlatformFeedDto {
   enabled?: boolean;
 
   @IsOptional()
-  @IsIn(SOURCE_LANGUAGES)
-  sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+  @Matches(SOURCE_LANGUAGE_CODE_PATTERN, { message: 'زبان منبع معتبر نیست' })
+  sourceLanguage?: string;
 
   @IsOptional()
   @IsString()

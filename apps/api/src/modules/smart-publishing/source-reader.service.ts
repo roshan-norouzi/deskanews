@@ -246,9 +246,31 @@ function hostRequiresSourceBridge(hostname: string): boolean {
   return SOURCE_BRIDGE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
+function isRetryableDirectFetchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /HTTP (401|403|407|408|429|451|500|502|503|504)|نوع محتوای دریافتی|مهلت|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|certificate|SSL|TLS|fetch failed|socket|EPROTO|blocked|مسدود|ارتباط/iu.test(message);
+}
+
+function bodyMatchesAcceptedTypes(body: string, acceptedTypes: string[]): boolean {
+  const start = body.replace(/^\uFEFF/u, '').trimStart().slice(0, 800);
+  const wantsHtml = acceptedTypes.some((type) => type.includes('html') || type.includes('xhtml'));
+  const wantsXml = acceptedTypes.some((type) => /xml|rss|atom|xhtml/u.test(type));
+  const wantsJson = acceptedTypes.some((type) => type.includes('json'));
+  if (wantsXml && /<(?:\?xml|rss|feed|rdf:RDF)\b/iu.test(start)) return true;
+  if (wantsJson && start.startsWith('{') && /"items"|"version"/u.test(start)) return true;
+  if (wantsHtml && /<(?:html|head|body|article|div)\b/iu.test(start)) return true;
+  return false;
+}
+
+function contentTypeIsAccepted(contentType: string, acceptedTypes: string[]): boolean {
+  if (!contentType) return true;
+  return acceptedTypes.some((type) => contentType.includes(type));
+}
+
 @Injectable()
 export class SourceReaderService {
   private readonly logger = new Logger(SourceReaderService.name);
+  private readonly bridgePreferredHosts = new Set<string>();
 
   constructor(@Optional() private readonly publishingSettings?: PublishingSettingsService) {}
 
@@ -264,7 +286,8 @@ export class SourceReaderService {
   async readFeed(feedUrl: string): Promise<FeedEntry[]> {
     const xml = await this.safeFetchText(feedUrl, MAX_FEED_BYTES, [
       'application/rss+xml', 'application/atom+xml', 'application/feed+json', 'application/json',
-      'application/xml', 'text/xml', 'text/plain',
+      'application/xml', 'text/xml', 'text/plain', 'application/xhtml+xml', 'text/html',
+      'application/octet-stream',
     ]);
     let parsed: Record<string, unknown>;
     try { parsed = this.parser.parse(xml) as Record<string, unknown>; }
@@ -1580,7 +1603,9 @@ export class SourceReaderService {
     }
 
     const contentType = String(payload.content_type || '').toLowerCase();
-    if (contentType && !acceptedTypes.some((type) => contentType.includes(type))) {
+    const typeAllowed = contentTypeIsAccepted(contentType, acceptedTypes)
+      || bodyMatchesAcceptedTypes(body, acceptedTypes);
+    if (!typeAllowed) {
       throw new BadRequestException('نوع محتوای دریافتی از Worker منبع قابل قبول نیست');
     }
     return body;
@@ -1608,14 +1633,22 @@ export class SourceReaderService {
         throw new BadRequestException(`منبع با خطای HTTP ${status} پاسخ داد`);
       }
       const contentType = headerValue(response.headers, 'content-type').toLowerCase();
-      if (contentType && !acceptedTypes.some((type) => contentType.includes(type))) {
-        response.resume();
+      const bytes = await this.readResponse(response, maxBytes, 'حجم محتوای منبع بیش از حد مجاز است');
+      const body = new TextDecoder('utf-8').decode(bytes);
+      if (!contentTypeIsAccepted(contentType, acceptedTypes) && !bodyMatchesAcceptedTypes(body, acceptedTypes)) {
         throw new BadRequestException('نوع محتوای دریافتی از منبع قابل قبول نیست');
       }
-      const bytes = await this.readResponse(response, maxBytes, 'حجم محتوای منبع بیش از حد مجاز است');
-      return new TextDecoder('utf-8').decode(bytes);
+      return body;
     }
     throw new BadRequestException('دریافت منبع انجام نشد');
+  }
+
+  private rememberBridgeHost(hostname: string) {
+    const host = hostname.toLowerCase();
+    this.bridgePreferredHosts.add(host);
+    if (this.bridgePreferredHosts.size <= 300) return;
+    const first = this.bridgePreferredHosts.values().next().value;
+    if (first) this.bridgePreferredHosts.delete(first);
   }
 
   private async safeFetchText(initialUrl: string, maxBytes: number, acceptedTypes: string[]): Promise<string> {
@@ -1626,14 +1659,38 @@ export class SourceReaderService {
       throw new BadRequestException('آدرس منبع معتبر نیست');
     }
 
-    if (hostRequiresSourceBridge(hostname)) {
+    const mustUseBridge = hostRequiresSourceBridge(hostname);
+    const preferBridge = this.bridgePreferredHosts.has(hostname.toLowerCase());
+
+    if (mustUseBridge) {
       const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
       if (bridgeUrl) {
         return this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
       }
       this.logger.warn(`Source fetch bridge is not configured for ${hostname}; trying direct fetch`);
+    } else if (preferBridge) {
+      const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
+      if (bridgeUrl) {
+        return this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
+      }
     }
 
-    return this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
+    try {
+      return await this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
+    } catch (directError) {
+      if (!mustUseBridge && isRetryableDirectFetchError(directError)) {
+        const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
+        if (bridgeUrl) {
+          this.logger.warn(`Direct fetch failed for ${hostname}; retrying through Worker`);
+          this.rememberBridgeHost(hostname);
+          try {
+            return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
+          } catch (bridgeError) {
+            this.logger.warn(`Worker fetch also failed for ${hostname}: ${bridgeError instanceof Error ? bridgeError.message : 'unknown error'}`);
+          }
+        }
+      }
+      throw directError;
+    }
   }
 }

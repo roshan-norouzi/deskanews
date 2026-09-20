@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { USAGE_METRIC_KEYS, normalizeFeedCatalogGroupForSource, normalizeFeedSourceType, resolveFeedLogoUrl, shouldUsePersianRewrite } from '@deska/shared';
+import { USAGE_METRIC_KEYS, detectSourceLanguageFromItems, normalizeFeedCatalogGroupForSource, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, shouldUsePersianRewrite } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type ProbeFeedDto, type UpdateFeedDto, type UpdateTenantPlatformFeedDto, type SourceType } from './dto/feed.dto';
@@ -119,6 +119,7 @@ function looksLikeFullStoredFeedContent(content: string, summary: string): boole
 export class NewsroomService {
   private readonly logger = new Logger(NewsroomService.name);
   private maintenanceRunning = false;
+  private socialPhotoBackfillRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -161,9 +162,10 @@ export class NewsroomService {
       where: { tenantId, ...(purpose ? { purpose } : {}) },
       orderBy: [{ purpose: 'asc' }, { name: 'asc' }],
     });
-    await this.backfillSocialProfilePhotos(tenantFeeds);
+    this.scheduleSocialPhotoBackfill(tenantFeeds);
     return tenantFeeds.map((feed) => ({
       ...feed,
+      lastError: '',
       logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl, feed.sourceType),
       scope: 'tenant' as const,
     }));
@@ -171,6 +173,24 @@ export class NewsroomService {
 
   listPlatformFeeds(tenantId: string) {
     return this.platformFeeds.listForTenant(tenantId);
+  }
+
+  listSourceLanguages() {
+    return this.platformFeeds.listSourceLanguageCatalog();
+  }
+
+  private scheduleSocialPhotoBackfill(
+    feeds: Array<{ id: string; url: string; sourceType: string; logoUrl: string }>,
+  ) {
+    if (this.socialPhotoBackfillRunning) return;
+    const pending = feeds.filter(
+      (feed) => !String(feed.logoUrl || '').trim() && feed.sourceType === 'twitter',
+    );
+    if (!pending.length) return;
+    this.socialPhotoBackfillRunning = true;
+    void this.backfillSocialProfilePhotos(pending).finally(() => {
+      this.socialPhotoBackfillRunning = false;
+    });
   }
 
   private async backfillSocialProfilePhotos(
@@ -219,11 +239,12 @@ export class NewsroomService {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     }
     const catalogGroup = normalizeFeedCatalogGroupForSource(data.catalogGroup, sourceType, data.sourceLanguage ?? 'auto');
+    const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage);
     const profilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : '';
 
-    return this.prisma.newsFeed.create({ data: {
+    const created = await this.prisma.newsFeed.create({ data: {
       tenantId,
       name,
       url,
@@ -236,12 +257,16 @@ export class NewsroomService {
       purpose,
       enabled: data.enabled ?? true,
       pollIntervalMinutes: data.pollIntervalMinutes ?? 240,
-      sourceLanguage: data.sourceLanguage ?? 'auto',
+      sourceLanguage,
       autoPoll: data.autoPoll ?? true,
       autoPrepare: data.autoPrepare ?? purpose === 'news-room',
       autoPublish: data.autoPublish ?? false,
       autoSendSocial: data.autoSendSocial ?? false,
     } });
+    if (sourceLanguage !== 'auto') {
+      await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
+    }
+    return created;
   }
 
   async updateFeed(tenantId: string, id: string, data: UpdateFeedDto) {
@@ -271,13 +296,16 @@ export class NewsroomService {
     const catalogGroup = data.catalogGroup !== undefined
       ? normalizeFeedCatalogGroupForSource(data.catalogGroup, sourceType, data.sourceLanguage ?? feed.sourceLanguage ?? 'auto')
       : feed.catalogGroup;
+    const sourceLanguage = data.sourceLanguage !== undefined
+      ? normalizeSourceLanguage(data.sourceLanguage)
+      : feed.sourceLanguage;
     const shouldRefreshProfilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
       && (!feed.logoUrl?.trim() || data.url || data.sourceType);
     const profilePhoto = shouldRefreshProfilePhoto
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : feed.logoUrl;
 
-    return this.prisma.newsFeed.update({ where: { id }, data: {
+    const updated = await this.prisma.newsFeed.update({ where: { id }, data: {
       name,
       url,
       sourceType,
@@ -288,12 +316,16 @@ export class NewsroomService {
       ...(data.excludeWords !== undefined ? { excludeWords: parseWordList(data.excludeWords) } : {}),
       purpose,
       ...(data.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: data.pollIntervalMinutes } : {}),
-      ...(data.sourceLanguage !== undefined ? { sourceLanguage: data.sourceLanguage } : {}),
+      ...(data.sourceLanguage !== undefined ? { sourceLanguage } : {}),
       ...(data.autoPoll !== undefined ? { autoPoll: data.autoPoll } : {}),
       ...(data.autoPrepare !== undefined ? { autoPrepare: data.autoPrepare } : {}),
       ...(data.autoPublish !== undefined ? { autoPublish: data.autoPublish } : {}),
       ...(data.autoSendSocial !== undefined ? { autoSendSocial: data.autoSendSocial } : {}),
     } });
+    if (data.sourceLanguage !== undefined && sourceLanguage !== 'auto') {
+      await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
+    }
+    return updated;
   }
 
   async toggleFeed(tenantId: string, id: string) {
@@ -470,7 +502,17 @@ export class NewsroomService {
     try {
       const entries = await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url);
       const latest = buildLatestFeedPreviewItems(entries, feed.includeWords, feed.excludeWords);
-      await this.integrationHealth.success({ tenantId, key: `feed:${feed.id}`, type: 'feed', name: feed.name, latencyMs: Date.now() - startedAt, metadata: { operation: 'health-test', sourceType: feed.sourceType || 'rss', items: latest.length } }).catch(() => undefined);
+      const detectedLanguage = detectSourceLanguageFromItems(latest);
+      if ((!feed.sourceLanguage || feed.sourceLanguage === 'auto') && detectedLanguage !== 'auto') {
+        await this.prisma.newsFeed.update({
+          where: { id: feed.id },
+          data: { sourceLanguage: detectedLanguage },
+        });
+      }
+      if (detectedLanguage !== 'auto') {
+        await this.settings.rememberSourceLanguages([detectedLanguage]).catch(() => undefined);
+      }
+      await this.integrationHealth.success({ tenantId, key: `feed:${feed.id}`, type: 'feed', name: feed.name, latencyMs: Date.now() - startedAt, metadata: { operation: 'health-test', sourceType: feed.sourceType || 'rss', items: latest.length, sourceLanguage: detectedLanguage } }).catch(() => undefined);
       return {
         ok: true,
         source: {

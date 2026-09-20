@@ -121,7 +121,7 @@ export function AppShell({ children, title }: AppShellProps) {
                   item.href === '/settings'
                     ? pathname === '/settings' || pathname.startsWith('/settings/')
                     : item.href === '/platform'
-                      ? pathname === '/platform' || pathname.startsWith('/platform/')
+                      ? pathname === '/platform'
                       : pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <Link

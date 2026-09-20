@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { FEED_CATALOG_GROUP_ORDER, SOURCE_LANGUAGES, FEED_SOURCE_TYPES, type FeedCatalogGroup, type SourceLanguage } from '@deska/shared';
+import { FEED_CATALOG_GROUP_ORDER, SOURCE_LANGUAGES, FEED_SOURCE_TYPES, isSourceLanguageCode, type FeedCatalogGroup, type SourceLanguage } from '@deska/shared';
 
 export type BulkColumnDef = { key: string; header: string };
 
@@ -109,6 +109,12 @@ export function buildWorkbook(
 export function validateEnum(value: string, allowed: readonly string[], label: string): string | null {
   if (!value) return `${label} الزامی است`;
   if (!allowed.includes(value)) return `${label} معتبر نیست`;
+  return null;
+}
+
+export function validateSourceLanguage(value: string): string | null {
+  if (!value) return 'زبان الزامی است';
+  if (!isSourceLanguageCode(value)) return 'زبان باید auto یا کد ISO دو حرفی باشد';
   return null;
 }
 

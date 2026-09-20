@@ -15,7 +15,7 @@ import {
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { PlatformFeedsSection } from '@/components/publishing/platform-feeds-section';
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
-import { FeedSourceCard, FeedSourceCardGrid } from '@/components/publishing/feed-source-card';
+import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
-import { SOURCE_LANGUAGE_LABELS, SOURCE_LANGUAGES, type SourceLanguage } from '@deska/shared';
+import { mergeSourceLanguageCatalog, sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
 import {
   FEED_CATALOG_GROUPS,
   FEED_CATALOG_GROUP_ORDER,
@@ -120,6 +120,7 @@ function createModalTitle(group: FeedCatalogGroup, editing: boolean) {
 
 export default function FeedsPage() {
   const { data, error: loadError, isLoading, refetch } = useApi<Feed[]>('/publishing/news/feeds');
+  const languagesApi = useApi<Array<{ code: string; label: string }>>('/publishing/source-languages');
   const feeds = useMemo(() => Array.isArray(data) ? data : [], [data]);
   const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
   const [query, setQuery] = useState('');
@@ -155,6 +156,14 @@ export default function FeedsPage() {
 
   const modalSourceTypes = FEED_CATALOG_GROUPS[modalGroup].sourceTypes;
   const showSourceTypePicker = modalSourceTypes.length > 1;
+  const languageOptions = useMemo(
+    () => mergeSourceLanguageCatalog([
+      ...(languagesApi.data || []).map((item) => item.code),
+      ...feeds.map((feed) => feed.sourceLanguage),
+      form.sourceLanguage,
+    ]),
+    [feeds, form.sourceLanguage, languagesApi.data],
+  );
 
   function closeModal() {
     setModalOpen(false);
@@ -331,9 +340,7 @@ export default function FeedsPage() {
                   sourceType={feed.sourceType}
                   enabled={feed.enabled}
                   footer={
-                    feed.lastError ? (
-                      <p className="line-clamp-2 text-[10px] leading-4 text-red-600">{feed.lastError}</p>
-                    ) : feed.lastFetchedAt ? (
+                    feed.lastFetchedAt ? (
                       <p className="text-[10px] text-slate-400">
                         آخرین پایش: {new Date(feed.lastFetchedAt).toLocaleString('fa-IR')}
                       </p>
@@ -351,7 +358,7 @@ export default function FeedsPage() {
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button size="sm" variant="ghost" title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} aria-label={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} isLoading={busy === `toggle-${feed.id}`} onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}>
-                        <Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} />
+                        <Power className={feedTogglePowerClass(feed.enabled)} />
                       </Button>
                       <Button size="sm" variant="ghost" title="حذف" aria-label="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => { if (window.confirm(`منبع «${feed.name}» حذف شود؟`)) run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: 'منبع حذف شد.' }); await refetch(); }); }}>
                         <Trash2 className="h-4 w-4" />
@@ -402,7 +409,7 @@ export default function FeedsPage() {
                 {modalGroup !== 'telegram' && modalGroup !== 'twitter' ? (
                   <fieldset>
                     <legend className="mb-3 text-sm font-medium text-slate-700">زبان منبع</legend>
-                    <select value={form.sourceLanguage} onChange={(event) => setForm((current) => ({ ...current, sourceLanguage: event.target.value as SourceLanguage }))} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20">{SOURCE_LANGUAGES.map((language) => <option key={language} value={language}>{SOURCE_LANGUAGE_LABELS[language]}</option>)}</select>
+                    <select value={form.sourceLanguage} onChange={(event) => setForm((current) => ({ ...current, sourceLanguage: event.target.value as SourceLanguage }))} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20">{languageOptions.map((language) => <option key={language} value={language}>{sourceLanguageLabel(language)}</option>)}</select>
                     <p className="mt-2 text-xs leading-5 text-slate-500">در فرایند آماده‌سازی و ترجمه استفاده می‌شود. «تشخیص خودکار» برای متن‌های فارسی بازنویسی و برای سایر زبان‌ها ترجمه انجام می‌دهد.</p>
                   </fieldset>
                 ) : null}

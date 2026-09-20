@@ -96,6 +96,7 @@ test('newsroom preparation fills a missing featured image from article metadata'
   const prisma = {
     newsArticle: {
       findFirst: async () => article,
+      findUnique: async () => article,
       updateMany: async () => ({ count: 1 }),
       update: async ({ data }) => { updateData = data; return { ...article, ...data }; },
     },
@@ -133,9 +134,9 @@ test('source health test returns the five latest items without saving them', asy
     canonicalUrl: `https://source.example/${index + 1}`, featuredImageUrl: '', category: 'فناوری',
     publishedAt: publishedAt(index + 9),
   }));
-  const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '' }) } };
+  const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '', sourceLanguage: 'auto' }), update: async () => ({}) } };
   const sourceReader = { readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, { rememberSourceLanguages: async () => [] }, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 

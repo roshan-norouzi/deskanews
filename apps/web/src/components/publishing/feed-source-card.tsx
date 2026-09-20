@@ -16,6 +16,10 @@ interface FeedSourceCardProps {
   className?: string;
 }
 
+export function feedTogglePowerClass(enabled: boolean) {
+  return cn('h-4 w-4', enabled ? 'text-emerald-700' : 'text-red-400');
+}
+
 export function FeedSourceCard({
   name,
   url,
@@ -33,11 +37,11 @@ export function FeedSourceCard({
         'flex h-full flex-col rounded-2xl border p-4 transition-all duration-200',
         enabled
           ? 'border-slate-200 bg-white shadow-sm ring-1 ring-slate-100'
-          : 'border-slate-100 bg-slate-50/70 opacity-50 saturate-[0.45]',
+          : 'border-slate-100 bg-slate-50/70',
         className,
       )}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5">
+      <div className={cn('flex min-h-0 flex-1 flex-col gap-2.5', !enabled && 'opacity-50 saturate-[0.45]')}>
         <div className="flex items-start gap-3">
           <FeedSourceLogoWithFallback
             name={name}

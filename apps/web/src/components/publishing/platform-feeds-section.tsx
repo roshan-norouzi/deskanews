@@ -8,12 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
-import { FeedSourceCard, FeedSourceCardGrid } from '@/components/publishing/feed-source-card';
+import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
-import { SOURCE_LANGUAGE_LABELS, type SourceLanguage } from '@deska/shared';
+import { sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
 import {
   FEED_CATALOG_GROUPS,
   FEED_CATALOG_GROUP_ORDER,
@@ -246,11 +246,6 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
                 sourceType={feed.sourceType}
                 enabled={feed.enabled}
                 badge={<Badge variant="default" className="shrink-0 text-[10px]">پیش‌فرض</Badge>}
-                footer={
-                  feed.lastError ? (
-                    <p className="line-clamp-2 text-[10px] leading-4 text-red-600">{feed.lastError}</p>
-                  ) : null
-                }
                 actions={
                   canManage ? (
                     <>
@@ -293,7 +288,7 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
                           await refetch();
                         })}
                       >
-                        <Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} />
+                        <Power className={feedTogglePowerClass(feed.enabled)} />
                       </Button>
                     </>
                   ) : (
@@ -314,7 +309,7 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">{editing.name}</p>
                 <p className="mt-1 truncate" dir="ltr">{editing.url}</p>
-                <p className="mt-2 text-xs">{SOURCE_LANGUAGE_LABELS[editing.sourceLanguage || 'auto']}</p>
+                <p className="mt-2 text-xs">{sourceLanguageLabel(editing.sourceLanguage || 'auto')}</p>
               </div>
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium text-slate-700">نوع تنظیمات</legend>

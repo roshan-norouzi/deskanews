@@ -188,6 +188,12 @@ export class PlatformAdminController {
     return this.platformFeeds.listAll();
   }
 
+  @Get('source-languages')
+  listSourceLanguages(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.listSourceLanguageCatalog();
+  }
+
   @Post('feeds')
   createPlatformFeed(@User() actor: AuthUser, @Body() body: CreatePlatformFeedDto) {
     this.assertSuperAdmin(actor);

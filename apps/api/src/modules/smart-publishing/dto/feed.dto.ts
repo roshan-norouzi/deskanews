@@ -1,5 +1,5 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
-import { FEED_CATALOG_GROUP_ORDER, FEED_SOURCE_TYPES, SOURCE_LANGUAGES, type FeedCatalogGroup, type FeedSourceType } from '@deska/shared';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, Min } from 'class-validator';
+import { FEED_CATALOG_GROUP_ORDER, FEED_SOURCE_TYPES, SOURCE_LANGUAGE_CODE_PATTERN, type FeedCatalogGroup, type FeedSourceType } from '@deska/shared';
 
 export const FEED_PURPOSES = ['news-room', 'social-studio'] as const;
 export type FeedPurpose = (typeof FEED_PURPOSES)[number];
@@ -34,8 +34,8 @@ export class CreateFeedDto {
   @IsOptional() @IsBoolean() autoSendSocial?: boolean;
 
   @IsOptional()
-  @IsIn(SOURCE_LANGUAGES)
-  sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+  @Matches(SOURCE_LANGUAGE_CODE_PATTERN, { message: 'زبان منبع معتبر نیست' })
+  sourceLanguage?: string;
 
   @IsOptional()
   @IsIn(FEED_CATALOG_GROUP_ORDER)
@@ -78,8 +78,8 @@ export class UpdateFeedDto {
   @IsOptional() @IsBoolean() autoSendSocial?: boolean;
 
   @IsOptional()
-  @IsIn(SOURCE_LANGUAGES)
-  sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+  @Matches(SOURCE_LANGUAGE_CODE_PATTERN, { message: 'زبان منبع معتبر نیست' })
+  sourceLanguage?: string;
 
   @IsOptional()
   @IsIn(FEED_CATALOG_GROUP_ORDER)

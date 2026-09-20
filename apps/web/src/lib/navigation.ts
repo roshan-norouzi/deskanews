@@ -1,8 +1,5 @@
 import {
   Activity,
-  Bot,
-  Cloud,
-  Gauge,
   ImageIcon,
   LayoutDashboard,
   Newspaper,
@@ -67,16 +64,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/platform', label: 'کاربران و سازمان‌ها', icon: Users, superAdminOnly: true },
       { href: '/platform/feeds', label: 'کاتالوگ منابع پیش‌فرض', icon: Rss, superAdminOnly: true },
-    ],
-  },
-  {
-    id: 'platform-settings',
-    label: 'تنظیمات پلتفرم',
-    superAdminOnly: true,
-    items: [
-      { href: '/platform/ai-settings', label: 'تنظیمات هوش مصنوعی', icon: Bot, superAdminOnly: true },
-      { href: '/platform/source-fetch', label: 'Worker دریافت منبع', icon: Cloud, superAdminOnly: true },
-      { href: '/platform/usage-metrics', label: 'تعرفه مصرف', icon: Gauge, superAdminOnly: true },
+      { href: '/platform/settings', label: 'تنظیمات پلتفرم', icon: Settings, superAdminOnly: true },
     ],
   },
 ];
