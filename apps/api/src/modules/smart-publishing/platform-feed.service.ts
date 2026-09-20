@@ -23,6 +23,7 @@ import {
   normalizeCatalogHealthIntervalHours,
   parseCatalogHealthEnabled,
   PLATFORM_FEED_HEALTH_ITEM_TARGET,
+  CATALOG_HEALTH_CHECK_CONCURRENCY,
   type PlatformFeedHealthStatus,
 } from './platform-feed-health';
 
@@ -185,6 +186,17 @@ export class PlatformFeedService implements OnModuleInit {
   private healthMaintenanceRunning = false;
   private socialPhotoBackfillRunning = false;
   private readonly subscriptionEnsureInflight = new Map<string, Promise<void>>();
+  private catalogHealthRun = {
+    running: false,
+    checked: 0,
+    total: 0,
+    startedAt: null as string | null,
+    finishedAt: null as string | null,
+    healthy: 0,
+    degraded: 0,
+    down: 0,
+    errorMessage: '',
+  };
 
   constructor(
     private readonly prisma: PrismaService,
@@ -420,19 +432,128 @@ export class PlatformFeedService implements OnModuleInit {
     };
   }
 
+  getCatalogHealthRunStatus() {
+    return {
+      ok: true,
+      running: this.catalogHealthRun.running,
+      checked: this.catalogHealthRun.checked,
+      total: this.catalogHealthRun.total,
+      startedAt: this.catalogHealthRun.startedAt,
+      finishedAt: this.catalogHealthRun.finishedAt,
+      healthy: this.catalogHealthRun.healthy,
+      degraded: this.catalogHealthRun.degraded,
+      down: this.catalogHealthRun.down,
+      errorMessage: this.catalogHealthRun.errorMessage,
+    };
+  }
+
+  async startCatalogHealthChecksManual() {
+    if (this.catalogHealthRun.running) {
+      return {
+        ok: true,
+        started: false,
+        running: true,
+        checked: this.catalogHealthRun.checked,
+        total: this.catalogHealthRun.total,
+      };
+    }
+
+    const feeds = await this.prisma.platformFeed.findMany({
+      where: { enabled: true },
+      orderBy: [{ catalogGroup: 'asc' }, { name: 'asc' }],
+    });
+
+    this.catalogHealthRun = {
+      running: true,
+      checked: 0,
+      total: feeds.length,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      healthy: 0,
+      degraded: 0,
+      down: 0,
+      errorMessage: '',
+    };
+
+    void this.executeCatalogHealthChecks(feeds)
+      .then(async (summary) => {
+        this.catalogHealthRun.healthy = summary.healthy;
+        this.catalogHealthRun.degraded = summary.degraded;
+        this.catalogHealthRun.down = summary.down;
+        await this.settings.markCatalogHealthLastRun(new Date());
+      })
+      .catch((error) => {
+        this.catalogHealthRun.errorMessage = error instanceof Error ? error.message : 'اجرای تست سلامت ناموفق بود';
+        this.logger.warn(`Manual catalog health run failed: ${this.catalogHealthRun.errorMessage}`);
+      })
+      .finally(() => {
+        this.catalogHealthRun.running = false;
+        this.catalogHealthRun.finishedAt = new Date().toISOString();
+      });
+
+    return {
+      ok: true,
+      started: true,
+      running: true,
+      checked: 0,
+      total: feeds.length,
+    };
+  }
+
   async runCatalogHealthChecks() {
     const feeds = await this.prisma.platformFeed.findMany({
       where: { enabled: true },
       orderBy: [{ catalogGroup: 'asc' }, { name: 'asc' }],
     });
-    const results = [];
-    for (const feed of feeds) {
-      results.push(await this.checkFeedHealth(feed));
-    }
+    const summary = await this.executeCatalogHealthChecks(feeds);
     await this.settings.markCatalogHealthLastRun(new Date());
     return {
       ok: true,
       checkedAt: new Date().toISOString(),
+      total: summary.total,
+      healthy: summary.healthy,
+      degraded: summary.degraded,
+      down: summary.down,
+      results: summary.results,
+    };
+  }
+
+  private async executeCatalogHealthChecks(feeds: Array<{
+    id: string;
+    name: string;
+    url: string;
+    sourceType: string;
+    resolvedFeedUrl: string;
+    sourceLanguage?: string;
+    healthFailSince?: Date | null;
+  }>) {
+    const results: Array<{
+      feedId: string;
+      name: string;
+      status: PlatformFeedHealthStatus;
+      itemCount: number;
+      errorMessage: string;
+    }> = new Array(feeds.length);
+    let checked = 0;
+    let cursor = 0;
+
+    const workers = Array.from(
+      { length: Math.min(CATALOG_HEALTH_CHECK_CONCURRENCY, Math.max(feeds.length, 1)) },
+      async () => {
+        while (cursor < feeds.length) {
+          const index = cursor;
+          cursor += 1;
+          const feed = feeds[index];
+          results[index] = await this.checkFeedHealth(feed);
+          checked += 1;
+          this.catalogHealthRun.checked = checked;
+        }
+      },
+    );
+
+    await Promise.all(workers);
+
+    return {
       total: results.length,
       healthy: results.filter((item) => item.status === 'healthy').length,
       degraded: results.filter((item) => item.status === 'degraded').length,

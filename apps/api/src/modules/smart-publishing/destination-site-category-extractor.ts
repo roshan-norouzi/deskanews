@@ -58,21 +58,20 @@ export function isIranSystemNewsArticlePath(pathname: string): boolean {
   return /\/(?:fa\/)?news\/\d+(?:\/|$)/iu.test(pathname);
 }
 
-export function extractIranSystemServicePath(pathname: string): { externalId: string; slug: string } | null {
-  if (isIranSystemNewsArticlePath(pathname)) return null;
+export function isIranSystemMainServicePath(pathname: string): boolean {
+  if (isIranSystemNewsArticlePath(pathname)) return false;
+  const serviceMatch = pathname.match(/^\/fa\/([a-z0-9-]+)\/?$/iu);
+  return Boolean(serviceMatch?.[1] && !IRAN_SYSTEM_SKIP_SLUGS.has(serviceMatch[1].toLowerCase()));
+}
 
-  const sectionMatch = pathname.match(/^\/fa\/[a-z0-9-]+\/(\d+)\/?$/iu);
-  if (sectionMatch?.[1]) {
-    return { externalId: sectionMatch[1], slug: pathname.toLowerCase() };
-  }
+export function extractIranSystemServicePath(pathname: string): { externalId: string; slug: string } | null {
+  if (!isIranSystemMainServicePath(pathname)) return null;
 
   const serviceMatch = pathname.match(/^\/fa\/([a-z0-9-]+)\/?$/iu);
-  if (serviceMatch?.[1] && !IRAN_SYSTEM_SKIP_SLUGS.has(serviceMatch[1].toLowerCase())) {
-    const normalizedPath = pathname.toLowerCase();
-    return { externalId: String(stableCategoryId(normalizedPath)), slug: serviceMatch[1].toLowerCase() };
-  }
+  if (!serviceMatch?.[1]) return null;
 
-  return null;
+  const normalizedPath = pathname.toLowerCase();
+  return { externalId: String(stableCategoryId(normalizedPath)), slug: serviceMatch[1].toLowerCase() };
 }
 
 export function extractCategoryExternalId(url: URL): string | null {
@@ -210,18 +209,13 @@ export function parseIranSystemNavCategories(html: string, baseUrl: string): Ext
   collectCategoryLinks($, base, categories, 'a.nav_link');
   collectCategoryLinks($, base, categories, '.header_services a[href]');
 
-  $('script[type="x-template"]').each((_, element) => {
-    const templateHtml = $(element).html()?.trim();
-    if (!templateHtml) return;
-    collectCategoryLinks(load(templateHtml), base, categories, 'a.submenu_link');
-  });
-
   return [...categories.values()];
 }
 
 export function parseCategoriesFromHtml(html: string, baseUrl: string, rssGuideHtml?: string): ExtractedDestinationCategory[] {
   const iranSystemNav = parseIranSystemNavCategories(html, baseUrl);
-  if (iranSystemNav.length >= 3) {
+  const hasIranSystemNavMarkup = /header_services|nav_link/iu.test(html);
+  if (hasIranSystemNavMarkup && iranSystemNav.length > 0) {
     const rssByName = rssGuideHtml ? parseIranSystemRssGuide(rssGuideHtml, baseUrl) : new Map<string, string>();
     return attachRssGuideLinks(iranSystemNav, rssByName).slice(0, 100);
   }
@@ -264,7 +258,7 @@ async function fetchHtmlCategories(siteUrl: string, sourceReader: SourceReaderSe
     });
     if (!response.ok) continue;
     rssGuideHtml = await response.text();
-    if (parseIranSystemRssGuide(rssGuideHtml, candidate).size >= 3) break;
+    if (parseIranSystemRssGuide(rssGuideHtml, candidate).size > 0) break;
   }
 
   for (const candidate of [...new Set(candidates)]) {
@@ -277,9 +271,14 @@ async function fetchHtmlCategories(siteUrl: string, sourceReader: SourceReaderSe
     if (!response.ok) continue;
     const html = await response.text();
     for (const category of parseCategoriesFromHtml(html, candidate, rssGuideHtml || undefined)) {
-      merged.set(category.externalId, category);
+      const existing = merged.get(category.externalId);
+      merged.set(category.externalId, {
+        ...category,
+        serviceUrl: category.serviceUrl || existing?.serviceUrl || '',
+        rssUrl: category.rssUrl || existing?.rssUrl || '',
+      });
     }
-    if (merged.size >= 3) break;
+    if (merged.size >= 1) break;
   }
 
   if (!merged.size && rssGuideHtml) {
@@ -307,8 +306,9 @@ export async function extractDestinationCategoriesFromSite(
 ): Promise<ExtractedDestinationCategory[]> {
   try {
     const wpCategories = await wordpress.categoriesPublic({ wp_site_url: siteUrl });
-    if (wpCategories.length) {
-      return wpCategories.map((category) => mapWordPressCategory(category, siteUrl));
+    const mainCategories = wpCategories.filter((category) => category.parent === 0);
+    if (mainCategories.length) {
+      return mainCategories.map((category) => mapWordPressCategory(category, siteUrl));
     }
   } catch {
     // WordPress REST is optional; HTML extraction is the fallback for IranSystem/Nastooh sites.

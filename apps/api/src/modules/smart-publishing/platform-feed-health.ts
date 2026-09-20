@@ -3,6 +3,7 @@ export type PlatformFeedHealthStatus = 'healthy' | 'degraded' | 'down' | 'unknow
 export const PLATFORM_FEED_HEALTH_ITEM_TARGET = 5;
 export const PLATFORM_FEED_HEALTH_DOWN_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_CATALOG_HEALTH_INTERVAL_HOURS = 6;
+export const CATALOG_HEALTH_CHECK_CONCURRENCY = 5;
 
 export interface PlatformFeedHealthEvaluationInput {
   itemCount: number;

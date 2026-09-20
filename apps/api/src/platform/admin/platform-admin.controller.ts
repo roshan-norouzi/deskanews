@@ -239,7 +239,13 @@ export class PlatformAdminController {
   @Post('feeds/health-check')
   runCatalogHealthChecks(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.runCatalogHealthChecks();
+    return this.platformFeeds.startCatalogHealthChecksManual();
+  }
+
+  @Get('catalog-health-run-status')
+  catalogHealthRunStatus(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.getCatalogHealthRunStatus();
   }
 
   @Get('catalog-health-settings')

@@ -43,8 +43,11 @@ function createPrismaMock() {
         return [...categories.values()].filter((row) => {
           if (where.tenantId && row.tenantId !== where.tenantId) return false;
           if (where.platform && row.platform !== where.platform) return false;
-          if (where.status && row.status !== where.status) return false;
+          if (where.status?.not && row.status === where.status.not) return false;
+          if (typeof where.status === 'string' && row.status !== where.status) return false;
           if (where.isGeneral === false && row.isGeneral) return false;
+          if (where.externalId?.notIn && where.externalId.notIn.includes(row.externalId)) return false;
+          if (where.id?.in && !where.id.in.includes(row.id)) return false;
           return true;
         });
       },
@@ -146,6 +149,7 @@ test('destination category sync upserts WordPress categories as pending and keep
     categoriesPublic: async () => [
       { id: 11, name: 'اقتصاد', slug: 'economy', parent: 0 },
       { id: 22, name: 'فناوری', slug: 'technology', parent: 0 },
+      { id: 33, name: 'زیردسته', slug: 'sub-tech', parent: 22 },
     ],
   };
   const service = createService(prisma, settings, wordpress);
@@ -160,6 +164,40 @@ test('destination category sync upserts WordPress categories as pending and keep
     rows.filter((row) => !row.isGeneral).map((row) => row.status),
     ['pending', 'pending'],
   );
+  assert.equal(result.changes.added.length, 2);
+});
+
+test('destination category sync reports removed and updated categories', async () => {
+  const { prisma, categories } = createPrismaMock();
+  const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: 'https://news.example.com' }) };
+  let syncCall = 0;
+  const wordpress = {
+    categoriesPublic: async () => {
+      syncCall += 1;
+      if (syncCall === 1) {
+        return [
+          { id: 11, name: 'اقتصاد', slug: 'economy', parent: 0 },
+          { id: 22, name: 'فناوری', slug: 'technology', parent: 0 },
+        ];
+      }
+      return [{ id: 22, name: 'فناوری جدید', slug: 'technology', parent: 0 }];
+    },
+  };
+  const service = createService(prisma, settings, wordpress);
+
+  await service.syncFromDestination('tenant-a');
+  const tech = [...categories.values()].find((row) => row.externalId === '22');
+  const economy = [...categories.values()].find((row) => row.externalId === '11');
+  await service.updateStatus(tech.id, 'tenant-a', 'approved', 'user-a');
+  await service.updateStatus(economy.id, 'tenant-a', 'approved', 'user-a');
+
+  const result = await service.syncFromDestination('tenant-a');
+
+  assert.equal([...categories.values()].find((row) => row.externalId === '11')?.status, 'stale');
+  assert.equal([...categories.values()].find((row) => row.externalId === '22')?.status, 'pending');
+  assert.equal(result.changes.removed.length, 1);
+  assert.equal(result.changes.updated.length, 1);
+  assert.equal(result.changes.added.length, 0);
 });
 
 test('destination category sync extracts IranSystem categories from site html', async () => {

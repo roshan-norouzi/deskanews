@@ -12,6 +12,65 @@ const GENERAL_EXTERNAL_ID = '0';
 const GENERAL_NAME = 'عمومی';
 const GENERAL_SLUG = 'general';
 
+type SyncCategorySnapshot = {
+  id: string;
+  externalId: string;
+  name: string;
+  slug: string;
+  parentExternalId: string;
+  serviceUrl: string;
+  rssUrl: string;
+  status: string;
+};
+
+type SyncCategoryChange = {
+  id: string;
+  externalId: string;
+  name: string;
+  previousName?: string;
+  serviceUrl?: string;
+  previousServiceUrl?: string;
+  rssUrl?: string;
+  previousRssUrl?: string;
+};
+
+function normalizeCategoryUrl(value: string | null | undefined): string {
+  return String(value || '').trim();
+}
+
+function categorySnapshot(row: {
+  id: string;
+  externalId: string;
+  name: string;
+  slug: string;
+  parentExternalId: string | null;
+  serviceUrl: string | null;
+  rssUrl: string | null;
+  status: string;
+}): SyncCategorySnapshot {
+  return {
+    id: row.id,
+    externalId: row.externalId,
+    name: row.name,
+    slug: row.slug,
+    parentExternalId: row.parentExternalId || '',
+    serviceUrl: normalizeCategoryUrl(row.serviceUrl),
+    rssUrl: normalizeCategoryUrl(row.rssUrl),
+    status: row.status,
+  };
+}
+
+function categoryFieldsChanged(
+  existing: SyncCategorySnapshot,
+  remote: { name: string; slug: string; parentExternalId: string; serviceUrl: string; rssUrl: string },
+): boolean {
+  return existing.name !== remote.name
+    || existing.slug !== remote.slug
+    || existing.parentExternalId !== (remote.parentExternalId || '')
+    || normalizeCategoryUrl(existing.serviceUrl) !== normalizeCategoryUrl(remote.serviceUrl)
+    || normalizeCategoryUrl(existing.rssUrl) !== normalizeCategoryUrl(remote.rssUrl);
+}
+
 @Injectable()
 export class DestinationCategoryService {
   private readonly logger = new Logger(DestinationCategoryService.name);
@@ -74,44 +133,103 @@ export class DestinationCategoryService {
     const extractedCategories = await extractDestinationCategoriesFromSite(siteUrl, this.wordpress, this.sourceReader);
     const now = new Date();
     const seenExternalIds = new Set<string>([GENERAL_EXTERNAL_ID]);
+    const changes = {
+      added: [] as SyncCategoryChange[],
+      updated: [] as SyncCategoryChange[],
+      removed: [] as SyncCategoryChange[],
+    };
 
     for (const category of extractedCategories) {
       const externalId = String(category.externalId);
       seenExternalIds.add(externalId);
+      const remote = {
+        name: category.name,
+        slug: category.slug,
+        parentExternalId: category.parentExternalId || '',
+        serviceUrl: category.serviceUrl || '',
+        rssUrl: category.rssUrl || '',
+      };
       const existing = await this.prisma.destinationCategory.findUnique({
         where: { tenantId_platform_externalId: { tenantId, platform, externalId } },
       });
       if (existing) {
+        const before = categorySnapshot(existing);
+        const changed = categoryFieldsChanged(before, remote);
+        const nextStatus = existing.status === 'stale' || (existing.status === 'approved' && changed)
+          ? 'pending'
+          : existing.status;
+
         await this.prisma.destinationCategory.update({
           where: { id: existing.id },
           data: {
-            name: category.name,
-            slug: category.slug,
-            parentExternalId: category.parentExternalId || '',
-            serviceUrl: category.serviceUrl || existing.serviceUrl,
-            rssUrl: category.rssUrl || existing.rssUrl,
+            name: remote.name,
+            slug: remote.slug,
+            parentExternalId: remote.parentExternalId,
+            serviceUrl: remote.serviceUrl || existing.serviceUrl,
+            rssUrl: remote.rssUrl || existing.rssUrl,
             syncedAt: now,
-            ...(existing.status === 'stale' ? { status: 'pending' } : {}),
+            status: nextStatus,
           },
         });
+
+        if (existing.status === 'stale') {
+          changes.updated.push({
+            id: existing.id,
+            externalId,
+            name: remote.name,
+            previousName: before.name,
+            serviceUrl: remote.serviceUrl || before.serviceUrl,
+            previousServiceUrl: before.serviceUrl,
+            rssUrl: remote.rssUrl || before.rssUrl,
+            previousRssUrl: before.rssUrl,
+          });
+        } else if (changed) {
+          changes.updated.push({
+            id: existing.id,
+            externalId,
+            name: remote.name,
+            previousName: before.name,
+            serviceUrl: remote.serviceUrl || before.serviceUrl,
+            previousServiceUrl: before.serviceUrl,
+            rssUrl: remote.rssUrl || before.rssUrl,
+            previousRssUrl: before.rssUrl,
+          });
+        }
       } else {
         await this.prisma.destinationCategory.create({
           data: {
             tenantId,
             platform,
             externalId,
-            name: category.name,
-            slug: category.slug,
-            parentExternalId: category.parentExternalId || '',
-            serviceUrl: category.serviceUrl || '',
-            rssUrl: category.rssUrl || '',
+            name: remote.name,
+            slug: remote.slug,
+            parentExternalId: remote.parentExternalId,
+            serviceUrl: remote.serviceUrl,
+            rssUrl: remote.rssUrl,
             status: 'pending',
             isGeneral: false,
             syncedAt: now,
           },
         });
+        changes.added.push({
+          id: '',
+          externalId,
+          name: remote.name,
+          serviceUrl: remote.serviceUrl,
+          rssUrl: remote.rssUrl,
+        });
       }
     }
+
+    const staleCandidates = await this.prisma.destinationCategory.findMany({
+      where: {
+        tenantId,
+        platform,
+        isGeneral: false,
+        externalId: { notIn: [...seenExternalIds] },
+        status: { not: 'stale' },
+      },
+    });
 
     await this.prisma.destinationCategory.updateMany({
       where: {
@@ -124,11 +242,22 @@ export class DestinationCategoryService {
       data: { status: 'stale' },
     });
 
+    for (const row of staleCandidates) {
+      changes.removed.push({
+        id: row.id,
+        externalId: row.externalId,
+        name: row.name,
+        serviceUrl: normalizeCategoryUrl(row.serviceUrl),
+        rssUrl: normalizeCategoryUrl(row.rssUrl),
+      });
+    }
+
     const categories = await this.list(tenantId);
     return {
       ok: true,
       synced: extractedCategories.length,
       categories,
+      changes,
     };
   }
 
@@ -243,6 +372,20 @@ export class DestinationCategoryService {
       },
     });
     return { ok: true, approved: result.count };
+  }
+
+  async bulkDeleteStale(tenantId: string, userId?: string) {
+    const platform = this.resolvePlatform(await this.settings.getRaw(tenantId));
+    const staleRows = await this.prisma.destinationCategory.findMany({
+      where: { tenantId, platform, status: 'stale', isGeneral: false },
+      select: { id: true },
+    });
+    let deleted = 0;
+    for (const row of staleRows) {
+      await this.updateStatus(row.id, tenantId, 'rejected', userId);
+      deleted++;
+    }
+    return { ok: true, deleted };
   }
 
   async getApprovedCategoriesForAi(tenantId: string): Promise<WordPressCategory[]> {

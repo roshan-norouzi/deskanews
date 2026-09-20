@@ -108,6 +108,9 @@ export class SmartPublishingController {
   @Post('destination/categories/bulk-approve') @RequirePermission('publishing.settings') bulkApproveDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Body() body: BulkApproveDestinationCategoriesDto) {
     return this.destinationCategoryService.bulkApprove(tenant.tenantId, body.ids, user.id);
   }
+  @Post('destination/categories/bulk-delete-stale') @RequirePermission('publishing.settings') bulkDeleteStaleDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser) {
+    return this.destinationCategoryService.bulkDeleteStale(tenant.tenantId, user.id);
+  }
 
   @Get('proxy/image') async proxyImage(@Query('url') url: string, @Res() response: Response) { const result = await this.sourceReader.proxyImage(String(url || '')); response.setHeader('Content-Type', result.contentType); response.setHeader('Cache-Control', 'private, max-age=3600'); return response.send(result.buffer); }
 

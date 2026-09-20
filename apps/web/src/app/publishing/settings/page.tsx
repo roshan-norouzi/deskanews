@@ -40,7 +40,11 @@ type DestinationCategoryDraft = {
   rssUrl: string;
 };
 
-const EMPTY_CATEGORY_DRAFT: DestinationCategoryDraft = { name: '', serviceUrl: '', rssUrl: '' };
+type DestinationCategorySyncChanges = {
+  added: Array<{ externalId: string; name: string }>;
+  updated: Array<{ externalId: string; name: string; previousName?: string }>;
+  removed: Array<{ externalId: string; name: string }>;
+};
 
 const DESTINATION_CATEGORY_STATUS_META: Record<DestinationCategoryRow['status'], { label: string; className: string }> = {
   pending: { label: 'در انتظار تأیید', className: 'border-amber-200 bg-amber-50 text-amber-800' },
@@ -207,6 +211,10 @@ export default function PublishingSettingsPage() {
     () => destinationCategoryRows.filter((row) => row.status === 'pending' && !row.isGeneral),
     [destinationCategoryRows],
   );
+  const staleDestinationCategories = useMemo(
+    () => destinationCategoryRows.filter((row) => row.status === 'stale' && !row.isGeneral),
+    [destinationCategoryRows],
+  );
 
   const loadDestinationCategories = useCallback(async () => {
     try {
@@ -333,14 +341,32 @@ export default function PublishingSettingsPage() {
     }
     setBusy('category-sync'); setError(''); setMessage('');
     try {
-      const result = await apiFetch<{ ok: true; synced: number; categories: DestinationCategoryRow[] }>('/publishing/destination/categories/sync', {
+      const result = await apiFetch<{ ok: true; synced: number; categories: DestinationCategoryRow[]; changes?: DestinationCategorySyncChanges }>('/publishing/destination/categories/sync', {
         method: 'POST',
         body: { siteUrl },
       });
       setDestinationCategoryRows(Array.isArray(result.categories) ? result.categories : []);
-      setMessage(`${result.synced} دسته از سایت مقصد دریافت شد؛ دسته‌های جدید در انتظار تأیید هستند.`);
+      const changes = result.changes || { added: [], updated: [], removed: [] };
+      const parts = [
+        `${result.synced} دسته اصلی از سایت دریافت شد`,
+        changes.added.length ? `${changes.added.length} پیشنهاد افزودن` : '',
+        changes.updated.length ? `${changes.updated.length} پیشنهاد ویرایش` : '',
+        changes.removed.length ? `${changes.removed.length} پیشنهاد حذف (منقضی)` : '',
+      ].filter(Boolean);
+      setMessage(parts.join('؛ '));
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'همگام‌سازی دسته‌بندی‌ها انجام نشد');
+    } finally { setBusy(null); }
+  }
+
+  async function bulkDeleteStaleDestinationCategories() {
+    setBusy('category-delete-stale'); setError('');
+    try {
+      const result = await apiFetch<{ ok: true; deleted: number }>('/publishing/destination/categories/bulk-delete-stale', { method: 'POST' });
+      await loadDestinationCategories();
+      setMessage(result.deleted ? `${result.deleted} دسته منقضی حذف شد.` : 'دسته منقضی‌ای برای حذف نبود.');
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'حذف دسته‌های منقضی انجام نشد');
     } finally { setBusy(null); }
   }
 
@@ -571,8 +597,8 @@ export default function PublishingSettingsPage() {
                 <p className="font-semibold text-slate-800">دسته‌بندی‌های اتاق خبر</p>
                 <p className="mt-1 text-xs leading-5 text-slate-600">
                   {destinationPlatform === 'wordpress'
-                    ? 'فقط آدرس سایت WordPress کافی است؛ REST API عمومی دسته‌ها خوانده می‌شود و نیازی به Application Password نیست.'
-                    : `دسته‌بندی‌ها از منوی سایت و صفحه RSS راهنمای ${destinationMeta.label} استخراج می‌شوند؛ لینک سرویس و RSS هر دسته قابل ویرایش است.`}
+                    ? 'فقط دسته‌بندی‌های اصلی WordPress (بدون زیردسته) خوانده می‌شوند.'
+                    : `فقط سرویس‌های اصلی منوی ${destinationMeta.label} خوانده می‌شوند؛ زیرمجموعه‌ها و لینک خبر نادیده گرفته می‌شوند.`}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -582,6 +608,11 @@ export default function PublishingSettingsPage() {
                 {pendingDestinationCategories.length > 0 && (
                   <Button size="sm" isLoading={busy === 'category-bulk'} onClick={() => void bulkApproveDestinationCategories()}>
                     تأیید همه ({pendingDestinationCategories.length})
+                  </Button>
+                )}
+                {staleDestinationCategories.length > 0 && (
+                  <Button size="sm" variant="outline" className="text-red-700" isLoading={busy === 'category-delete-stale'} onClick={() => void bulkDeleteStaleDestinationCategories()}>
+                    حذف همه منقضی ({staleDestinationCategories.length})
                   </Button>
                 )}
               </div>
@@ -689,6 +720,8 @@ export default function PublishingSettingsPage() {
                                         <button type="button" className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'approved')}>تأیید</button>
                                         <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>حذف</button>
                                       </>
+                                    ) : category.status === 'stale' ? (
+                                      <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>حذف</button>
                                     ) : null}
                                   </>
                                 )}

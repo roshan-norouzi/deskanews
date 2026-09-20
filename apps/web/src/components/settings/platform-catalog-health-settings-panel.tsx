@@ -12,6 +12,21 @@ type CatalogHealthSettings = {
   catalog_health_last_run_at: string;
 };
 
+type CatalogHealthRunStatus = {
+  ok: true;
+  running: boolean;
+  checked: number;
+  total: number;
+  healthy: number;
+  degraded: number;
+  down: number;
+  errorMessage: string;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function PlatformCatalogHealthSettingsPanel() {
   const [healthSettings, setHealthSettings] = useState<CatalogHealthSettings>({
     catalog_health_enabled: 'true',
@@ -24,8 +39,17 @@ export function PlatformCatalogHealthSettingsPanel() {
 
   useEffect(() => {
     void apiFetch<CatalogHealthSettings>('/platform/catalog-health-settings', { skipTenant: true })
-      .then((settings) => {
+      .then(async (settings) => {
         setHealthSettings(settings);
+        const status = await apiFetch<CatalogHealthRunStatus>('/platform/catalog-health-run-status', { skipTenant: true });
+        if (status.running) {
+          setNotice({
+            type: 'success',
+            text: status.total
+              ? `تست سلامت در حال اجراست (${status.checked}/${status.total}). برای مشاهده پیشرفت «اجرای فوری» را بزنید.`
+              : 'تست سلامت در حال اجراست.',
+          });
+        }
         setLoaded(true);
       })
       .catch((reason) => {
@@ -55,20 +79,54 @@ export function PlatformCatalogHealthSettingsPanel() {
     }
   }
 
+  async function waitForCatalogHealthRun() {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const status = await apiFetch<CatalogHealthRunStatus>('/platform/catalog-health-run-status', { skipTenant: true });
+      if (status.running) {
+        setNotice({
+          type: 'success',
+          text: status.total
+            ? `در حال بررسی منابع… ${status.checked}/${status.total}`
+            : 'در حال بررسی منابع…',
+        });
+        await sleep(2000);
+        continue;
+      }
+
+      const refreshed = await apiFetch<CatalogHealthSettings>('/platform/catalog-health-settings', { skipTenant: true });
+      setHealthSettings(refreshed);
+
+      if (status.errorMessage) {
+        throw new Error(status.errorMessage);
+      }
+
+      setNotice({
+        type: 'success',
+        text: `تست سلامت انجام شد: ${status.healthy} سالم، ${status.degraded} موقت، ${status.down} قطع.`,
+      });
+      return;
+    }
+
+    throw new Error('زمان انتظار برای پایان تست سلامت تمام شد؛ بعداً وضعیت را دوباره بررسی کنید.');
+  }
+
   async function runHealthChecksNow() {
     setBusy('health-run');
     setNotice(null);
     try {
-      const result = await apiFetch<{ healthy: number; degraded: number; down: number }>('/platform/feeds/health-check', {
+      const result = await apiFetch<{ started: boolean; running: boolean; total: number; checked: number }>('/platform/feeds/health-check', {
         method: 'POST',
         skipTenant: true,
       });
-      const refreshed = await apiFetch<CatalogHealthSettings>('/platform/catalog-health-settings', { skipTenant: true });
-      setHealthSettings(refreshed);
-      setNotice({
-        type: 'success',
-        text: `تست سلامت انجام شد: ${result.healthy} سالم، ${result.degraded} موقت، ${result.down} قطع.`,
-      });
+      if (result.running) {
+        setNotice({
+          type: 'success',
+          text: result.started
+            ? `تست سلامت برای ${result.total} منبع شروع شد.`
+            : 'تست سلامت از قبل در حال اجراست.',
+        });
+      }
+      await waitForCatalogHealthRun();
     } catch (reason) {
       setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'اجرای تست سلامت انجام نشد' });
     } finally {

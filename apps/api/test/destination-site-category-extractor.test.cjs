@@ -20,7 +20,7 @@ test('isIranSystemNewsArticlePath detects article urls', () => {
   assert.equal(isIranSystemNewsArticlePath('/fa/sport/5'), false);
 });
 
-test('extractCategoryExternalId ignores news articles and reads IranSystem services', () => {
+test('extractCategoryExternalId ignores news articles and reads IranSystem main services only', () => {
   assert.equal(extractCategoryExternalId(new URL('https://borna.news/fa/news/2391634/title')), null);
   assert.equal(extractCategoryExternalId(new URL('https://borna.news/fa/news/42')), null);
   assert.equal(extractCategoryExternalId(new URL('https://news.example.ir/news/section/7')), '7');
@@ -30,8 +30,24 @@ test('extractCategoryExternalId ignores news articles and reads IranSystem servi
   assert.ok(film?.externalId);
   assert.equal(film.slug, 'film');
 
-  const section = extractIranSystemServicePath('/fa/sport/5');
-  assert.equal(section?.externalId, '5');
+  assert.equal(extractIranSystemServicePath('/fa/sport/5'), null);
+});
+
+test('parseIranSystemNavCategories ignores submenu templates and article links', () => {
+  const html = `
+    <div class="header_services">
+      <a class="nav_link" href="/fa/film"><span>فیلم</span></a>
+      <a class="nav_link" href="/fa/sport"><span>ورزشی</span></a>
+    </div>
+    <script type="x-template">
+      <a class="submenu_link" href="/fa/sport/5"><span>فوتبال</span></a>
+      <a class="submenu_link" href="/fa/sport/7"><span>کشتی</span></a>
+    </script>
+    <main><a href="/fa/news/2391634/article-title">خبر</a></main>
+  `;
+
+  const categories = parseIranSystemNavCategories(html, 'https://borna.news');
+  assert.deepEqual(categories.map((item) => item.name).sort(), ['فیلم', 'ورزشی']);
 });
 
 test('parseIranSystemNavCategories reads borna.news header services with service urls', () => {

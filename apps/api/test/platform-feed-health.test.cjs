@@ -57,3 +57,8 @@ test('parseCatalogHealthEnabled reads boolean-like values', () => {
   assert.equal(parseCatalogHealthEnabled('true'), true);
   assert.equal(parseCatalogHealthEnabled(undefined), true);
 });
+
+test('catalog health concurrency constant is positive', () => {
+  const { CATALOG_HEALTH_CHECK_CONCURRENCY } = require('../dist/modules/smart-publishing/platform-feed-health');
+  assert.ok(CATALOG_HEALTH_CHECK_CONCURRENCY >= 1);
+});

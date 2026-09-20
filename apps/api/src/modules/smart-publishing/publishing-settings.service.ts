@@ -18,6 +18,7 @@ import {
   parseCatalogHealthEnabled,
 } from './platform-feed-health';
 import { mergeSourceLanguageCatalog, normalizeSourceLanguage } from '@deska/shared';
+import { DEFAULT_NEWS_PROCESSING_PROMPTS } from './news-processing-prompts';
 import { SecretProtectionService } from './secret-protection.service';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -625,6 +626,11 @@ export class PublishingSettingsService implements OnModuleInit {
     }
     for (const key of AI_SETTING_KEYS) {
       if (result[key] === undefined && DEFAULTS[key]) result[key] = DEFAULTS[key];
+    }
+    for (const [key, value] of Object.entries(DEFAULT_NEWS_PROCESSING_PROMPTS)) {
+      if (!String(result[key as AiSettingKey] ?? '').trim()) {
+        result[key as AiSettingKey] = value;
+      }
     }
     return result;
   }

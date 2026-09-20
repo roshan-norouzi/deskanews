@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { isLikelyPersianNews, shouldUsePersianRewrite } from '@deska/shared';
+import {
+  DEFAULT_NEWS_FULL_TRANSLATION_PROMPT,
+  DEFAULT_NEWS_PERSIAN_FULL_REWRITE_PROMPT,
+  DEFAULT_NEWS_PERSIAN_REWRITE_PROMPT,
+  DEFAULT_NEWS_SUMMARY_PROMPT,
+} from './news-processing-prompts';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { parseWordPressCategories, type WordPressCategory } from './wordpress-category';
@@ -220,10 +226,8 @@ export class GapGptClient {
   ): Promise<{ title: string; summary: string }> {
     const isPersian = shouldUsePersianRewrite(input.sourceLanguage, `${input.title}\n${input.summary}`);
     const systemPrompt = isPersian
-      ? String(settings.news_persian_rewrite_prompt ?? '').trim()
-        || 'خبر فارسی را با نثر حرفه‌ای، روان و بی‌طرف روزنامه‌نگارانه بازنویسی و خلاصه کن. معنا، نام‌ها، اعداد، تاریخ‌ها و نقل‌قول‌ها را دقیق نگه دار و هیچ واقعیت یا تحلیل تازه‌ای اضافه نکن.'
-      : String(settings.news_summary_prompt ?? '').trim()
-        || 'خبر را دقیق، بی‌طرف و با نثر حرفه‌ای روزنامه‌نگارانه به فارسی ترجمه و خلاصه کن. هیچ واقعیت، عدد، نام یا نقل‌قولی را حدس نزن.';
+      ? String(settings.news_persian_rewrite_prompt ?? '').trim() || DEFAULT_NEWS_PERSIAN_REWRITE_PROMPT
+      : String(settings.news_summary_prompt ?? '').trim() || DEFAULT_NEWS_SUMMARY_PROMPT;
     const raw = await this.complete(settings, systemPrompt, [
       `منبع: ${input.sourceName}`,
       `${isPersian ? 'عنوان فارسی منبع' : 'عنوان اصلی'}: ${input.title}`,
@@ -276,10 +280,8 @@ export class GapGptClient {
   ): Promise<string> {
     const isPersian = shouldUsePersianRewrite(input.sourceLanguage, `${input.title}\n${input.text}`);
     const configuredPrompt = isPersian
-      ? String(settings.news_persian_full_rewrite_prompt ?? '').trim()
-        || 'متن کامل خبر فارسی را با نثر حرفه‌ای، روان و یکدست بازنویسی کن. هیچ بخش مهم، عدد، نام، تاریخ یا نقل‌قولی را حذف، تحریف یا اضافه نکن. خروجی فقط متن بازنویسی‌شده فارسی باشد.'
-      : String(settings.news_full_translation_prompt ?? '').trim()
-        || 'متن خبر را کامل، دقیق و روان به فارسی ترجمه کن. هیچ بخش، عدد، نام، نقل‌قول یا جزئیات مهمی را حذف یا اضافه نکن. خروجی فقط متن فارسی باشد.';
+      ? String(settings.news_persian_full_rewrite_prompt ?? '').trim() || DEFAULT_NEWS_PERSIAN_FULL_REWRITE_PROMPT
+      : String(settings.news_full_translation_prompt ?? '').trim() || DEFAULT_NEWS_FULL_TRANSLATION_PROMPT;
     const systemPrompt = `${configuredPrompt}\n\nقواعد ثابت قالب خروجی سامانه: فقط بدنه خبر را به‌صورت متن ساده برگردان. تیتر، چکیده، نام یا لینک منبع، عبارت ارجاع به منبع، مقدمه درباره فرایند، برچسب، هشتگ، Markdown و HTML اضافه نکن. سامانه ارجاع لینک‌دار به منبع را جداگانه در ابتدای نوشته اضافه می‌کند.`;
     const raw = await this.complete(settings, systemPrompt, [
       `منبع: ${input.sourceName}`,
