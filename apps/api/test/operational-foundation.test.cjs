@@ -186,7 +186,9 @@ test('production deployment keeps immutable images, verified backups and rollbac
   const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
   const workflow = fs.readFileSync(path.join(repositoryRoot, '.github', 'workflows', 'deploy.yml'), 'utf8');
   const server = fs.readFileSync(path.join(repositoryRoot, 'deploy', 'server-deploy.sh'), 'utf8');
-  const publisher = fs.readFileSync(path.join(repositoryRoot, 'deploy', 'publish-local.ps1'), 'utf8');
+  const releaseScript = fs.readFileSync(path.join(repositoryRoot, 'deploy', 'lib', 'release.ps1'), 'utf8');
+  const workflowScript = fs.readFileSync(path.join(repositoryRoot, 'deploy', 'lib', 'workflow.ps1'), 'utf8');
+  const publisher = `${releaseScript}\n${workflowScript}`;
   const dockerIgnore = fs.readFileSync(path.join(repositoryRoot, '.dockerignore'), 'utf8');
   const apiDockerfile = fs.readFileSync(path.join(repositoryRoot, 'apps', 'api', 'Dockerfile'), 'utf8');
   const webDockerfile = fs.readFileSync(path.join(repositoryRoot, 'apps', 'web', 'Dockerfile'), 'utf8');
@@ -216,7 +218,7 @@ test('production deployment keeps immutable images, verified backups and rollbac
   assert.match(publisher, /\^DESKA_DEPLOY_\(STAGE\|ERROR\):/);
   assert.match(publisher, /function Push-BranchWithRetry/);
   assert.match(publisher, /Unable to push to GitHub after \$attemptCount attempts/);
-  assert.match(publisher, /origin\/\$branch\.\.HEAD/);
+  assert.match(publisher, /origin\/\$\(\$Config\.branch\)\.\.HEAD/);
   assert.match(publisher, /\$baselineRunIds/);
   assert.match(publisher, /\$discoveryCutoff = \$dispatchStarted\.AddMinutes\(-2\)/);
   assert.match(publisher, /Invoke-RestMethod[\s\S]*-TimeoutSec 30/);

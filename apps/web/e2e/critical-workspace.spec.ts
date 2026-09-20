@@ -21,7 +21,7 @@ test('critical workspace, notification, and publishing operations journey', asyn
   await expect(page.getByText('سازمان‌های من')).toBeVisible();
 
   await page.goto('/publishing/operations');
-  await expect(page.getByRole('heading', { name: 'مرکز عملیات نشر' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'مرکز عملیات' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'سلامت اتصال‌ها' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'فرایندهای نیازمند رسیدگی' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'ثبت رویدادهای مدیریتی' })).toBeVisible();

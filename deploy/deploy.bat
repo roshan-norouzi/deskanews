@@ -1,9 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0.."
-echo DESKA one-click deployment
-echo =========================
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0publish-local.ps1" -AutoDispatch %*
+echo DESKA deploy
+echo ============
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy.ps1" release %*
 if errorlevel 1 (
   echo.
   echo Deployment failed. Review the error above.
@@ -11,5 +11,5 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Deployment request sent successfully.
+echo Deployment finished.
 pause

@@ -1,77 +1,55 @@
 # ابزار استقرار DESKA
 
-## انتشار خودکار از لوکال
+**راهنمای اصلی:** [`DEPLOY.md`](./DEPLOY.md) — هر بار deploy از همانجا شروع کنید.
 
-برای انتشار یک‌کلیکی، فایل `deploy/deploy.bat` را اجرا کنید. این فایل commit، push و اجرای Workflow را پشت‌سرهم انجام می‌دهد و Token را فقط به‌صورت مخفی در همان لحظه می‌گیرد.
+## خلاصه
 
-پس از شروع Workflow، ابزار فقط هنگام تغییر مرحله و حداکثر هر یک دقیقه یک پیام کوتاه نشان می‌دهد؛ دیگر صدها خط `Waiting...` چاپ نمی‌شود. برای ارسال درخواست و بازگشت فوری به خط فرمان، از `deploy\deploy.bat -NoWait` استفاده کنید؛ لینک اجرای GitHub نمایش داده می‌شود و نتیجه را می‌توان از همان صفحه دید.
-
-ایمیج‌های API و Web به‌صورت موازی در GitHub Actions ساخته و با شماره نسخهٔ تغییرناپذیر در GHCR ثبت می‌شوند. فقط سه فایل کوچکِ پیکربندی، اسکریپت اجرا و checksum از طریق SSH به سرور منتقل می‌شود؛ در نتیجه حجم و زمان انتقال SSH به حداقل می‌رسد. سرور با توکن کوتاه‌عمر همان اجرای GitHub وارد GHCR می‌شود و توکن در فایل یا فرمان ماندگار ذخیره نمی‌شود.
-
-ابتدا فایل `deploy/config.example.json` را با نام `deploy/config.local.json` کپی و مقادیر غیرحساس را در آن تنظیم کنید. این فایل در `.gitignore` قرار دارد و ارسال نمی‌شود. جزئیات Secrets در `deploy/GITHUB-SECRETS.md` و `.env` سرور در `deploy/production.env.example` است.
-
-اگر نمی‌خواهید نسخه افزایش پیدا کند، اجرای مستقیم اسکریپت با گزینهٔ زیر ممکن است:
-
-`powershell -ExecutionPolicy Bypass -File .\deploy\publish-local.ps1 -NoVersionBump`
-
-فایل `.env` هیچ‌وقت در commit قرار نمی‌گیرد. Token فقط هنگام اجرای `deploy.bat` به‌صورت مخفی دریافت می‌شود.
-
-در ابتدای انتشار، مناسبت‌های سیستمی از پایگاه‌داده محلی export می‌شوند. اگر PostgreSQL محلی خاموش باشد ولی فایل معتبر `apps/api/prisma/system-observances.json` از اجرای قبلی موجود باشد، انتشار با همان snapshot ادامه پیدا می‌کند و یک هشدار نمایش داده می‌شود. برای ردکردن عمدی این مرحله نیز می‌توان `-SkipSystemExport` را به دستور PowerShell اضافه کرد.
-
-رمز GitHub، کلید خصوصی SSH و رمز سرور را داخل این پوشه یا فایل تنظیمات قرار ندهید؛ این موارد باید در GitHub Secrets نگهداری شوند.
-
-## پیکربندی یک‌باره
-
-Workflow `deploy.yml` روی شاخهٔ `main` اجرا می‌شود. اتصال واقعی با Secretهای GitHub انجام می‌شود:
-
-- `SERVER_HOST` — همان سرور قبلی (مثلاً `pixad.ir`)
-- `SERVER_USER`
-- `SERVER_PORT`
-- `SERVER_SSH_KEY`
-- `SERVER_SSH_KNOWN_HOSTS` (اختیاری، توصیه‌شده)
-- `DEPLOY_PATH` — **`/www/wwwroot/deska.ir/app`** (پوشهٔ `/app` روی سایت deska.ir)
-
-سرویس Docker با نام مستقل **`deska-news`** اجرا می‌شود (`COMPOSE_PROJECT_NAME=deska-news`) تا با سایر پروژه‌های روی همان سرور تداخل نداشته باشد.
-
-روی سرور، فایل `.env` در همان مسیر deploy باید حداقل این مقادیر را داشته باشد:
-
-```env
-CORS_ORIGIN=https://app.deska.ir
-COMPOSE_PROJECT_NAME=deska-news
-IMAGE_PREFIX=ghcr.io/roshan-norouzi/deskanews
+```bat
+deploy\deploy.bat
 ```
 
-برای بالاترین سطح امنیت، `SERVER_SSH_KNOWN_HOSTS` را با کلید میزبانِ تأییدشدهٔ سرور تنظیم کنید، نه مقداری که هنگام دیپلوی از شبکه دریافت شده است. آن را یک‌بار از یک مسیر قابل‌اعتماد (کنسول مستقیم سرور یا پنل ارائه‌دهنده) دریافت و با اثرانگشت اعلام‌شدهٔ سرور تطبیق دهید. می‌توانید کل خروجی دستور زیر را در Secret ذخیره کنید:
+```powershell
+.\deploy\deploy.ps1 release
+```
 
-`ssh-keyscan -H -p SERVER_PORT SERVER_HOST`
+## فایل‌های این پوشه
 
-همچنین ثبت صرفِ کلید عمومیِ میزبان، مانند خطی که با `ssh-ed25519` یا `ecdsa-sha2-...` آغاز می‌شود، معتبر است. اگر پنل سرور فقط fingerprint با قالب `SHA256:...` یا `MD5:aa:bb:...` می‌دهد، همان مقدار نیز پذیرفته می‌شود: Workflow کلیدهای سرو‌شده را دریافت می‌کند، فقط کلیدی را می‌پذیرد که fingerprint آن دقیقاً با Secret یکی باشد و سپس آن را برای `SERVER_HOST` و `SERVER_PORT` پین می‌کند. عدم تطابق یک fingerprint معتبر، دیپلوی را متوقف می‌کند.
+| فایل | نقش |
+|------|-----|
+| `deploy.ps1` | نقطه ورود با زیردستورها |
+| `deploy.bat` | میانبر Windows |
+| `DEPLOY.md` | راهنمای گام‌به‌گام (فارسی) |
+| `lib/` | اسکریپت‌های داخلی |
+| `server-deploy.sh` | اجرا روی سرور توسط GitHub Actions |
+| `prepare-known-hosts.sh` | پین SSH host key در CI |
+| `bootstrap-server.sh` | نصب اولیه `.env` روی سرور |
+| `GITHUB-SECRETS.md` | Secrets مورد نیاز |
+| `config.example.json` | پیکربندی غیرحساس لوکال |
+| `production.env.example` | نمونه `.env` سرور |
+| `publish-local.ps1` | سازگاری با نسخهٔ قبلی (wrapper) |
 
-برای سازگاری با نصب‌های قبلی، خالی‌بودن یا فرمت نامعتبرِ این Secret دیگر مانع دیپلوی نیست: Workflow کلید جاری همان `SERVER_HOST` و `SERVER_PORT` را دریافت می‌کند، آن را در `known_hosts` موقت می‌گذارد و اتصال بعدی را با `StrictHostKeyChecking=yes` انجام می‌دهد. این همان رفتار نسخه‌های قبلی است. با این حال، ثبت کلید یا fingerprint تأییدشده همچنان توصیه می‌شود تا اعتماد اولیه نیز از یک مسیر مستقل انجام شود.
+## انتشار خودکار از لوکال
 
-`GHCR_USERNAME` و `GHCR_TOKEN` لازم نیستند؛ Workflow از توکن کوتاه‌عمر داخلی GitHub برای ساخت و دریافت ایمیج‌های همان مخزن استفاده می‌کند.
+Workflow `deploy.yml` روی شاخهٔ `main` با `workflow_dispatch` اجرا می‌شود. ایمیج‌های API و Web به‌صورت موازی در GHCR ساخته می‌شوند؛ فقط manifest کوچک از SSH به سرور می‌رود.
+
+سرویس Docker: **`deska-news`** (`COMPOSE_PROJECT_NAME=deska-news`).
 
 ## تضمین‌های پایداری استقرار
 
-پیش از جابه‌جایی نسخه، اسکریپت سرور فضای آزاد، فایل‌های ورودی و checksum را بررسی می‌کند، از پایگاه‌داده، فایل‌های بارگذاری‌شده، محیط اجرا و Compose نسخهٔ پشتیبان قابل‌آزمون می‌سازد و سپس مهاجرت‌های پایگاه‌داده را اجرا می‌کند. نسخه فقط زمانی موفق اعلام می‌شود که API با همان شماره نسخه آماده باشد و Web نیز پاسخ سالم بدهد. اگر پس از جابه‌جایی خطایی رخ دهد، Compose، متغیرهای محیطی و ایمیج‌های نسخه پیشین به‌طور خودکار بازگردانده می‌شوند. ده پشتیبان آخر در `backups/deployments` نگهداری می‌شود.
+پیش از جابه‌جایی نسخه، اسکریپت سرور فضای آزاد، checksum و backup را بررسی می‌کند، migrationها را اجرا می‌کند و در صورت خطا rollback خودکار انجام می‌دهد. ده پشتیبان آخر در `backups/deployments` نگهداری می‌شود.
 
 ### داده‌هایی که deploy حفظ می‌کند
 
 | مورد | رفتار |
 |------|--------|
-| `.env` سرور | فقط `APP_VERSION`، `IMAGE_PREFIX` و `COMPOSE_PROJECT_NAME` به‌روز می‌شوند؛ رمزها و `SEED_ADMIN_*` دست‌نخورده می‌مانند |
-| PostgreSQL | volume باقی می‌ماند؛ فقط migrationهای جدید اعمال می‌شوند |
-| کاربران و تنظیمات پنل | حفظ می‌شوند؛ seed فقط در **اولین نصب** اجرا می‌شود |
-| کاتالوگ منابع / منابع سفارشی | حفظ می‌شوند؛ منابع پیش‌فرض جدید فقط وقتی `PLATFORM_FEED_CATALOG_VERSION` در کد بالا برود اضافه/همگام می‌شوند |
+| `.env` سرور | فقط `APP_VERSION`، `IMAGE_PREFIX` و `COMPOSE_PROJECT_NAME` به‌روز می‌شوند |
+| PostgreSQL | volume باقی می‌ماند؛ فقط migrationهای جدید |
+| کاربران و تنظیمات | حفظ؛ seed فقط در اولین نصب |
 | فایل‌های آپلود | volume `api_uploads` حفظ می‌شود |
 | بکاپ | قبل از هر deploy در `backups/deployments/` |
 
-برای مشاهدهٔ سریع نتیجه و بازگشت فوری به خط فرمان:
+## SSH host key
 
-`deploy\deploy.bat -NoWait`
-
-برای دیپلوی شاخهٔ فعلی بدون export مناسبت‌های محلی:
-
-`deploy\deploy.bat -SkipSystemExport`
+برای بالاترین امنیت، `SERVER_SSH_KNOWN_HOSTS` را با کلید یا fingerprint تأییدشدهٔ سرور تنظیم کنید. اگر خالی باشد، workflow برای سازگاری کلید جاری را دریافت می‌کند (جزئیات در نسخه‌های قبلی README).
 
 Token و کلید SSH را در Repository یا چت ذخیره نکنید.
