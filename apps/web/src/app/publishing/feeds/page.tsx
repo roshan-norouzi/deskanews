@@ -27,10 +27,9 @@ import { SOURCE_LANGUAGE_LABELS, SOURCE_LANGUAGES, type SourceLanguage } from '@
 import {
   FEED_CATALOG_GROUPS,
   FEED_CATALOG_GROUP_ORDER,
-  FEED_CATALOG_GROUP_UI,
   FEED_SOURCE_UI,
   defaultSourceTypeForCatalogGroup,
-  feedSourceMeta,
+  emptyFeedsByCatalogGroup,
   feedSourceTypeHint,
   resolveCatalogGroup,
   sortFeedsByName,
@@ -109,9 +108,19 @@ function wordsToString(words?: string[]) {
   return (words || []).join('، ');
 }
 
+function createModalTitle(group: FeedCatalogGroup, editing: boolean) {
+  if (editing) return 'ویرایش منبع';
+  const sourceTypes = FEED_CATALOG_GROUPS[group].sourceTypes;
+  if (sourceTypes.length === 1) {
+    return `افزودن ${FEED_SOURCE_UI[sourceTypes[0]].shortLabel} اختصاصی`;
+  }
+  return `افزودن منبع اختصاصی — ${FEED_CATALOG_GROUPS[group].label}`;
+}
+
 export default function FeedsPage() {
   const { data, error: loadError, isLoading, refetch } = useApi<Feed[]>('/publishing/news/feeds');
   const feeds = useMemo(() => Array.isArray(data) ? data : [], [data]);
+  const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
   const [query, setQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalGroup, setModalGroup] = useState<FeedCatalogGroup>('media-domestic');
@@ -123,15 +132,27 @@ export default function FeedsPage() {
   const [health, setHealth] = useState<HealthResult | null>(null);
   const editingIdRef = useRef<string | null>(null);
 
+  const feedsByGroup = useMemo(() => {
+    const grouped = emptyFeedsByCatalogGroup<Feed>();
+    for (const feed of feeds) {
+      grouped[resolveCatalogGroup(feed.sourceType, undefined, feed.sourceLanguage)].push(feed);
+    }
+    for (const group of FEED_CATALOG_GROUP_ORDER) {
+      grouped[group] = sortFeedsByName(grouped[group]);
+    }
+    return grouped;
+  }, [feeds]);
+
   const visibleFeeds = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
-    return sortFeedsByName(
-      feeds.filter((feed) => {
-        const queryMatches = !normalized || `${feed.name} ${feed.url} ${(feed.includeWords || []).join(' ')}`.toLocaleLowerCase('fa').includes(normalized);
-        return queryMatches;
-      }),
-    );
-  }, [feeds, query]);
+    return feedsByGroup[activeGroup].filter((feed) => {
+      const queryMatches = !normalized || `${feed.name} ${feed.url} ${(feed.includeWords || []).join(' ')}`.toLocaleLowerCase('fa').includes(normalized);
+      return queryMatches;
+    });
+  }, [activeGroup, feedsByGroup, query]);
+
+  const modalSourceTypes = FEED_CATALOG_GROUPS[modalGroup].sourceTypes;
+  const showSourceTypePicker = modalSourceTypes.length > 1;
 
   function closeModal() {
     setModalOpen(false);
@@ -140,7 +161,7 @@ export default function FeedsPage() {
     setForm(EMPTY_FORM);
   }
 
-  function openCreate(group: FeedCatalogGroup = 'media-domestic') {
+  function openCreate(group: FeedCatalogGroup = activeGroup) {
     setEditing(null);
     editingIdRef.current = null;
     setModalGroup(group);
@@ -151,22 +172,13 @@ export default function FeedsPage() {
 
   function openEdit(feed: Feed) {
     const group = resolveCatalogGroup(feed.sourceType, undefined, feed.sourceLanguage);
+    setActiveGroup(group);
     setEditing(feed);
     editingIdRef.current = feed.id;
     setModalGroup(group);
     setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || defaultSourceTypeForCatalogGroup(group), sourceLanguage: feed.sourceLanguage || 'auto', purpose: feed.purpose, includeWords: wordsToString(feed.includeWords), excludeWords: wordsToString(feed.excludeWords), pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? feed.purpose === 'news-room', autoPublish: feed.autoPublish ?? false, autoSendSocial: feed.autoSendSocial ?? false });
     setNotice(null);
     setModalOpen(true);
-  }
-
-  function selectModalGroup(group: FeedCatalogGroup) {
-    setModalGroup(group);
-    const allowedTypes = FEED_CATALOG_GROUPS[group].sourceTypes;
-    setForm((current) => (
-      allowedTypes.includes(current.sourceType)
-        ? current
-        : { ...current, sourceType: defaultSourceTypeForCatalogGroup(group) }
-    ));
   }
 
   async function testSource(feed: Feed) {
@@ -246,19 +258,19 @@ export default function FeedsPage() {
           description="منابع خبری اتاق خبر — کاتالوگ پیش‌فرض و منابع اختصاصی سازمان. استودیوی اجتماعی منابع جداگانه دارد."
           icon={Rss}
           actions={
-            <Button className="shrink-0" onClick={() => openCreate()}>
-              <Plus className="h-4 w-4" /> افزودن منبع اختصاصی
+            <Button className="shrink-0" onClick={() => openCreate(activeGroup)}>
+              <Plus className="h-4 w-4" /> افزودن به {FEED_CATALOG_GROUPS[activeGroup].label}
             </Button>
           }
         />
 
-        <PlatformFeedsSection />
+        <PlatformFeedsSection activeGroup={activeGroup} onActiveGroupChange={setActiveGroup} />
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">منابع اختصاصی</h2>
-              <p className="mt-1 text-sm text-slate-500">منابعی که خود سازمان ثبت و پایش می‌کند.</p>
+              <h2 className="text-lg font-bold text-slate-900">منابع اختصاصی — {FEED_CATALOG_GROUPS[activeGroup].label}</h2>
+              <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
             </div>
             <FeedBulkActions
               exportPath="/publishing/news/feeds/export"
@@ -282,7 +294,7 @@ export default function FeedsPage() {
           {isLoading ? (
             <div className="grid min-h-56 place-items-center"><span className="h-9 w-9 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
           ) : visibleFeeds.length === 0 ? (
-            <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">منبعی پیدا نشد</h2><p className="mt-2 text-sm text-slate-500">اولین منبع را اضافه کنید یا فیلتر جست‌وجو را تغییر دهید.</p><Button className="mt-5" onClick={() => openCreate()}><Plus className="h-4 w-4" /> افزودن منبع</Button></div>
+            <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">منبع اختصاصی در این دسته نیست</h2><p className="mt-2 text-sm text-slate-500">اولین منبع را در «{FEED_CATALOG_GROUPS[activeGroup].label}» اضافه کنید یا جست‌وجو را تغییر دهید.</p><Button className="mt-5" onClick={() => openCreate(activeGroup)}><Plus className="h-4 w-4" /> افزودن به {FEED_CATALOG_GROUPS[activeGroup].label}</Button></div>
           ) : (
             <FeedSourceCardGrid>
               {visibleFeeds.map((feed) => (
@@ -331,40 +343,44 @@ export default function FeedsPage() {
         <Modal open={modalOpen} onClose={closeModal} size="xl" closeOnBackdrop={!busy}>
           <form onSubmit={saveFeed} className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <ModalHeader
-                title={editing ? 'ویرایش منبع' : 'افزودن منبع جدید'}
-                description="منبع برای پایش و اتاق خبر ثبت می‌شود."
+                title={createModalTitle(modalGroup, Boolean(editing))}
+                description={FEED_CATALOG_GROUPS[modalGroup].description}
                 onClose={closeModal}
               />
               <ModalBody className="space-y-5 p-6">
-                <div className="grid gap-4 sm:grid-cols-2"><Input label="نام منبع" required placeholder="مثلاً خبرگزاری رسمی" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /><Input label={FEED_SOURCE_UI[form.sourceType].label} required dir="ltr" placeholder={FEED_SOURCE_UI[form.sourceType].placeholder} value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} /></div>
-                <fieldset>
-                  <legend className="mb-3 text-sm font-medium text-slate-700">دسته منبع</legend>
-                  <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                    {FEED_CATALOG_GROUP_ORDER.map((group) => {
-                      const meta = FEED_CATALOG_GROUPS[group];
-                      const Icon = FEED_CATALOG_GROUP_UI[group].icon;
-                      return (
-                        <button
-                          key={group}
-                          type="button"
-                          onClick={() => selectModalGroup(group)}
-                          className={cn(
-                            'flex min-w-[8.5rem] flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition',
-                            modalGroup === group
-                              ? 'bg-slate-900 text-white shadow-sm'
-                              : 'text-slate-600 hover:bg-white',
-                          )}
-                        >
-                          <Icon className="h-4 w-4" />
-                          {meta.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">{FEED_CATALOG_GROUPS[modalGroup].description}</p>
-                </fieldset>
-                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">نوع منبع</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{(FEED_CATALOG_GROUPS[modalGroup].sourceTypes as FeedSourceType[]).map((key) => { const item = FEED_SOURCE_UI[key]; const Icon = item.icon; return <label key={key} className={cn('cursor-pointer rounded-2xl border p-4 transition', form.sourceType === key ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-100' : 'border-slate-200 hover:border-slate-300')}><input type="radio" name="sourceType" value={key} checked={form.sourceType === key} onChange={() => setForm((current) => ({ ...current, sourceType: key }))} className="sr-only" /><Icon className={cn('h-5 w-5', form.sourceType === key ? 'text-primary-700' : 'text-slate-500')} /><span className="mt-3 block text-sm font-semibold text-slate-900">{item.shortLabel}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">{feedSourceTypeHint(form.sourceType)}</p></fieldset>
-                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">زبان منبع</legend><select value={form.sourceLanguage} onChange={(event) => setForm((current) => ({ ...current, sourceLanguage: event.target.value as SourceLanguage }))} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20">{SOURCE_LANGUAGES.map((language) => <option key={language} value={language}>{SOURCE_LANGUAGE_LABELS[language]}</option>)}</select><p className="mt-2 text-xs leading-5 text-slate-500">در فرایند آماده‌سازی و ترجمه استفاده می‌شود. «تشخیص خودکار» برای متن‌های فارسی بازنویسی و برای سایر زبان‌ها ترجمه انجام می‌دهد.</p></fieldset>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input label="نام منبع" required placeholder="مثلاً خبرگزاری رسمی" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                  <Input label={FEED_SOURCE_UI[form.sourceType].label} required dir="ltr" placeholder={FEED_SOURCE_UI[form.sourceType].placeholder} value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} />
+                </div>
+                {showSourceTypePicker ? (
+                  <fieldset>
+                    <legend className="mb-3 text-sm font-medium text-slate-700">نوع منبع</legend>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {(modalSourceTypes as FeedSourceType[]).map((key) => {
+                        const item = FEED_SOURCE_UI[key];
+                        const Icon = item.icon;
+                        return (
+                          <label key={key} className={cn('cursor-pointer rounded-2xl border p-4 transition', form.sourceType === key ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-100' : 'border-slate-200 hover:border-slate-300')}>
+                            <input type="radio" name="sourceType" value={key} checked={form.sourceType === key} onChange={() => setForm((current) => ({ ...current, sourceType: key }))} className="sr-only" />
+                            <Icon className={cn('h-5 w-5', form.sourceType === key ? 'text-primary-700' : 'text-slate-500')} />
+                            <span className="mt-3 block text-sm font-semibold text-slate-900">{item.shortLabel}</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">{feedSourceTypeHint(form.sourceType)}</p>
+                  </fieldset>
+                ) : (
+                  <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">{feedSourceTypeHint(form.sourceType)}</p>
+                )}
+                {modalGroup !== 'telegram' && modalGroup !== 'twitter' ? (
+                  <fieldset>
+                    <legend className="mb-3 text-sm font-medium text-slate-700">زبان منبع</legend>
+                    <select value={form.sourceLanguage} onChange={(event) => setForm((current) => ({ ...current, sourceLanguage: event.target.value as SourceLanguage }))} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20">{SOURCE_LANGUAGES.map((language) => <option key={language} value={language}>{SOURCE_LANGUAGE_LABELS[language]}</option>)}</select>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">در فرایند آماده‌سازی و ترجمه استفاده می‌شود. «تشخیص خودکار» برای متن‌های فارسی بازنویسی و برای سایر زبان‌ها ترجمه انجام می‌دهد.</p>
+                  </fieldset>
+                ) : null}
                 <div className="grid gap-4 sm:grid-cols-2"><Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(event) => setForm((current) => ({ ...current, includeWords: event.target.value }))} /><Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(event) => setForm((current) => ({ ...current, excludeWords: event.target.value }))} /></div>
                 <label className="grid gap-1.5 text-sm font-medium text-slate-700">فاصله پایش (دقیقه)<input type="number" min="5" max="1440" required dir="ltr" className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value }))} /><span className="text-xs font-normal text-slate-500">بین ۵ دقیقه تا ۲۴ ساعت</span></label>
                 <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">اتوماسیون اختصاصی این منبع</legend><div className="grid gap-3 sm:grid-cols-2">{[

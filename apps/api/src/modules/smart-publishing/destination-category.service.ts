@@ -49,7 +49,16 @@ export class DestinationCategoryService {
     });
   }
 
-  async syncFromDestination(tenantId: string, _userId?: string) {
+  private resolveSiteUrl(settings: Record<string, string>, override?: string): string {
+    const trimmed = String(override ?? '').trim();
+    if (trimmed) return trimmed;
+    const platform = this.resolvePlatform(settings);
+    if (platform === 'wordpress') return String(settings.wp_site_url ?? '').trim();
+    if (platform === 'iransamaneh') return String(settings.is_site_url ?? '').trim();
+    return String(settings.ns_site_url ?? '').trim();
+  }
+
+  async syncFromDestination(tenantId: string, _userId?: string, siteUrlOverride?: string) {
     const raw = await this.settings.getRaw(tenantId);
     const platform = this.resolvePlatform(raw);
 
@@ -57,8 +66,13 @@ export class DestinationCategoryService {
       throw new BadRequestException('همگام‌سازی دسته‌بندی برای این پلتفرم هنوز پشتیبانی نمی‌شود');
     }
 
+    const siteUrl = this.resolveSiteUrl(raw, siteUrlOverride);
+    if (!siteUrl) {
+      throw new BadRequestException('آدرس سایت مقصد را وارد کنید');
+    }
+
     await this.ensureGeneralCategory(tenantId, platform);
-    const wpCategories = await this.wordpress.categories(raw);
+    const wpCategories = await this.wordpress.categoriesPublic({ ...raw, wp_site_url: siteUrl });
     const now = new Date();
     const seenExternalIds = new Set<string>([GENERAL_EXTERNAL_ID]);
 

@@ -22,7 +22,7 @@ import { PublishingOperationsService } from './publishing-operations.service';
 import { FeedBulkService } from './feed-bulk.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { DestinationCategoryService } from './destination-category.service';
-import { BulkApproveDestinationCategoriesDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
+import { BulkApproveDestinationCategoriesDto, SyncDestinationCategoriesDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
 @Controller('publishing')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 @RequirePermission('publishing.view')
@@ -92,8 +92,8 @@ export class SmartPublishingController {
   @Get('destination/categories') listDestinationCategories(@TenantCtx() tenant: TenantContext, @Query('status') status?: string) {
     return this.destinationCategoryService.list(tenant.tenantId, status as 'pending' | 'approved' | 'rejected' | 'stale' | undefined);
   }
-  @Post('destination/categories/sync') @RequirePermission('publishing.settings') syncDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser) {
-    return this.destinationCategoryService.syncFromDestination(tenant.tenantId, user.id);
+  @Post('destination/categories/sync') @RequirePermission('publishing.settings') syncDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Body() body: SyncDestinationCategoriesDto) {
+    return this.destinationCategoryService.syncFromDestination(tenant.tenantId, user.id, body.siteUrl);
   }
   @Patch('destination/categories/:id') @RequirePermission('publishing.settings') updateDestinationCategory(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Param('id') id: string, @Body() body: UpdateDestinationCategoryStatusDto) {
     return this.destinationCategoryService.updateStatus(id, tenant.tenantId, body.status, user.id);

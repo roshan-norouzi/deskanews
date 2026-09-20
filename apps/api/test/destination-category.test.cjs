@@ -2,6 +2,7 @@ require('reflect-metadata');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { BadRequestException } = require('@nestjs/common');
 const { DestinationCategoryService } = require('../dist/modules/smart-publishing/destination-category.service');
 
 function createPrismaMock() {
@@ -103,11 +104,23 @@ function createPrismaMock() {
   return { prisma, categories, articles };
 }
 
+test('destination category sync requires site url', async () => {
+  const { prisma } = createPrismaMock();
+  const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: '' }) };
+  const wordpress = { categoriesPublic: async () => [] };
+  const service = new DestinationCategoryService(prisma, settings, wordpress, {});
+
+  await assert.rejects(
+    () => service.syncFromDestination('tenant-a'),
+    (error) => error instanceof BadRequestException && /آدرس سایت/.test(error.message),
+  );
+});
+
 test('destination category sync upserts WordPress categories as pending and keeps general approved', async () => {
   const { prisma, categories } = createPrismaMock();
-  const settings = { getRaw: async () => ({ destination_platform: 'wordpress' }) };
+  const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: 'https://news.example.com' }) };
   const wordpress = {
-    categories: async () => [
+    categoriesPublic: async () => [
       { id: 11, name: 'اقتصاد', slug: 'economy', parent: 0 },
       { id: 22, name: 'فناوری', slug: 'technology', parent: 0 },
     ],
@@ -128,8 +141,8 @@ test('destination category sync upserts WordPress categories as pending and keep
 
 test('destination category approve updates status and approver metadata', async () => {
   const { prisma, categories } = createPrismaMock();
-  const settings = { getRaw: async () => ({ destination_platform: 'wordpress' }) };
-  const wordpress = { categories: async () => [{ id: 22, name: 'فناوری', slug: 'technology', parent: 0 }] };
+  const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: 'https://news.example.com' }) };
+  const wordpress = { categoriesPublic: async () => [{ id: 22, name: 'فناوری', slug: 'technology', parent: 0 }] };
   const service = new DestinationCategoryService(prisma, settings, wordpress, {});
   await service.syncFromDestination('tenant-a');
   const pending = [...categories.values()].find((row) => row.externalId === '22');
@@ -143,8 +156,8 @@ test('destination category approve updates status and approver metadata', async 
 
 test('article categorization falls back to general when AI selection fails', async () => {
   const { prisma, categories, articles } = createPrismaMock();
-  const settings = { getRaw: async () => ({ destination_platform: 'wordpress' }) };
-  const wordpress = { categories: async () => [{ id: 22, name: 'فناوری', slug: 'technology', parent: 0 }] };
+  const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: 'https://news.example.com' }) };
+  const wordpress = { categoriesPublic: async () => [{ id: 22, name: 'فناوری', slug: 'technology', parent: 0 }] };
   const gapGpt = {
     chooseWordPressCategory: async () => { throw new Error('ai unavailable'); },
   };

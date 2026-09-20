@@ -68,13 +68,17 @@ function wordsToString(words?: string[]) {
 
 const DEFAULT_ORG_POLL_MINUTES = 240;
 
-export function PlatformFeedsSection() {
+interface PlatformFeedsSectionProps {
+  activeGroup: FeedCatalogGroup;
+  onActiveGroupChange: (group: FeedCatalogGroup) => void;
+}
+
+export function PlatformFeedsSection({ activeGroup, onActiveGroupChange }: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
   const { isSuperAdmin } = useAuth();
   const { activeTenant } = useTenant();
   const canManage = isSuperAdmin || ['owner', 'admin', 'manager', 'senior_specialist'].includes(activeTenant?.memberRole || '');
   const feeds = useMemo(() => (Array.isArray(data) ? data.filter((feed) => feed.platformEnabled !== false) : []), [data]);
-  const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
   const feedsByGroup = useMemo(() => {
     const grouped = emptyFeedsByCatalogGroup<PlatformFeed>();
     for (const feed of feeds) {
@@ -174,7 +178,7 @@ export function PlatformFeedsSection() {
             <button
               key={group}
               type="button"
-              onClick={() => setActiveGroup(group)}
+              onClick={() => onActiveGroupChange(group)}
               className={cn(
                 'flex flex-1 min-w-[9rem] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
                 activeGroup === group

@@ -70,6 +70,17 @@ export const DESTINATION_PLATFORMS: Record<DestinationPlatformId, DestinationPla
 
 export const DESTINATION_PLATFORM_ORDER: DestinationPlatformId[] = ['wordpress', 'iransamaneh', 'nastooh'];
 
+export function destinationSiteUrlKey(platform: DestinationPlatformId): string {
+  if (platform === 'wordpress') return 'wp_site_url';
+  if (platform === 'iransamaneh') return 'is_site_url';
+  return 'ns_site_url';
+}
+
+export function destinationPublishFields(platform: DestinationPlatformId): DestinationField[] {
+  const siteKey = destinationSiteUrlKey(platform);
+  return DESTINATION_PLATFORMS[platform].fields.filter((field) => field.key !== siteKey);
+}
+
 export function destinationConnectionKeys(platform: DestinationPlatformId): string[] {
   const fields = DESTINATION_PLATFORMS[platform].fields.map((field) => field.key);
   if (platform === 'wordpress') return [...fields, 'wp_categories'];

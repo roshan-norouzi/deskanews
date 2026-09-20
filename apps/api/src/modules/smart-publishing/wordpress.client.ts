@@ -82,6 +82,26 @@ export class WordPressClient {
     this.credentials(settings);
   }
 
+  resolveSiteUrl(settings: PublishingSettings): string {
+    const siteUrl = String(settings.wp_site_url ?? '').trim().replace(/\/$/, '');
+    if (!siteUrl) {
+      throw new BadRequestException('آدرس سایت مقصد را وارد کنید');
+    }
+    let url: URL;
+    try { url = new URL(siteUrl); } catch { throw new BadRequestException('آدرس سایت معتبر نیست'); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw new BadRequestException('آدرس سایت معتبر نیست');
+    if (/\/(?:wp-admin|wp-login\.php)\/?$/iu.test(url.pathname)) {
+      throw new BadRequestException('آدرس اصلی محل نصب WordPress را وارد کنید؛ wp-admin یا wp-login.php را به انتهای آدرس اضافه نکنید');
+    }
+    return siteUrl;
+  }
+
+  async categoriesPublic(settings: PublishingSettings): Promise<WordPressCategory[]> {
+    const siteUrl = this.resolveSiteUrl(settings);
+    const restStyle = await this.resolveRestStylePublic(siteUrl);
+    return this.fetchCategories(siteUrl, restStyle);
+  }
+
   async test(settings: PublishingSettings): Promise<{ ok: true; message: string; categories: WordPressCategory[] }> {
     const { siteUrl, authorization } = this.credentials(settings);
     try {
@@ -401,7 +421,7 @@ export class WordPressClient {
     throw new BadRequestException(message || `مدیریت نوشته‌های WordPress با خطای HTTP ${response.status} روبه‌رو شد`);
   }
 
-  private async fetchCategories(siteUrl: string, restStyle: WordPressRestStyle, authorization: string): Promise<WordPressCategory[]> {
+  private async fetchCategories(siteUrl: string, restStyle: WordPressRestStyle, authorization?: string): Promise<WordPressCategory[]> {
     const collected: unknown[] = [];
     for (let page = 1; page <= 10; page++) {
       const response = await this.request(this.restUrl(siteUrl, restStyle, '/wp/v2/categories', {
@@ -412,7 +432,10 @@ export class WordPressClient {
         hide_empty: 'false',
         _fields: 'id,name,slug,parent',
       }), {
-        headers: { Authorization: authorization, Accept: 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          ...(authorization ? { Authorization: authorization } : {}),
+        },
         timeoutMs: 20_000,
       });
       const body = this.json<unknown>(response, []);
@@ -470,6 +493,38 @@ export class WordPressClient {
       throw new Error('REST API وردپرس در مسیرهای /wp-json و ?rest_route یافت نشد؛ آدرس سایت باید نشانی اصلی محل نصب WordPress باشد و REST API نیز نباید غیرفعال شده باشد');
     }
     throw new Error(lastBody.message || `HTTP ${lastResponse?.status ?? 'نامشخص'}`);
+  }
+
+  private async resolveRestStylePublic(siteUrl: string): Promise<WordPressRestStyle> {
+    const cacheKey = `${siteUrl}::public`;
+    const cached = this.restStyles.get(cacheKey);
+    if (cached) return cached;
+
+    const styles: WordPressRestStyle[] = ['pretty', 'query'];
+    let lastStatus = 0;
+    for (const style of styles) {
+      const response = await this.request(this.restUrl(siteUrl, style, '/wp/v2/categories', {
+        per_page: '1',
+        _fields: 'id',
+      }), {
+        headers: { Accept: 'application/json' },
+        timeoutMs: 20_000,
+      });
+      lastStatus = response.status;
+      if (response.ok) {
+        this.restStyles.set(cacheKey, style);
+        return style;
+      }
+      if (response.status !== 404) break;
+    }
+
+    if (lastStatus === 401 || lastStatus === 403) {
+      throw new Error('دسته‌بندی‌های این سایت به‌صورت عمومی در دسترس نیستند؛ REST API وردپرس باید بدون احراز هویت قابل خواندن باشد');
+    }
+    if (lastStatus === 404) {
+      throw new Error('REST API وردپرس در مسیرهای /wp-json و ?rest_route یافت نشد؛ آدرس سایت باید نشانی اصلی محل نصب WordPress باشد');
+    }
+    throw new Error(`دریافت دسته‌بندی‌ها با خطای HTTP ${lastStatus || 'نامشخص'} انجام نشد`);
   }
 
   private restUrl(siteUrl: string, style: WordPressRestStyle, route: string, query: Record<string, string> = {}): string {
