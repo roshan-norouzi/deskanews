@@ -169,13 +169,12 @@ export class NewsroomService {
     tenantId: string,
     platformFeedId: string,
     data: UpdateTenantPlatformFeedDto,
-    isOwner: boolean,
   ) {
-    return this.platformFeeds.updateSubscriptionForTenant(tenantId, platformFeedId, data, isOwner);
+    return this.platformFeeds.updateSubscriptionForTenant(tenantId, platformFeedId, data);
   }
 
-  async togglePlatformFeed(tenantId: string, platformFeedId: string, isOwner: boolean, enabled?: boolean) {
-    return this.platformFeeds.toggleForTenant(tenantId, platformFeedId, enabled, isOwner);
+  async togglePlatformFeed(tenantId: string, platformFeedId: string, enabled?: boolean) {
+    return this.platformFeeds.toggleForTenant(tenantId, platformFeedId, enabled);
   }
 
   async addFeed(tenantId: string, data: CreateFeedDto) {

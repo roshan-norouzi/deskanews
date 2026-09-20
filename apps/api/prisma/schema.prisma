@@ -77,6 +77,7 @@ model TenantPlatformFeed {
   settingsMode         String       @default("default")
   includeWords         String[]     @default([])
   excludeWords         String[]     @default([])
+  lastSyncedAt         DateTime?
   createdAt            DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)

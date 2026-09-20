@@ -226,7 +226,7 @@ export default function PlatformFeedsPage() {
       <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6" dir="rtl">
         <PageHeader
           title="منابع پیش‌فرض پلتفرم"
-          description="کاتالوگ منابع پیش‌فرض به‌تفکیک رسانه، سازمان و شرکت، کانال تلگرام و اکانت X. در همه سازمان‌ها دیده می‌شوند؛ مالک هر سازمان از صفحه «منابع خبری» آن‌ها را فعال یا غیرفعال می‌کند."
+          description="فقط نام، آدرس، نوع و زبان منابع رسمی را اینجا ثبت کنید. فیلتر کلمات و فاصله پایش را هر سازمان برای خودش تنظیم می‌کند."
           actions={
             <Button onClick={() => openCreate(activeGroup)}>
               <Plus className="h-4 w-4" /> افزودن به {FEED_CATALOG_GROUPS[activeGroup].label}
@@ -388,7 +388,7 @@ export default function PlatformFeedsPage() {
                     </div>
                   </article>
                 )) : (
-                  <div className="rounded-2xl bg-amber-50 p-5 text-sm text-amber-800">منبع پاسخ داد اما مطلبی برای نمایش پیدا نشد. اگر فیلتر کلمات دارید، آن‌ها را بررسی کنید.</div>
+                  <div className="rounded-2xl bg-amber-50 p-5 text-sm text-amber-800">منبع پاسخ داد اما مطلبی برای نمایش پیدا نشد.</div>
                 )}
               </ModalBody>
               <ModalFooter className="flex justify-end">

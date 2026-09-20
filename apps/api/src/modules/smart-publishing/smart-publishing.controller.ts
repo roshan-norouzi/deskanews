@@ -89,7 +89,7 @@ export class SmartPublishingController {
   @Get('feeds') feeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId); }
   @Get('platform-feeds') platformFeeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.listPlatformFeeds(tenant.tenantId); }
   @Patch('platform-feeds/:id') @RequirePermission('publishing.manage') updatePlatformFeedSubscription(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateTenantPlatformFeedDto) {
-    return this.newsroom.updatePlatformFeedSubscription(tenant.tenantId, id, body, tenant.memberRole === 'owner');
+    return this.newsroom.updatePlatformFeedSubscription(tenant.tenantId, id, body);
   }
   @Post('feeds') @RequirePermission('publishing.manage') addFeed(@TenantCtx() tenant: TenantContext, @Body() body: CreateFeedDto) { return this.newsroom.addFeed(tenant.tenantId, body); }
   @Patch('feeds/:id') @RequirePermission('publishing.manage') updateFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateFeedDto) { return this.newsroom.updateFeed(tenant.tenantId, id, body); }
@@ -99,7 +99,7 @@ export class SmartPublishingController {
   @Post('feeds/probe') @RequirePermission('publishing.manage') probeFeed(@Body() body: ProbeFeedDto) { return this.newsroom.probeFeed(body); }
   @Post('feeds/:id/test') @RequirePermission('publishing.manage') testFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.testFeed(tenant.tenantId, id); }
   @Post('platform-feeds/:id/toggle') @RequirePermission('publishing.manage') togglePlatformFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: TogglePlatformFeedDto) {
-    return this.newsroom.togglePlatformFeed(tenant.tenantId, id, tenant.memberRole === 'owner', body.enabled);
+    return this.newsroom.togglePlatformFeed(tenant.tenantId, id, body.enabled);
   }
 
   @Get('news/feeds') newsFeeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId, 'news-room'); }

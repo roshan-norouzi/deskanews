@@ -64,6 +64,8 @@ function wordsToString(words?: string[]) {
   return (words || []).join('، ');
 }
 
+const DEFAULT_ORG_POLL_MINUTES = 240;
+
 function sortFeeds(feeds: PlatformFeed[]) {
   return [...feeds].sort((left, right) => {
     if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
@@ -75,7 +77,7 @@ export function PlatformFeedsSection() {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
   const { isSuperAdmin } = useAuth();
   const { activeTenant } = useTenant();
-  const canManage = isSuperAdmin || activeTenant?.memberRole === 'owner';
+  const canManage = isSuperAdmin || ['owner', 'admin', 'manager', 'senior_specialist'].includes(activeTenant?.memberRole || '');
   const feeds = useMemo(() => (Array.isArray(data) ? data.filter((feed) => feed.platformEnabled !== false) : []), [data]);
   const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
   const feedsByGroup = useMemo(() => {
@@ -154,7 +156,7 @@ export function PlatformFeedsSection() {
     <section className="space-y-3">
       <div>
         <h2 className="text-lg font-bold text-slate-900">منابع پیش‌فرض</h2>
-        <p className="mt-1 text-sm text-slate-500">کاتالوگ منابع خبری پلتفرم برای اتاق خبر — رسانه، سازمان و شرکت، کانال تلگرام و اکانت X. استودیوی اجتماعی منابع جداگانه دارد.</p>
+        <p className="mt-1 text-sm text-slate-500">کاتالوگ منابع رسمی پلتفرم. نام و آدرس را مدیر کل ثبت می‌کند؛ هر سازمان خودش منبع را روشن می‌کند و فیلتر و فاصله پایش جداگانه می‌گذارد.</p>
       </div>
 
       {notice && (
@@ -247,7 +249,7 @@ export function PlatformFeedsSection() {
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         <div>
-                          هر {feed.pollIntervalMinutes ?? feed.catalogPollIntervalMinutes ?? 240} دقیقه
+                          هر {formatPersianDigits(feed.pollIntervalMinutes ?? DEFAULT_ORG_POLL_MINUTES)} دقیقه
                           {feed.settingsMode === 'custom' ? ' (اختصاصی)' : ' (پیش‌فرض)'}
                         </div>
                         <div className="mt-1 text-xs text-slate-400">{feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}</div>
@@ -292,7 +294,7 @@ export function PlatformFeedsSection() {
                               </Button>
                             </>
                           ) : (
-                            <span className="text-xs text-slate-400">فقط مالک سازمان</span>
+                            <span className="text-xs text-slate-400">بدون دسترسی مدیریت انتشار</span>
                           )}
                         </div>
                       </td>
@@ -308,17 +310,18 @@ export function PlatformFeedsSection() {
       <Modal open={!!editing} onClose={() => setEditing(null)} size="md" closeOnBackdrop={!busy}>
         {editing && (
           <form onSubmit={saveSettings} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ModalHeader title={`تنظیمات «${editing.name}»`} description="نام و آدرس منبع فقط توسط مدیر کل قابل تغییر است." onClose={() => setEditing(null)} />
+            <ModalHeader title={`تنظیمات «${editing.name}»`} description="نام، آدرس و زبان این منبع فقط در کاتالوگ مدیر کل تغییر می‌کند." onClose={() => setEditing(null)} />
             <ModalBody className="space-y-4 p-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">{editing.name}</p>
                 <p className="mt-1 truncate" dir="ltr">{editing.url}</p>
+                <p className="mt-2 text-xs">{SOURCE_LANGUAGE_LABELS[editing.sourceLanguage || 'auto']}</p>
               </div>
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium text-slate-700">نوع تنظیمات</legend>
                 <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
                   <input type="radio" name="settingsMode" checked={form.settingsMode === 'default'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'default' }))} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-slate-900">پیش‌فرض</span><span className="mt-1 block text-xs text-slate-500">بدون فیلتر کلمه؛ فاصله پایش مطابق کاتالوگ ({editing.catalogPollIntervalMinutes ?? 240} دقیقه)</span></span>
+                  <span><span className="block text-sm font-semibold text-slate-900">پیش‌فرض سازمان</span><span className="mt-1 block text-xs text-slate-500">بدون فیلتر کلمه؛ فاصله پایش {formatPersianDigits(DEFAULT_ORG_POLL_MINUTES)} دقیقه</span></span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
                   <input type="radio" name="settingsMode" checked={form.settingsMode === 'custom'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'custom' }))} className="mt-1" />
@@ -341,7 +344,7 @@ export function PlatformFeedsSection() {
                 ['autoPublish', 'انتشار خودکار', 'خبر آماده در سایت منتشر شود.'],
                 ['autoSendSocial', 'ارسال خودکار به استودیوی اجتماعی', 'خبر آماده برای شبکه‌های اجتماعی ارسال شود.'],
               ].map(([key, label, description]) => {
-                const field = key as keyof Omit<FeedSettingsForm, 'pollIntervalMinutes'>;
+                const field = key as 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial';
                 return (
                   <label key={key} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 hover:border-primary-300">
                     <input type="checkbox" checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" />

@@ -1,0 +1,58 @@
+export const DEFAULT_PLATFORM_POLL_MINUTES = 240;
+
+export type TenantFeedSettingsMode = 'default' | 'custom';
+
+export type TenantSubscriptionSettings = {
+  settingsMode?: string | null;
+  includeWords?: string[] | null;
+  excludeWords?: string[] | null;
+  pollIntervalMinutes?: number | null;
+  enabled?: boolean | null;
+  autoPoll?: boolean | null;
+};
+
+export function resolveTenantFeedSettings(subscription: TenantSubscriptionSettings | null | undefined) {
+  if (subscription?.settingsMode === 'custom') {
+    const poll = subscription.pollIntervalMinutes;
+    return {
+      settingsMode: 'custom' as const,
+      includeWords: subscription.includeWords ?? [],
+      excludeWords: subscription.excludeWords ?? [],
+      pollIntervalMinutes: typeof poll === 'number' && poll >= 5 ? poll : DEFAULT_PLATFORM_POLL_MINUTES,
+    };
+  }
+  return {
+    settingsMode: 'default' as const,
+    includeWords: [] as string[],
+    excludeWords: [] as string[],
+    pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
+  };
+}
+
+export function isAutoPollingSubscription(subscription: TenantSubscriptionSettings | null | undefined) {
+  return Boolean(subscription?.enabled) && subscription?.autoPoll !== false;
+}
+
+export function isSubscriptionDue(
+  lastSyncedAt: Date | string | null | undefined,
+  pollIntervalMinutes: number,
+  now = Date.now(),
+) {
+  if (!lastSyncedAt) return true;
+  const syncedAt = lastSyncedAt instanceof Date ? lastSyncedAt.getTime() : new Date(lastSyncedAt).getTime();
+  if (!Number.isFinite(syncedAt)) return true;
+  return now - syncedAt >= Math.max(5, pollIntervalMinutes) * 60_000;
+}
+
+export function shouldRefreshSharedCatalog(
+  lastFetchedAt: Date | string | null | undefined,
+  duePollMinutes: number[],
+  now = Date.now(),
+) {
+  if (!duePollMinutes.length) return false;
+  if (!lastFetchedAt) return true;
+  const fetchedAt = lastFetchedAt instanceof Date ? lastFetchedAt.getTime() : new Date(lastFetchedAt).getTime();
+  if (!Number.isFinite(fetchedAt)) return true;
+  const minMinutes = Math.min(...duePollMinutes);
+  return now - fetchedAt >= Math.max(5, minMinutes) * 60_000;
+}
