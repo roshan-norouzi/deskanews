@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pencil, Power } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
+import { FeedSourceCard, FeedSourceCardGrid } from '@/components/publishing/feed-source-card';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
@@ -18,8 +19,8 @@ import {
   FEED_CATALOG_GROUP_ORDER,
   FEED_CATALOG_GROUP_UI,
   emptyFeedsByCatalogGroup,
-  feedSourceMeta,
   resolveCatalogGroup,
+  sortFeedsByName,
   type FeedCatalogGroup,
   type FeedSourceType,
 } from '@/lib/feed-source-types';
@@ -30,6 +31,7 @@ interface PlatformFeed {
   url: string;
   sourceType?: FeedSourceType;
   catalogGroup?: FeedCatalogGroup;
+  logoUrl?: string;
   pollIntervalMinutes?: number | null;
   pollIntervalOverride?: number | null;
   catalogPollIntervalMinutes?: number | null;
@@ -66,13 +68,6 @@ function wordsToString(words?: string[]) {
 
 const DEFAULT_ORG_POLL_MINUTES = 240;
 
-function sortFeeds(feeds: PlatformFeed[]) {
-  return [...feeds].sort((left, right) => {
-    if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
-    return left.name.localeCompare(right.name, 'fa');
-  });
-}
-
 export function PlatformFeedsSection() {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
   const { isSuperAdmin } = useAuth();
@@ -87,7 +82,7 @@ export function PlatformFeedsSection() {
       grouped[group].push(feed);
     }
     for (const group of FEED_CATALOG_GROUP_ORDER) {
-      grouped[group] = sortFeeds(grouped[group]);
+      grouped[group] = sortFeedsByName(grouped[group]);
     }
     return grouped;
   }, [feeds]);
@@ -99,6 +94,7 @@ export function PlatformFeedsSection() {
     return counts;
   }, [feedsByGroup]);
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
+  const editingIdRef = useRef<string | null>(null);
   const [form, setForm] = useState<FeedSettingsForm>({
     settingsMode: 'default',
     includeWords: '',
@@ -126,14 +122,16 @@ export function PlatformFeedsSection() {
 
   async function saveSettings(event: React.FormEvent) {
     event.preventDefault();
-    if (!editing) return;
+    const feedId = editingIdRef.current;
+    if (!feedId || !editing) return;
     const interval = Number(form.pollIntervalMinutes);
     if (form.settingsMode === 'custom' && (!Number.isInteger(interval) || interval < 5 || interval > 1440)) {
       setNotice({ type: 'error', text: 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.' });
       return;
     }
+    const feedName = editing.name;
     await run('save', async () => {
-      await apiFetch(`/publishing/platform-feeds/${editing.id}`, {
+      await apiFetch(`/publishing/platform-feeds/${feedId}`, {
         method: 'PATCH',
         body: {
           settingsMode: form.settingsMode,
@@ -147,7 +145,8 @@ export function PlatformFeedsSection() {
         },
       });
       setEditing(null);
-      setNotice({ type: 'success', text: `تنظیمات «${editing.name}» ذخیره شد.` });
+      editingIdRef.current = null;
+      setNotice({ type: 'success', text: `تنظیمات «${feedName}» ذخیره شد.` });
       await refetch();
     });
   }
@@ -210,107 +209,80 @@ export function PlatformFeedsSection() {
               : `در دسته «${FEED_CATALOG_GROUPS[activeGroup].label}» منبعی وجود ندارد.`}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-right text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500">
-                <tr>
-                  <th className="px-5 py-3 font-medium">منبع</th>
-                  <th className="px-5 py-3 font-medium">زبان</th>
-                  <th className="px-5 py-3 font-medium">فیلتر</th>
-                  <th className="px-5 py-3 font-medium">پایش</th>
-                  <th className="px-5 py-3 font-medium">وضعیت</th>
-                  <th className="px-5 py-3 font-medium">عملیات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {feedsByGroup[activeGroup].map((feed) => {
-                  const sourceMeta = feedSourceMeta(feed.sourceType);
-                  const SourceIcon = sourceMeta.icon;
-                  return (
-                    <tr key={feed.id} className={cn('transition hover:bg-slate-50/80', !feed.enabled && 'bg-slate-50/40')}>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="font-semibold text-slate-900">{feed.name}</div>
-                          <Badge variant="default">پیش‌فرض</Badge>
-                        </div>
-                        <div className="mt-1 max-w-md truncate text-xs text-slate-500" dir="ltr" title={feed.url}>{feed.url}</div>
-                        <div className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500"><SourceIcon className="h-3.5 w-3.5" />{sourceMeta.shortLabel}</div>
-                        {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">{SOURCE_LANGUAGE_LABELS[feed.sourceLanguage || 'auto']}</td>
-                      <td className="px-5 py-4 text-xs text-slate-600">
-                        {feed.settingsMode === 'custom' ? (
-                          <>
-                            {feed.includeWords?.length ? <div>شامل: {feed.includeWords.join('، ')}</div> : null}
-                            {feed.excludeWords?.length ? <div>بدون: {feed.excludeWords.join('، ')}</div> : null}
-                            {!feed.includeWords?.length && !feed.excludeWords?.length ? 'اختصاصی (بدون فیلتر)' : null}
-                          </>
-                        ) : 'پیش‌فرض'}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        <div>
-                          هر {formatPersianDigits(feed.pollIntervalMinutes ?? DEFAULT_ORG_POLL_MINUTES)} دقیقه
-                          {feed.settingsMode === 'custom' ? ' (اختصاصی)' : ' (پیش‌فرض)'}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-400">{feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge variant={feed.enabled ? 'success' : 'default'}>{feed.enabled ? 'فعال' : 'غیرفعال'}</Badge>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-1">
-                          {canManage ? (
-                            <>
-                              <Button size="sm" variant="ghost" title="تنظیمات پایش" onClick={() => {
-                                setEditing(feed);
-                                setForm({
-                                  settingsMode: feed.settingsMode ?? 'default',
-                                  includeWords: wordsToString(feed.customIncludeWords ?? feed.includeWords),
-                                  excludeWords: wordsToString(feed.customExcludeWords ?? feed.excludeWords),
-                                  pollIntervalMinutes: String(
-                                    feed.pollIntervalOverride
-                                    ?? feed.pollIntervalMinutes
-                                    ?? feed.catalogPollIntervalMinutes
-                                    ?? 240,
-                                  ),
-                                  autoPoll: feed.autoPoll ?? true,
-                                  autoPrepare: feed.autoPrepare ?? true,
-                                  autoPublish: feed.autoPublish ?? false,
-                                  autoSendSocial: feed.autoSendSocial ?? false,
-                                });
-                                setNotice(null);
-                              }}><Pencil className="h-4 w-4" /></Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'}
-                                isLoading={busy === `toggle-${feed.id}`}
-                                onClick={() => run(`toggle-${feed.id}`, async () => {
-                                  await apiFetch(`/publishing/platform-feeds/${feed.id}/toggle`, { method: 'POST', body: { enabled: !feed.enabled } });
-                                  await refetch();
-                                })}
-                              >
-                                <Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} />
-                              </Button>
-                            </>
-                          ) : (
-                            <span className="text-xs text-slate-400">بدون دسترسی مدیریت انتشار</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <FeedSourceCardGrid>
+            {feedsByGroup[activeGroup].map((feed) => (
+              <FeedSourceCard
+                key={feed.id}
+                name={feed.name}
+                url={feed.url}
+                logoUrl={feed.logoUrl}
+                sourceType={feed.sourceType}
+                enabled={feed.enabled}
+                badge={<Badge variant="default" className="shrink-0 text-[10px]">پیش‌فرض</Badge>}
+                footer={
+                  feed.lastError ? (
+                    <p className="line-clamp-2 text-[10px] leading-4 text-red-600">{feed.lastError}</p>
+                  ) : null
+                }
+                actions={
+                  canManage ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        title="تنظیمات پایش"
+                        aria-label="تنظیمات پایش"
+                        onClick={() => {
+                          setEditing(feed);
+                          editingIdRef.current = feed.id;
+                          setForm({
+                            settingsMode: feed.settingsMode ?? 'default',
+                            includeWords: wordsToString(feed.customIncludeWords ?? feed.includeWords),
+                            excludeWords: wordsToString(feed.customExcludeWords ?? feed.excludeWords),
+                            pollIntervalMinutes: String(
+                              feed.pollIntervalOverride
+                              ?? feed.pollIntervalMinutes
+                              ?? feed.catalogPollIntervalMinutes
+                              ?? 240,
+                            ),
+                            autoPoll: feed.autoPoll ?? true,
+                            autoPrepare: feed.autoPrepare ?? true,
+                            autoPublish: feed.autoPublish ?? false,
+                            autoSendSocial: feed.autoSendSocial ?? false,
+                          });
+                          setNotice(null);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'}
+                        aria-label={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'}
+                        isLoading={busy === `toggle-${feed.id}`}
+                        onClick={() => run(`toggle-${feed.id}`, async () => {
+                          await apiFetch(`/publishing/platform-feeds/${feed.id}/toggle`, { method: 'POST', body: { enabled: !feed.enabled } });
+                          await refetch();
+                        })}
+                      >
+                        <Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} />
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">بدون دسترسی</span>
+                  )
+                }
+              />
+            ))}
+          </FeedSourceCardGrid>
         )}
       </Card>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} size="md" closeOnBackdrop={!busy}>
+      <Modal open={!!editing} onClose={() => { setEditing(null); editingIdRef.current = null; }} size="md" closeOnBackdrop={!busy}>
         {editing && (
           <form onSubmit={saveSettings} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ModalHeader title={`تنظیمات «${editing.name}»`} description="نام، آدرس و زبان این منبع فقط در کاتالوگ مدیر کل تغییر می‌کند." onClose={() => setEditing(null)} />
+            <ModalHeader title={`تنظیمات «${editing.name}»`} description="نام، آدرس و زبان این منبع فقط در کاتالوگ مدیر کل تغییر می‌کند." onClose={() => { setEditing(null); editingIdRef.current = null; }} />
             <ModalBody className="space-y-4 p-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">{editing.name}</p>
@@ -354,7 +326,7 @@ export function PlatformFeedsSection() {
               })}
             </ModalBody>
             <ModalFooter className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditing(null)}>انصراف</Button>
+              <Button type="button" variant="outline" onClick={() => { setEditing(null); editingIdRef.current = null; }}>انصراف</Button>
               <Button type="submit" isLoading={busy === 'save'}>ذخیره</Button>
             </ModalFooter>
           </form>

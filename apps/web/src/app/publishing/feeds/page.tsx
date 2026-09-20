@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   HeartPulse,
   Radio,
@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { PlatformFeedsSection } from '@/components/publishing/platform-feeds-section';
-import { Badge } from '@/components/ui/badge';
+import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
+import { FeedSourceCard, FeedSourceCardGrid } from '@/components/publishing/feed-source-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ import {
   feedSourceMeta,
   feedSourceTypeHint,
   resolveCatalogGroup,
+  sortFeedsByName,
   type FeedCatalogGroup,
   type FeedSourceType,
 } from '@/lib/feed-source-types';
@@ -43,6 +45,7 @@ interface Feed {
   name: string;
   url: string;
   sourceType?: FeedSourceType;
+  logoUrl?: string;
   sourceLanguage?: SourceLanguage;
   resolvedFeedUrl?: string;
   includeWords?: string[];
@@ -118,22 +121,28 @@ export default function FeedsPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
   const [health, setHealth] = useState<HealthResult | null>(null);
+  const editingIdRef = useRef<string | null>(null);
 
   const visibleFeeds = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
-    return feeds
-      .filter((feed) => {
+    return sortFeedsByName(
+      feeds.filter((feed) => {
         const queryMatches = !normalized || `${feed.name} ${feed.url} ${(feed.includeWords || []).join(' ')}`.toLocaleLowerCase('fa').includes(normalized);
         return queryMatches;
-      })
-      .sort((left, right) => {
-        if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
-        return left.name.localeCompare(right.name, 'fa');
-      });
+      }),
+    );
   }, [feeds, query]);
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditing(null);
+    editingIdRef.current = null;
+    setForm(EMPTY_FORM);
+  }
 
   function openCreate(group: FeedCatalogGroup = 'media-domestic') {
     setEditing(null);
+    editingIdRef.current = null;
     setModalGroup(group);
     setForm({ ...EMPTY_FORM, sourceType: defaultSourceTypeForCatalogGroup(group) });
     setNotice(null);
@@ -143,6 +152,7 @@ export default function FeedsPage() {
   function openEdit(feed: Feed) {
     const group = resolveCatalogGroup(feed.sourceType, undefined, feed.sourceLanguage);
     setEditing(feed);
+    editingIdRef.current = feed.id;
     setModalGroup(group);
     setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || defaultSourceTypeForCatalogGroup(group), sourceLanguage: feed.sourceLanguage || 'auto', purpose: feed.purpose, includeWords: wordsToString(feed.includeWords), excludeWords: wordsToString(feed.excludeWords), pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? feed.purpose === 'news-room', autoPublish: feed.autoPublish ?? false, autoSendSocial: feed.autoSendSocial ?? false });
     setNotice(null);
@@ -209,8 +219,9 @@ export default function FeedsPage() {
       return;
     }
     await run('save', async () => {
-      await apiFetch(editing ? `/publishing/news/feeds/${editing.id}` : '/publishing/news/feeds', {
-        method: editing ? 'PATCH' : 'POST',
+      const feedId = editingIdRef.current;
+      await apiFetch(feedId ? `/publishing/news/feeds/${feedId}` : '/publishing/news/feeds', {
+        method: feedId ? 'PATCH' : 'POST',
         body: {
           ...form,
           purpose: 'news-room',
@@ -221,8 +232,8 @@ export default function FeedsPage() {
           pollIntervalMinutes: Number(form.pollIntervalMinutes),
         },
       });
-      setModalOpen(false);
-      setNotice({ type: 'success', text: editing ? 'منبع ذخیره شد.' : 'منبع اضافه شد.' });
+      closeModal();
+      setNotice({ type: 'success', text: feedId ? 'منبع ذخیره شد.' : 'منبع اضافه شد.' });
       await refetch();
     });
   }
@@ -244,9 +255,16 @@ export default function FeedsPage() {
         <PlatformFeedsSection />
 
         <section className="space-y-3">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">منابع اختصاصی</h2>
-            <p className="mt-1 text-sm text-slate-500">منابعی که خود سازمان ثبت و پایش می‌کند.</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">منابع اختصاصی</h2>
+              <p className="mt-1 text-sm text-slate-500">منابعی که خود سازمان ثبت و پایش می‌کند.</p>
+            </div>
+            <FeedBulkActions
+              exportPath="/publishing/news/feeds/export"
+              importPath="/publishing/news/feeds/import"
+              onImported={() => { void refetch(); }}
+            />
           </div>
 
         {notice && <div role="status" className={cn('rounded-xl border px-4 py-3 text-sm', notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700')}>{notice.text}</div>}
@@ -266,38 +284,56 @@ export default function FeedsPage() {
           ) : visibleFeeds.length === 0 ? (
             <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">منبعی پیدا نشد</h2><p className="mt-2 text-sm text-slate-500">اولین منبع را اضافه کنید یا فیلتر جست‌وجو را تغییر دهید.</p><Button className="mt-5" onClick={() => openCreate()}><Plus className="h-4 w-4" /> افزودن منبع</Button></div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1020px] text-right text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-5 py-3 font-medium">منبع</th><th className="px-5 py-3 font-medium">نوع</th><th className="px-5 py-3 font-medium">زبان</th><th className="px-5 py-3 font-medium">فیلتر کلمات</th><th className="px-5 py-3 font-medium">پایش</th><th className="px-5 py-3 font-medium">وضعیت</th><th className="px-5 py-3 font-medium">عملیات</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {visibleFeeds.map((feed) => {
-                    const sourceMeta = feedSourceMeta(feed.sourceType);
-                    const SourceIcon = sourceMeta.icon;
-                    return (
-                      <tr key={feed.id} className="transition hover:bg-slate-50/80">
-                        <td className="px-5 py-4"><div className="font-semibold text-slate-900">{feed.name}</div><div className="mt-1 max-w-md truncate text-xs text-slate-500" dir="ltr" title={feed.url}>{feed.url}</div>{feed.resolvedFeedUrl && <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">فید: {feed.resolvedFeedUrl}</div>}{feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}</td>
-                        <td className="px-5 py-4"><span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700"><SourceIcon className="h-4 w-4" />{sourceMeta.shortLabel}</span></td>
-                        <td className="px-5 py-4 text-slate-600">{SOURCE_LANGUAGE_LABELS[feed.sourceLanguage || 'auto']}</td>
-                        <td className="px-5 py-4 text-xs text-slate-600">{feed.includeWords?.length ? <div>شامل: {feed.includeWords.join('، ')}</div> : null}{feed.excludeWords?.length ? <div>بدون: {feed.excludeWords.join('، ')}</div> : null}{!feed.includeWords?.length && !feed.excludeWords?.length ? '—' : null}</td>
-                        <td className="px-5 py-4 text-slate-600"><div>{feed.pollIntervalMinutes ? `هر ${feed.pollIntervalMinutes} دقیقه` : 'طبق تنظیمات سازمان'}</div><div className="mt-1 text-xs text-slate-400">{feed.lastFetchedAt ? new Date(feed.lastFetchedAt).toLocaleString('fa-IR') : 'هنوز پایش نشده'}</div></td>
-                        <td className="px-5 py-4"><Badge variant={feed.enabled ? 'success' : 'default'}>{feed.enabled ? 'فعال' : 'متوقف'}</Badge></td>
-                        <td className="px-5 py-4"><div className="flex items-center gap-1"><Button size="sm" variant="ghost" title="آزمایش منبع" aria-label="آزمایش منبع" isLoading={busy === `test-${feed.id}`} onClick={() => void testSource(feed)}><HeartPulse className="h-4 w-4 text-emerald-600" /></Button><Button size="sm" variant="ghost" title="پایش الآن" aria-label="پایش الآن" isLoading={busy === `fetch-${feed.id}`} onClick={() => run(`fetch-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/fetch`, { method: 'POST' }); setNotice({ type: 'success', text: `پایش «${feed.name}» انجام شد.` }); await refetch(); })}><RefreshCw className="h-4 w-4" /></Button><Button size="sm" variant="ghost" title="ویرایش" onClick={() => openEdit(feed)}><Pencil className="h-4 w-4" /></Button><Button size="sm" variant="ghost" title={feed.enabled ? 'توقف' : 'فعال‌سازی'} onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}><Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} /></Button><Button size="sm" variant="ghost" title="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => { if (window.confirm(`منبع «${feed.name}» حذف شود؟`)) run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: 'منبع حذف شد.' }); await refetch(); }); }}><Trash2 className="h-4 w-4" /></Button></div></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <FeedSourceCardGrid>
+              {visibleFeeds.map((feed) => (
+                <FeedSourceCard
+                  key={feed.id}
+                  name={feed.name}
+                  url={feed.url}
+                  logoUrl={feed.logoUrl}
+                  sourceType={feed.sourceType}
+                  enabled={feed.enabled}
+                  footer={
+                    feed.lastError ? (
+                      <p className="line-clamp-2 text-[10px] leading-4 text-red-600">{feed.lastError}</p>
+                    ) : feed.lastFetchedAt ? (
+                      <p className="text-[10px] text-slate-400">
+                        آخرین پایش: {new Date(feed.lastFetchedAt).toLocaleString('fa-IR')}
+                      </p>
+                    ) : null
+                  }
+                  actions={
+                    <>
+                      <Button size="sm" variant="ghost" title="آزمایش منبع" aria-label="آزمایش منبع" isLoading={busy === `test-${feed.id}`} onClick={() => void testSource(feed)}>
+                        <HeartPulse className="h-4 w-4 text-emerald-600" />
+                      </Button>
+                      <Button size="sm" variant="ghost" title="پایش الآن" aria-label="پایش الآن" isLoading={busy === `fetch-${feed.id}`} onClick={() => run(`fetch-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/fetch`, { method: 'POST' }); setNotice({ type: 'success', text: `پایش «${feed.name}» انجام شد.` }); await refetch(); })}>
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" title="ویرایش" aria-label="ویرایش" onClick={() => openEdit(feed)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} aria-label={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} isLoading={busy === `toggle-${feed.id}`} onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}>
+                        <Power className={cn('h-4 w-4', feed.enabled ? 'text-emerald-600' : 'text-slate-400')} />
+                      </Button>
+                      <Button size="sm" variant="ghost" title="حذف" aria-label="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => { if (window.confirm(`منبع «${feed.name}» حذف شود؟`)) run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: 'منبع حذف شد.' }); await refetch(); }); }}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  }
+                />
+              ))}
+            </FeedSourceCardGrid>
           )}
         </Card>
         </section>
 
-        <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="xl" closeOnBackdrop={!busy}>
+        <Modal open={modalOpen} onClose={closeModal} size="xl" closeOnBackdrop={!busy}>
           <form onSubmit={saveFeed} className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <ModalHeader
                 title={editing ? 'ویرایش منبع' : 'افزودن منبع جدید'}
                 description="منبع برای پایش و اتاق خبر ثبت می‌شود."
-                onClose={() => setModalOpen(false)}
+                onClose={closeModal}
               />
               <ModalBody className="space-y-5 p-6">
                 <div className="grid gap-4 sm:grid-cols-2"><Input label="نام منبع" required placeholder="مثلاً خبرگزاری رسمی" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /><Input label={FEED_SOURCE_UI[form.sourceType].label} required dir="ltr" placeholder={FEED_SOURCE_UI[form.sourceType].placeholder} value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} /></div>
@@ -341,7 +377,7 @@ export default function FeedsPage() {
               <ModalFooter className="flex items-center justify-between gap-2">
                 <Button type="button" variant="outline" isLoading={busy === 'probe'} onClick={() => void probeSource()}><HeartPulse className="h-4 w-4" /> آزمایش منبع</Button>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>انصراف</Button>
+                  <Button type="button" variant="outline" onClick={closeModal}>انصراف</Button>
                   <Button type="submit" isLoading={busy === 'save'}>{editing ? 'ذخیره تغییرات' : 'افزودن منبع'}</Button>
                 </div>
               </ModalFooter>

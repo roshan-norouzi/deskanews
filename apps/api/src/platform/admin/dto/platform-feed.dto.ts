@@ -26,6 +26,10 @@ export class CreatePlatformFeedDto {
   @IsOptional()
   @IsIn(SOURCE_LANGUAGES)
   sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
 }
 
 export class UpdatePlatformFeedDto {
@@ -53,4 +57,8 @@ export class UpdatePlatformFeedDto {
   @IsOptional()
   @IsIn(SOURCE_LANGUAGES)
   sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
 }

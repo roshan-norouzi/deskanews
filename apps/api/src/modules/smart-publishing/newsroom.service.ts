@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { USAGE_METRIC_KEYS, normalizeFeedSourceType, shouldUsePersianRewrite } from '@deska/shared';
+import { USAGE_METRIC_KEYS, normalizeFeedSourceType, resolveFeedLogoUrl, shouldUsePersianRewrite } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type ProbeFeedDto, type UpdateFeedDto, type UpdateTenantPlatformFeedDto, type SourceType } from './dto/feed.dto';
@@ -156,9 +156,13 @@ export class NewsroomService {
   async feeds(tenantId: string, purpose?: FeedPurpose) {
     const tenantFeeds = await this.prisma.newsFeed.findMany({
       where: { tenantId, ...(purpose ? { purpose } : {}) },
-      orderBy: [{ purpose: 'asc' }, { createdAt: 'desc' }],
+      orderBy: [{ purpose: 'asc' }, { name: 'asc' }],
     });
-    return tenantFeeds.map((feed) => ({ ...feed, scope: 'tenant' as const }));
+    return tenantFeeds.map((feed) => ({
+      ...feed,
+      logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl),
+      scope: 'tenant' as const,
+    }));
   }
 
   listPlatformFeeds(tenantId: string) {

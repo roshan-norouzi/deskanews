@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
@@ -19,6 +19,7 @@ import { PublishSocialArticleDto, UpdateSocialCaptionDto, UpdateSocialLeadDto, U
 import { SourceReaderService } from './source-reader.service';
 import { SocialNetworkPublisherService } from './social-network-publisher.service';
 import { PublishingOperationsService } from './publishing-operations.service';
+import { FeedBulkService } from './feed-bulk.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 @Controller('publishing')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
@@ -32,6 +33,7 @@ export class SmartPublishingController {
     private readonly sourceReader: SourceReaderService,
     private readonly socialPublisher: SocialNetworkPublisherService,
     private readonly operations: PublishingOperationsService,
+    private readonly feedBulk: FeedBulkService,
     private readonly integrationHealth: IntegrationHealthService,
   ) {}
 
@@ -100,6 +102,24 @@ export class SmartPublishingController {
   @Post('feeds/:id/test') @RequirePermission('publishing.manage') testFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.testFeed(tenant.tenantId, id); }
   @Post('platform-feeds/:id/toggle') @RequirePermission('publishing.manage') togglePlatformFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: TogglePlatformFeedDto) {
     return this.newsroom.togglePlatformFeed(tenant.tenantId, id, body.enabled);
+  }
+
+  @Get('news/feeds/export')
+  @RequirePermission('publishing.manage')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportNewsFeeds(@TenantCtx() tenant: TenantContext, @Res() response: Response) {
+    const buffer = await this.feedBulk.exportTenantWorkbook(tenant.tenantId);
+    const stamp = new Date().toISOString().slice(0, 10);
+    response.setHeader('Content-Disposition', `attachment; filename="deska-org-feeds-${stamp}.xlsx"`);
+    response.send(buffer);
+  }
+
+  @Post('news/feeds/import')
+  @RequirePermission('publishing.manage')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  importNewsFeeds(@TenantCtx() tenant: TenantContext, @UploadedFile() file: { buffer: Buffer }) {
+    if (!file?.buffer?.length) throw new BadRequestException('فایل Excel انتخاب نشده است');
+    return this.feedBulk.importTenantWorkbook(tenant.tenantId, file.buffer);
   }
 
   @Get('news/feeds') newsFeeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId, 'news-room'); }

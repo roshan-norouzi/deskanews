@@ -166,6 +166,61 @@ test('source settings are stored independently for each source', async () => {
   assert.equal(updated.autoSendSocial, true);
 });
 
+test('updating a source url and type reuses the same feed record', async () => {
+  let createCount = 0;
+  let updateCount = 0;
+  const feed = {
+    id: 'source-url-change-a',
+    tenantId: 'tenant-a',
+    name: 'خبرگزاری تسنیم',
+    url: 'https://www.tasnimnews.com/',
+    sourceType: 'website',
+    purpose: 'news-room',
+    enabled: true,
+    pollIntervalMinutes: 240,
+    autoPoll: true,
+    autoPrepare: true,
+    autoPublish: false,
+    autoSendSocial: false,
+    includeWords: [],
+    excludeWords: [],
+    resolvedFeedUrl: 'https://www.tasnimnews.com/rss',
+  };
+  const prisma = {
+    newsFeed: {
+      findFirst: async ({ where }) => {
+        if (where.id) return feed;
+        if (where.url && where.NOT?.id) return null;
+        return null;
+      },
+      create: async () => {
+        createCount += 1;
+        throw new Error('create should not run while editing an existing source');
+      },
+      update: async ({ where, data }) => {
+        updateCount += 1;
+        assert.equal(where.id, feed.id);
+        Object.assign(feed, data);
+        return { ...feed, ...data };
+      },
+    },
+    platformFeed: { findUnique: async () => null, findFirst: async () => null },
+  };
+  const sourceReader = { discoverFeedUrl: async () => '' };
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking);
+
+  await newsroom.updateFeed('tenant-a', feed.id, {
+    url: 'https://www.tasnimnews.com/rss',
+    sourceType: 'rss',
+  });
+
+  assert.equal(createCount, 0);
+  assert.equal(updateCount, 1);
+  assert.equal(feed.url, 'https://www.tasnimnews.com/rss');
+  assert.equal(feed.sourceType, 'rss');
+  assert.equal(feed.resolvedFeedUrl, '');
+});
+
 test('full Persian articles use the dedicated full-text rewrite prompt', async () => {
   let requestBody;
   const outbound = {

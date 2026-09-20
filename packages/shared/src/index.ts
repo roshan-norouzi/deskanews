@@ -215,3 +215,4 @@ export * from './source-language';
 export * from './default-platform-feeds';
 export * from './feed-source-types';
 export * from './feed-catalog-groups';
+export * from './feed-logo';

@@ -1,8 +1,12 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Header, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { PLATFORM_ROLES } from '@deska/shared';
 import type { AuthUser } from '../../common/decorators/params.decorator';
 import { User } from '../../common/decorators/params.decorator';
 import { PlatformFeedService } from '../../modules/smart-publishing/platform-feed.service';
+import { FeedBulkService } from '../../modules/smart-publishing/feed-bulk.service';
 import { PlatformAdminService } from './platform-admin.service';
 import { UpdatePlatformUserStatusDto } from './dto/update-platform-user-status.dto';
 import { UpdatePlatformUserRoleDto } from './dto/update-platform-user-role.dto';
@@ -26,6 +30,7 @@ export class PlatformAdminController {
   constructor(
     private readonly service: PlatformAdminService,
     private readonly platformFeeds: PlatformFeedService,
+    private readonly feedBulk: FeedBulkService,
     private readonly publishingSettings: PublishingSettingsService,
     private readonly gapGpt: GapGptClient,
     private readonly sourceReader: SourceReaderService,
@@ -156,6 +161,24 @@ export class PlatformAdminController {
   @Get('organizations/:id/usage')
   organizationUsage(@User() actor: AuthUser, @Param('id') id: string) {
     return this.service.getOrganizationUsage(actor, id);
+  }
+
+  @Get('feeds/export')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportPlatformFeeds(@User() actor: AuthUser, @Res() response: Response) {
+    this.assertSuperAdmin(actor);
+    const buffer = await this.feedBulk.exportPlatformWorkbook();
+    const stamp = new Date().toISOString().slice(0, 10);
+    response.setHeader('Content-Disposition', `attachment; filename="deska-platform-feeds-${stamp}.xlsx"`);
+    response.send(buffer);
+  }
+
+  @Post('feeds/import')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  importPlatformFeeds(@User() actor: AuthUser, @UploadedFile() file: { buffer: Buffer; originalname?: string }) {
+    this.assertSuperAdmin(actor);
+    if (!file?.buffer?.length) throw new BadRequestException('فایل Excel انتخاب نشده است');
+    return this.feedBulk.importPlatformWorkbook(file.buffer);
   }
 
   @Get('feeds')

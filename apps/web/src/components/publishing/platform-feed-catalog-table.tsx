@@ -4,6 +4,7 @@ import { HeartPulse, RefreshCw, Trash2 } from 'lucide-react';
 import { SOURCE_LANGUAGE_LABELS } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
 import { feedSourceMeta } from '@/lib/feed-source-types';
 
 export interface PlatformFeedRow {
@@ -13,6 +14,7 @@ export interface PlatformFeedRow {
   sourceType: string;
   resolvedFeedUrl?: string;
   sourceLanguage?: string;
+  logoUrl?: string;
   enabled: boolean;
   lastFetchedAt: string | null;
   lastError: string;
@@ -65,14 +67,24 @@ export function PlatformFeedCatalogTable({
             return (
               <tr key={feed.id} className="hover:bg-slate-50/80">
                 <td className="px-5 py-4">
-                  <div className="font-semibold text-slate-900">{feed.name}</div>
-                  <div className="mt-1 truncate text-xs text-slate-500" dir="ltr">{feed.url}</div>
+                  <div className="flex items-center gap-3">
+                    <FeedSourceLogoWithFallback
+                      name={feed.name}
+                      logoUrl={feed.logoUrl}
+                      sourceType={feed.sourceType}
+                      size="sm"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900">{feed.name}</div>
+                      <div className="mt-1 truncate text-xs text-slate-500" dir="ltr">{feed.url}</div>
                   {feed.resolvedFeedUrl && (
                     <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">
                       فید: {feed.resolvedFeedUrl}
                     </div>
                   )}
                   {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
+                    </div>
+                  </div>
                 </td>
                 <td className="px-5 py-4">
                   <span className="inline-flex items-center gap-1.5 text-slate-700">

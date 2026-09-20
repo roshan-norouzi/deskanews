@@ -68,6 +68,10 @@ export function feedSourceMeta(sourceType?: string) {
   return FEED_SOURCE_UI[key];
 }
 
+export function sortFeedsByName<T extends { name: string }>(feeds: T[]): T[] {
+  return [...feeds].sort((left, right) => left.name.localeCompare(right.name, 'fa'));
+}
+
 export function resolveCatalogGroup(
   sourceType?: string,
   catalogGroup?: string,

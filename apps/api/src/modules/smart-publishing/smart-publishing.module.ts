@@ -13,10 +13,11 @@ import { SocialNetworkPublisherService } from './social-network-publisher.servic
 import { SocialCoverRendererService } from './social-cover-renderer.service';
 import { PublishingAutomationProcessor } from './publishing-automation.processor';
 import { PublishingOperationsService } from './publishing-operations.service';
+import { FeedBulkService } from './feed-bulk.service';
 @Module({
   imports: [ScheduleModule.forRoot()],
   controllers: [SmartPublishingController, PublishingFontFileController, PublishingImageFileController, SocialPublishingMediaController],
-  providers: [PublishingSettingsService, SecretProtectionService, GapGptClient, WordPressClient, SourceReaderService, NewsroomService, PlatformFeedService, SocialStudioService, SocialNetworkPublisherService, SocialCoverRendererService, PublishingOperationsService, PublishingAutomationProcessor],
-  exports: [PlatformFeedService, PublishingSettingsService, GapGptClient, SourceReaderService],
+  providers: [PublishingSettingsService, SecretProtectionService, GapGptClient, WordPressClient, SourceReaderService, NewsroomService, PlatformFeedService, FeedBulkService, SocialStudioService, SocialNetworkPublisherService, SocialCoverRendererService, PublishingOperationsService, PublishingAutomationProcessor],
+  exports: [PlatformFeedService, FeedBulkService, PublishingSettingsService, GapGptClient, SourceReaderService],
 })
 export class SmartPublishingModule {}

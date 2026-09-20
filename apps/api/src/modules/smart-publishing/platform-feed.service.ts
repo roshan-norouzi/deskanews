@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { DEFAULT_PLATFORM_FEEDS, FEED_CATALOG_GROUP_ORDER, PLATFORM_FEED_CATALOG_VERSION, USAGE_METRIC_KEYS, feedCatalogGroupFromSourceType, normalizeFeedSourceType, shouldUsePersianRewrite, type FeedCatalogGroup } from '@deska/shared';
+import { DEFAULT_PLATFORM_FEEDS, FEED_CATALOG_GROUP_ORDER, PLATFORM_FEED_CATALOG_VERSION, USAGE_METRIC_KEYS, feedCatalogGroupFromSourceType, normalizeFeedSourceType, resolveFeedLogoUrl, shouldUsePersianRewrite, type FeedCatalogGroup } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SourceReaderService } from './source-reader.service';
@@ -28,6 +28,7 @@ function mapCatalogFeed(feed: {
   catalogGroup: string;
   resolvedFeedUrl: string;
   sourceLanguage: string;
+  logoUrl: string;
   enabled: boolean;
   lastFetchedAt: Date | null;
   lastError: string;
@@ -42,6 +43,8 @@ function mapCatalogFeed(feed: {
     catalogGroup: feed.catalogGroup,
     resolvedFeedUrl: feed.resolvedFeedUrl,
     sourceLanguage: feed.sourceLanguage,
+    logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl),
+    logoUrlOverride: feed.logoUrl,
     enabled: feed.enabled,
     lastFetchedAt: feed.lastFetchedAt,
     lastError: feed.lastError,
@@ -70,6 +73,7 @@ function mapTenantPlatformFeedRow(row: {
     catalogGroup: string;
     resolvedFeedUrl: string;
     sourceLanguage: string;
+    logoUrl: string;
     enabled: boolean;
     lastFetchedAt: Date | null;
     lastError: string;
@@ -85,6 +89,7 @@ function mapTenantPlatformFeedRow(row: {
     sourceType: row.platformFeed.sourceType,
     catalogGroup: row.platformFeed.catalogGroup,
     resolvedFeedUrl: row.platformFeed.resolvedFeedUrl,
+    logoUrl: resolveFeedLogoUrl(row.platformFeed.url, row.platformFeed.logoUrl),
     includeWords: resolved.includeWords,
     excludeWords: resolved.excludeWords,
     pollIntervalMinutes: resolved.pollIntervalMinutes,
@@ -191,6 +196,11 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         await this.ensureSubscriptionsForAllTenants(existing.id);
         continue;
       }
+      const existingByName = await this.prisma.platformFeed.findFirst({ where: { name: seed.name } });
+      if (existingByName) {
+        await this.ensureSubscriptionsForAllTenants(existingByName.id);
+        continue;
+      }
       if (!addMissingFromCode && storedVersion > 0) continue;
 
       let resolvedFeedUrl = '';
@@ -205,11 +215,12 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
           sourceType: seed.sourceType,
           catalogGroup: seed.catalogGroup,
           resolvedFeedUrl,
-          sourceLanguage: seed.sourceLanguage,
-          pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
-          includeWords: [],
-          excludeWords: [],
-          enabled: true,
+        sourceLanguage: seed.sourceLanguage,
+        pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
+        includeWords: [],
+        excludeWords: [],
+        logoUrl: '',
+        enabled: true,
           lastError: '',
         },
       });
@@ -222,7 +233,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
   }
 
   async listAll() {
-    const feeds = await this.prisma.platformFeed.findMany({ orderBy: { createdAt: 'desc' } });
+    const feeds = await this.prisma.platformFeed.findMany({ orderBy: { name: 'asc' } });
     return feeds.map(mapCatalogFeed);
   }
 
@@ -252,6 +263,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         excludeWords: [],
         pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
         sourceLanguage,
+        logoUrl: String(data.logoUrl ?? '').trim(),
         enabled: data.enabled ?? true,
       },
     });
@@ -285,6 +297,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         resolvedFeedUrl,
         ...(data.sourceLanguage !== undefined ? { sourceLanguage: data.sourceLanguage } : {}),
         ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+        ...(data.logoUrl !== undefined ? { logoUrl: String(data.logoUrl).trim() } : {}),
       },
     });
     return mapCatalogFeed(updated);
@@ -472,7 +485,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     const rows = await this.prisma.tenantPlatformFeed.findMany({
       where: { tenantId },
       include: { platformFeed: true },
-      orderBy: { platformFeed: { createdAt: 'desc' } },
+      orderBy: { platformFeed: { name: 'asc' } },
     });
     return rows.map((row) => mapTenantPlatformFeedRow(row));
   }
