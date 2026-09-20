@@ -1,5 +1,5 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min } from 'class-validator';
-import { FEED_SOURCE_TYPES, SOURCE_LANGUAGES, type FeedSourceType } from '@deska/shared';
+import { FEED_CATALOG_GROUP_ORDER, FEED_SOURCE_TYPES, SOURCE_LANGUAGES, type FeedCatalogGroup, type FeedSourceType } from '@deska/shared';
 
 export const FEED_PURPOSES = ['news-room', 'social-studio'] as const;
 export type FeedPurpose = (typeof FEED_PURPOSES)[number];
@@ -36,6 +36,10 @@ export class CreateFeedDto {
   @IsOptional()
   @IsIn(SOURCE_LANGUAGES)
   sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+
+  @IsOptional()
+  @IsIn(FEED_CATALOG_GROUP_ORDER)
+  catalogGroup?: FeedCatalogGroup;
 
   @IsIn(FEED_PURPOSES)
   purpose!: FeedPurpose;
@@ -76,6 +80,10 @@ export class UpdateFeedDto {
   @IsOptional()
   @IsIn(SOURCE_LANGUAGES)
   sourceLanguage?: (typeof SOURCE_LANGUAGES)[number];
+
+  @IsOptional()
+  @IsIn(FEED_CATALOG_GROUP_ORDER)
+  catalogGroup?: FeedCatalogGroup;
 
   @IsOptional()
   @IsIn(FEED_PURPOSES)

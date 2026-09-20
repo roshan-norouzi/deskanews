@@ -388,7 +388,7 @@ export default function PlatformFeedsPage() {
                 <div className="grid gap-3 sm:grid-cols-[auto,1fr] sm:items-end">
                   <FeedSourceLogoWithFallback
                     name={form.name || 'منبع'}
-                    logoUrl={resolveFeedLogoUrl(form.url, form.logoUrlOverride)}
+                    logoUrl={resolveFeedLogoUrl(form.url, form.logoUrlOverride, form.sourceType)}
                     sourceType={form.sourceType}
                     size="lg"
                   />

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { buildTelegramProfilePhotoUrl, parseTelegramUsername } from '@deska/shared';
 import {
   PublishingSettingsService,
   SOURCE_FETCH_BRIDGE_MISSING_MESSAGE,
@@ -854,6 +855,47 @@ export class SourceReaderService {
     } catch {
       throw new BadRequestException('آدرس حساب عمومی X/Twitter معتبر نیست؛ مانند https://x.com/username');
     }
+  }
+
+  private extractTwitterProfilePhotoFromHtml(html: string): string {
+    const profileImageMatch = html.match(/"profile_image_url_https"\s*:\s*"((?:\\.|[^"\\])*)"/u)
+      || html.match(/"profile_image_url"\s*:\s*"((?:\\.|[^"\\])*)"/u);
+    if (profileImageMatch) {
+      const url = this.unescapeTwitterJsonString(profileImageMatch[1]).trim();
+      if (url.startsWith('http')) {
+        return url.replace(/_(?:normal|bigger|mini|reasonably_small)(?=\.[a-z]+$)/iu, '_400x400');
+      }
+    }
+    const $ = load(html);
+    const candidate = $('img[src*="profile_images"], .ProfileCanopy-avatar img, .Avatar-image').first().attr('src') || '';
+    return normalizeUrl(candidate, 'https://x.com');
+  }
+
+  async resolveFeedProfilePhoto(sourceUrl: string, sourceType: SourceType): Promise<string> {
+    if (sourceType === 'telegram') {
+      const direct = buildTelegramProfilePhotoUrl(sourceUrl);
+      if (direct) return direct;
+      const username = parseTelegramUsername(sourceUrl);
+      if (!username) return '';
+      try {
+        const html = await this.safeFetchText(`https://t.me/${username}`, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
+        const $ = load(html);
+        return normalizeUrl($('meta[property="og:image"], meta[property="twitter:image"]').attr('content') || '', sourceUrl);
+      } catch {
+        return '';
+      }
+    }
+    if (sourceType === 'twitter') {
+      try {
+        const handle = this.twitterHandle(sourceUrl);
+        const timelineUrl = `https://syndication.twitter.com/srv/timeline-profile/screen-name/${encodeURIComponent(handle)}`;
+        const html = await this.safeFetchText(timelineUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml', 'application/json', 'text/plain']);
+        return this.extractTwitterProfilePhotoFromHtml(html);
+      } catch {
+        return '';
+      }
+    }
+    return '';
   }
 
   async readAuthorImage(articleUrl: string): Promise<string> {

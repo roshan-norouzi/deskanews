@@ -25,6 +25,7 @@ model NewsFeed {
   autoSendSocial      Boolean?
   purpose             String          @default("news-room")
   sourceLanguage      String          @default("auto")
+  catalogGroup        String          @default("media-domestic")
   logoUrl             String          @default("")
   enabled             Boolean         @default(true)
   lastFetchedAt       DateTime?

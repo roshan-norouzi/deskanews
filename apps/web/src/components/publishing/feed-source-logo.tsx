@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usesFeedProfilePhoto } from '@deska/shared';
 import { cn } from '@/lib/utils';
 import { feedSourceMeta } from '@/lib/feed-source-types';
 
@@ -25,6 +26,15 @@ const iconClasses = {
   lg: 'h-6 w-6',
 } as const;
 
+function logoImageClass(sourceType: string | undefined, enabled: boolean) {
+  const profile = usesFeedProfilePhoto(sourceType);
+  return cn(
+    'shrink-0 border',
+    profile ? 'rounded-full object-cover' : 'rounded-xl object-contain p-1',
+    enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-100 grayscale',
+  );
+}
+
 export function FeedSourceLogo({
   name,
   logoUrl,
@@ -36,18 +46,14 @@ export function FeedSourceLogo({
   const [failed, setFailed] = useState(false);
   const meta = feedSourceMeta(sourceType);
   const Icon = meta.icon;
+  const profile = usesFeedProfilePhoto(sourceType);
 
   if (logoUrl && !failed) {
     return (
       <img
         src={logoUrl}
         alt=""
-        className={cn(
-          'shrink-0 rounded-xl border object-contain p-1',
-          enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-100 grayscale',
-          sizeClasses[size],
-          className,
-        )}
+        className={cn(logoImageClass(sourceType, enabled), sizeClasses[size], className)}
         onError={() => setFailed(true)}
       />
     );
@@ -56,7 +62,8 @@ export function FeedSourceLogo({
   return (
     <div
       className={cn(
-        'grid shrink-0 place-items-center rounded-xl border',
+        'grid shrink-0 place-items-center border',
+        profile ? 'rounded-full' : 'rounded-xl',
         enabled ? 'border-slate-200 bg-slate-100 text-slate-500' : 'border-slate-100 bg-slate-50 text-slate-400',
         sizeClasses[size],
         className,
@@ -87,18 +94,14 @@ export function FeedSourceLogoWithFallback({
   const [failed, setFailed] = useState(false);
   const meta = feedSourceMeta(sourceType);
   const Icon = meta.icon;
+  const profile = usesFeedProfilePhoto(sourceType);
 
   if (logoUrl && !failed) {
     return (
       <img
         src={logoUrl}
         alt=""
-        className={cn(
-          'shrink-0 rounded-xl border object-contain p-1',
-          enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-100 grayscale',
-          sizeClasses[size],
-          className,
-        )}
+        className={cn(logoImageClass(sourceType, enabled), sizeClasses[size], className)}
         onError={() => setFailed(true)}
       />
     );
@@ -108,7 +111,8 @@ export function FeedSourceLogoWithFallback({
     return (
       <div
         className={cn(
-          'grid shrink-0 place-items-center rounded-xl border text-xs font-bold',
+          'grid shrink-0 place-items-center border text-xs font-bold',
+          profile ? 'rounded-full' : 'rounded-xl',
           enabled ? 'border-slate-200 bg-primary-50 text-primary-700' : 'border-slate-100 bg-slate-50 text-slate-400',
           sizeClasses[size],
           className,
@@ -123,7 +127,8 @@ export function FeedSourceLogoWithFallback({
   return (
     <div
       className={cn(
-        'grid shrink-0 place-items-center rounded-xl border',
+        'grid shrink-0 place-items-center border',
+        profile ? 'rounded-full' : 'rounded-xl',
         enabled ? 'border-slate-200 bg-slate-100 text-slate-500' : 'border-slate-100 bg-slate-50 text-slate-400',
         sizeClasses[size],
         className,

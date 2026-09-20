@@ -196,20 +196,16 @@ export default function PublishingSettingsPage() {
   );
 
   const loadDestinationCategories = useCallback(async () => {
-    if (destinationPlatform !== 'wordpress') {
-      setDestinationCategoryRows([]);
-      return;
-    }
     try {
       const rows = await apiFetch<DestinationCategoryRow[]>('/publishing/destination/categories');
       setDestinationCategoryRows(Array.isArray(rows) ? rows : []);
     } catch {
       setDestinationCategoryRows([]);
     }
-  }, [destinationPlatform]);
+  }, []);
 
   useEffect(() => {
-    if (activeTab === 'news' && subTab === 'destination' && destinationPlatform === 'wordpress') {
+    if (activeTab === 'news' && subTab === 'destination') {
       void loadDestinationCategories();
     }
   }, [activeTab, subTab, destinationPlatform, loadDestinationCategories]);
@@ -499,88 +495,88 @@ export default function PublishingSettingsPage() {
             ))}
           </div>
 
-          {destinationPlatform === 'wordpress' ? (
-            <section className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/60 p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-slate-800">دسته‌بندی‌های اتاق خبر</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">فقط آدرس سایت WordPress کافی است؛ REST API عمومی دسته‌ها خوانده می‌شود و نیازی به Application Password نیست.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" isLoading={busy === 'category-sync'} onClick={() => void syncDestinationCategories()}>
-                    همگام‌سازی دسته‌بندی‌ها
-                  </Button>
-                  {pendingDestinationCategories.length > 0 && (
-                    <Button size="sm" isLoading={busy === 'category-bulk'} onClick={() => void bulkApproveDestinationCategories()}>
-                      تأیید همه ({pendingDestinationCategories.length})
-                    </Button>
-                  )}
-                </div>
+          <section className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/60 p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-800">دسته‌بندی‌های اتاق خبر</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  {destinationPlatform === 'wordpress'
+                    ? 'فقط آدرس سایت WordPress کافی است؛ REST API عمومی دسته‌ها خوانده می‌شود و نیازی به Application Password نیست.'
+                    : `دسته‌بندی‌ها از منوی و صفحات خبری سایت ${destinationMeta.label} استخراج می‌شوند؛ برای همگام‌سازی فقط آدرس سایت کافی است.`}
+                </p>
               </div>
-              <Field label="آدرس سایت" hint="نشانی اصلی نصب وردپرس بدون wp-admin یا wp-json.">
-                <input
-                  dir="ltr"
-                  className="rounded-xl border px-3 py-2.5"
-                  placeholder="https://example.com"
-                  value={values[destinationSiteUrlSettingKey] || ''}
-                  onChange={(e) => {
-                    set(destinationSiteUrlSettingKey, e.target.value);
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" isLoading={busy === 'category-sync'} onClick={() => void syncDestinationCategories()}>
+                  همگام‌سازی دسته‌بندی‌ها
+                </Button>
+                {pendingDestinationCategories.length > 0 && (
+                  <Button size="sm" isLoading={busy === 'category-bulk'} onClick={() => void bulkApproveDestinationCategories()}>
+                    تأیید همه ({pendingDestinationCategories.length})
+                  </Button>
+                )}
+              </div>
+            </div>
+            <Field label="آدرس سایت" hint={DESTINATION_PLATFORMS[destinationPlatform].fields.find((field) => field.key === destinationSiteUrlSettingKey)?.hint}>
+              <input
+                dir="ltr"
+                className="rounded-xl border px-3 py-2.5"
+                placeholder={DESTINATION_PLATFORMS[destinationPlatform].fields.find((field) => field.key === destinationSiteUrlSettingKey)?.placeholder || 'https://example.com'}
+                value={values[destinationSiteUrlSettingKey] || ''}
+                onChange={(e) => {
+                  set(destinationSiteUrlSettingKey, e.target.value);
+                  if (destinationPlatform === 'wordpress') {
                     set('wp_categories', '[]');
                     set('wp_category_id', '');
-                  }}
-                />
-              </Field>
-              {destinationCategoryRows.length ? (
-                <div className="mt-4 overflow-x-auto rounded-xl border border-sky-100 bg-white">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50 text-slate-600">
-                      <tr>
-                        <th className="px-3 py-2 text-right font-medium">نام</th>
-                        <th className="px-3 py-2 text-right font-medium">وضعیت</th>
-                        <th className="px-3 py-2 text-right font-medium">عملیات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {destinationCategoryRows.map((category) => {
-                        const statusMeta = DESTINATION_CATEGORY_STATUS_META[category.status];
-                        const parent = destinationCategoryRows.find((row) => row.externalId === category.parentExternalId);
-                        return (
-                          <tr key={category.id} className="border-t border-slate-100">
-                            <td className="px-3 py-2.5 text-slate-800">
-                              {parent ? <span className="text-slate-500">{parent.name} ← </span> : null}
-                              {category.name}
-                              {category.isGeneral ? <span className="mr-2 text-xs text-slate-500">(پیش‌فرض)</span> : null}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium ${statusMeta.className}`}>
-                                {statusMeta.label}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              {!category.isGeneral && category.status === 'pending' ? (
-                                <div className="flex flex-wrap gap-2">
-                                  <button type="button" className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'approved')}>تأیید</button>
-                                  <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>رد</button>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-slate-400">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="mt-3 text-xs leading-5 text-slate-600">آدرس سایت را وارد کنید و «همگام‌سازی دسته‌بندی‌ها» را بزنید.</p>
-              )}
-            </section>
-          ) : (
-            <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50/70 p-4 text-sm leading-6 text-amber-900">
-              همگام‌سازی دسته‌بندی برای {destinationMeta.label} هنوز پشتیبانی نمی‌شود.
-            </div>
-          )}
+                  }
+                }}
+              />
+            </Field>
+            {destinationCategoryRows.length ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-sky-100 bg-white">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 text-right font-medium">نام</th>
+                      <th className="px-3 py-2 text-right font-medium">وضعیت</th>
+                      <th className="px-3 py-2 text-right font-medium">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {destinationCategoryRows.map((category) => {
+                      const statusMeta = DESTINATION_CATEGORY_STATUS_META[category.status];
+                      const parent = destinationCategoryRows.find((row) => row.externalId === category.parentExternalId);
+                      return (
+                        <tr key={category.id} className="border-t border-slate-100">
+                          <td className="px-3 py-2.5 text-slate-800">
+                            {parent ? <span className="text-slate-500">{parent.name} ← </span> : null}
+                            {category.name}
+                            {category.isGeneral ? <span className="mr-2 text-xs text-slate-500">(پیش‌فرض)</span> : null}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium ${statusMeta.className}`}>
+                              {statusMeta.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {!category.isGeneral && category.status === 'pending' ? (
+                              <div className="flex flex-wrap gap-2">
+                                <button type="button" className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'approved')}>تأیید</button>
+                                <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>رد</button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs leading-5 text-slate-600">آدرس سایت را وارد کنید و «همگام‌سازی دسته‌بندی‌ها» را بزنید.</p>
+            )}
+          </section>
 
           <section className="mt-6 space-y-4">
             <div>
@@ -588,11 +584,6 @@ export default function PublishingSettingsPage() {
               <p className="mt-1 text-sm text-slate-500">برای انتشار خودکار خبرها در فاز بعدی؛ فعلاً اختیاری است.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-            {destinationPlatform !== 'wordpress' && DESTINATION_PLATFORMS[destinationPlatform].fields.filter((field) => field.key === destinationSiteUrlSettingKey).map((field) => (
-              <Field key={field.key} label={field.label} hint={field.hint}>
-                <input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder={field.placeholder} value={values[field.key] || ''} onChange={(e) => set(field.key, e.target.value)} />
-              </Field>
-            ))}
             {destinationPublishOnlyFields.map((field) => {
               const configuredKey = `${field.key}_configured`;
               const isSecret = destinationSecretKeys().has(field.key);

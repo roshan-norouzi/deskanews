@@ -14,6 +14,16 @@ interface GapGptResponse {
 
 type GapGptActivity = 'newsSummary' | 'newsTranslation' | 'social';
 
+export type GapGptAccountBalance = {
+  configured: boolean;
+  remaining: number | null;
+  used: number | null;
+  total: number | null;
+  unitLabel: string;
+  billingPeriod: string | null;
+  message?: string;
+};
+
 function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl.trim().replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
 }
@@ -44,6 +54,53 @@ function normalizeSocialLead(value: string): string {
   const compact = value.replace(/\s+/gu, ' ').trim();
   const sentences = compact.match(/[^.!؟…]+(?:[.!؟…]+|$)/gu)?.map((sentence) => sentence.trim()).filter(Boolean) || [];
   return sentences.slice(0, 2).join(' ').trim();
+}
+
+function readNumericField(source: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.replace(/,/g, '').trim();
+      if (trimmed && !Number.isNaN(Number(trimmed))) return Number(trimmed);
+    }
+  }
+  return null;
+}
+
+function parseUsagePayload(body: Record<string, unknown>): Omit<GapGptAccountBalance, 'configured' | 'message'> {
+  const nested = body.data && typeof body.data === 'object' && !Array.isArray(body.data)
+    ? body.data as Record<string, unknown>
+    : null;
+  const sources = nested ? [body, nested] : [body];
+  const read = (...keys: string[]) => {
+    for (const source of sources) {
+      const value = readNumericField(source, keys);
+      if (value !== null) return value;
+    }
+    return null;
+  };
+
+  const remaining = read('remaining', 'remaining_tokens', 'remaining_balance', 'balance', 'credit', 'credit_remaining', 'available', 'available_balance');
+  const used = read('used', 'used_tokens', 'consumed', 'consumed_tokens', 'usage');
+  const total = read('total', 'total_tokens', 'limit', 'quota', 'allocated');
+  const billingPeriod = String(
+    body.billing_period
+    ?? body.billingPeriod
+    ?? nested?.billing_period
+    ?? nested?.billingPeriod
+    ?? '',
+  ).trim() || null;
+
+  let unitLabel = 'توکن';
+  const currency = String(body.currency ?? nested?.currency ?? '').toLowerCase();
+  if (read('balance_toman', 'remaining_toman', 'credit_toman') !== null || currency.includes('toman') || currency.includes('تومان')) {
+    unitLabel = 'تومان';
+  } else if (currency.includes('rial') || currency.includes('ریال')) {
+    unitLabel = 'ریال';
+  }
+
+  return { remaining, used, total, unitLabel, billingPeriod };
 }
 
 @Injectable()
@@ -102,6 +159,58 @@ export class GapGptClient {
       return { ok: true, models };
     } catch (error) {
       throw new BadRequestException(`دریافت فهرست مدل‌های GapGPT انجام نشد: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`);
+    }
+  }
+
+  async accountBalance(settings: PublishingSettings): Promise<GapGptAccountBalance> {
+    const baseUrl = String(settings.gapgpt_base_url ?? '').trim();
+    const apiKey = String(settings.gapgpt_api_key ?? '').trim();
+    if (!baseUrl || !apiKey) {
+      return {
+        configured: false,
+        remaining: null,
+        used: null,
+        total: null,
+        unitLabel: '',
+        billingPeriod: null,
+        message: 'اتصال GapGPT در تنظیمات پلتفرم پیکربندی نشده است',
+      };
+    }
+
+    try {
+      const response = await this.outbound.safeRequest(endpoint(baseUrl, 'usage'), {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+        timeoutMs: 20_000,
+        acceptedTypes: ['application/json'],
+        allowLocalhostInDevelopment: true,
+      });
+      let body: Record<string, unknown> = {};
+      try { body = response.json<Record<string, unknown>>(); } catch { /* Status handling below provides a safe error. */ }
+      if (!response.ok) {
+        const errorMessage = typeof body.error === 'object' && body.error && 'message' in (body.error as object)
+          ? String((body.error as { message?: unknown }).message ?? '')
+          : '';
+        throw new Error(errorMessage || `HTTP ${response.status}`);
+      }
+      const parsed = parseUsagePayload(body);
+      if (parsed.remaining === null && parsed.used === null && parsed.total === null) {
+        return {
+          configured: true,
+          ...parsed,
+          message: 'پاسخ سرویس هوش مصنوعی فیلد موجودی قابل خواندن نداشت',
+        };
+      }
+      return { configured: true, ...parsed };
+    } catch (error) {
+      return {
+        configured: true,
+        remaining: null,
+        used: null,
+        total: null,
+        unitLabel: '',
+        billingPeriod: null,
+        message: `دریافت موجودی انجام نشد: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`,
+      };
     }
   }
 

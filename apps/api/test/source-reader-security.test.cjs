@@ -281,6 +281,22 @@ test('SourceReader uses cached resolvedFeedUrl for website sources without rescr
   assert.equal(result.resolvedFeedUrl, 'https://publisher.example/feed.xml');
 });
 
+test('SourceReader extracts twitter profile photo from syndication payload', async () => {
+  const service = new SourceReaderService();
+  service.safeFetchText = async () => `<!DOCTYPE html><html><body><script>
+    window.__INITIAL_STATE__ = {"profile_image_url_https":"https:\\/\\/pbs.twimg.com\\/profile_images\\/123\\/abc_normal.jpg"};
+  </script></body></html>`;
+
+  const photo = await service.resolveFeedProfilePhoto('https://x.com/Reuters', 'twitter');
+  assert.equal(photo, 'https://pbs.twimg.com/profile_images/123/abc_400x400.jpg');
+});
+
+test('SourceReader resolves telegram profile photo from public userpic url', async () => {
+  const service = new SourceReaderService();
+  const photo = await service.resolveFeedProfilePhoto('https://t.me/VahidOnline', 'telegram');
+  assert.equal(photo, 'https://t.me/i/userpic/320/VahidOnline.jpg');
+});
+
 test('SourceReader parses embedded X syndication JSON when legacy DOM selectors are absent', async () => {
   const service = new SourceReaderService();
   const syndicationHtml = `<!DOCTYPE html><html><body><script>

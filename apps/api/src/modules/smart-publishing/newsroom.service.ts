@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { USAGE_METRIC_KEYS, normalizeFeedSourceType, resolveFeedLogoUrl, shouldUsePersianRewrite } from '@deska/shared';
+import { USAGE_METRIC_KEYS, normalizeFeedCatalogGroupForSource, normalizeFeedSourceType, resolveFeedLogoUrl, shouldUsePersianRewrite } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type ProbeFeedDto, type UpdateFeedDto, type UpdateTenantPlatformFeedDto, type SourceType } from './dto/feed.dto';
@@ -18,6 +18,7 @@ import { buildLatestFeedPreviewItems } from './feed-preview';
 import { PlatformFeedService } from './platform-feed.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { DestinationCategoryService } from './destination-category.service';
+import { newsroomArticleWhere, orphanedNewsArticleWhere } from './newsroom-article-stats';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
@@ -160,15 +161,31 @@ export class NewsroomService {
       where: { tenantId, ...(purpose ? { purpose } : {}) },
       orderBy: [{ purpose: 'asc' }, { name: 'asc' }],
     });
+    await this.backfillSocialProfilePhotos(tenantFeeds);
     return tenantFeeds.map((feed) => ({
       ...feed,
-      logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl),
+      logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl, feed.sourceType),
       scope: 'tenant' as const,
     }));
   }
 
   listPlatformFeeds(tenantId: string) {
     return this.platformFeeds.listForTenant(tenantId);
+  }
+
+  private async backfillSocialProfilePhotos(
+    feeds: Array<{ id: string; url: string; sourceType: string; logoUrl: string }>,
+  ) {
+    const pending = feeds.filter(
+      (feed) => !String(feed.logoUrl || '').trim() && feed.sourceType === 'twitter',
+    );
+    if (!pending.length) return;
+    await Promise.all(pending.slice(0, 6).map(async (feed) => {
+      const photo = await this.sourceReader.resolveFeedProfilePhoto(feed.url, feed.sourceType as SourceType).catch(() => '');
+      if (!photo) return;
+      feed.logoUrl = photo;
+      await this.prisma.newsFeed.update({ where: { id: feed.id }, data: { logoUrl: photo } });
+    }));
   }
 
   updatePlatformFeedSubscription(
@@ -201,13 +218,19 @@ export class NewsroomService {
     if (sourceType === 'website') {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     }
+    const catalogGroup = normalizeFeedCatalogGroupForSource(data.catalogGroup, sourceType, data.sourceLanguage ?? 'auto');
+    const profilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
+      ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
+      : '';
 
     return this.prisma.newsFeed.create({ data: {
       tenantId,
       name,
       url,
       sourceType,
+      catalogGroup,
       resolvedFeedUrl,
+      logoUrl: profilePhoto,
       includeWords: parseWordList(data.includeWords),
       excludeWords: parseWordList(data.excludeWords),
       purpose,
@@ -242,15 +265,25 @@ export class NewsroomService {
     let resolvedFeedUrl = feed.resolvedFeedUrl;
     if (sourceType === 'website' && (data.url || data.sourceType)) {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
-    } else {
+    } else if (sourceType !== 'website') {
       resolvedFeedUrl = '';
     }
+    const catalogGroup = data.catalogGroup !== undefined
+      ? normalizeFeedCatalogGroupForSource(data.catalogGroup, sourceType, data.sourceLanguage ?? feed.sourceLanguage ?? 'auto')
+      : feed.catalogGroup;
+    const shouldRefreshProfilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
+      && (!feed.logoUrl?.trim() || data.url || data.sourceType);
+    const profilePhoto = shouldRefreshProfilePhoto
+      ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
+      : feed.logoUrl;
 
     return this.prisma.newsFeed.update({ where: { id }, data: {
       name,
       url,
       sourceType,
+      catalogGroup,
       resolvedFeedUrl,
+      ...(shouldRefreshProfilePhoto && profilePhoto ? { logoUrl: profilePhoto } : {}),
       ...(data.includeWords !== undefined ? { includeWords: parseWordList(data.includeWords) } : {}),
       ...(data.excludeWords !== undefined ? { excludeWords: parseWordList(data.excludeWords) } : {}),
       purpose,
@@ -285,11 +318,7 @@ export class NewsroomService {
     }
     return this.prisma.newsArticle.findMany({
       where: {
-        tenantId,
-        OR: [
-          { feed: { purpose: 'news-room' } },
-          { platformFeedArticleId: { not: null } },
-        ],
+        ...newsroomArticleWhere(tenantId),
         ...(status ? { status } : {}),
         ...(categoryId ? { destinationCategoryId: categoryId } : {}),
         ...(generalOnly ? { destinationCategory: { isGeneral: true } } : {}),
@@ -305,13 +334,7 @@ export class NewsroomService {
 
   async deleteAllArticles(tenantId: string) {
     const result = await this.prisma.newsArticle.deleteMany({
-      where: {
-        tenantId,
-        OR: [
-          { feed: { purpose: 'news-room' } },
-          { platformFeedArticleId: { not: null } },
-        ],
-      },
+      where: { tenantId },
     });
     return { ok: true, deleted: result.count };
   }
@@ -838,6 +861,7 @@ export class NewsroomService {
       await this.prisma.newsArticle.updateMany({ where: { tenantId: { in: enabledTenantIds }, status: 'publishing', processingStartedAt: { lte: staleBefore } }, data: { status: 'publish_failed', processingStartedAt: null, lastError: 'عملیات انتشار قبلی ناتمام مانده بود؛ دوباره تلاش کنید' } });
       await this.prisma.newsArticle.updateMany({ where: { tenantId: { in: enabledTenantIds }, status: 'social_processing', processingStartedAt: { lte: staleBefore } }, data: { status: 'social_failed', processingStartedAt: null, lastError: 'ارسال قبلی به استودیوی اجتماعی ناتمام ماند؛ دوباره تلاش کنید' } });
       await this.prisma.newsArticle.deleteMany({ where: { tenantId: { in: enabledTenantIds }, status: 'rejected', purgeAfter: { lte: new Date() } } });
+      await this.prisma.newsArticle.deleteMany({ where: { tenantId: { in: enabledTenantIds }, ...orphanedNewsArticleWhere() } });
 
       const feeds = await this.prisma.newsFeed.findMany({ where: { tenantId: { in: enabledTenantIds }, purpose: 'news-room', enabled: true }, orderBy: { lastFetchedAt: 'asc' } });
       for (const feed of feeds) {

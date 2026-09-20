@@ -21,7 +21,18 @@ import { OrganizationsDashboardSection } from '@/components/organizations/organi
 
 interface DashboardStats {
   publishing: {
-    newsroom: { inbox: number; preparing: number; ready: number; failed: number; publishedToday: number };
+    newsroom: {
+      inbox: number;
+      preparing: number;
+      ready: number;
+      failed: number;
+      publishedToday: number;
+      processing: number;
+      action: number;
+      archive: number;
+      rejected: number;
+      total: number;
+    };
     social: { inbox: number; preparing: number; ready: number; failed: number; publishedToday: number };
     queue: { queued: number; running: number; completed: number; dead: number; cancelled: number };
     unhealthyIntegrations: number;
@@ -50,7 +61,7 @@ function DashboardContent() {
   if (!data) return null;
 
   const stats = [
-    { label: 'ورودی اتاق خبر', value: data.publishing.newsroom.inbox, icon: Rss, tone: 'bg-blue-50 text-blue-600' },
+    { label: 'در پردازش (اتاق خبر)', value: data.publishing.newsroom.processing, icon: Rss, tone: 'bg-blue-50 text-blue-600' },
     { label: 'ورودی استودیو', value: data.publishing.social.inbox, icon: Send, tone: 'bg-violet-50 text-violet-600' },
     { label: 'کارهای صف', value: data.publishing.queue.queued + data.publishing.queue.running, icon: Bot, tone: 'bg-cyan-50 text-cyan-600' },
     {
@@ -107,10 +118,11 @@ function DashboardContent() {
           href="/publishing/news"
           icon={<Rss className="h-5 w-5 text-blue-600" />}
           values={[
-            ['ورودی', data.publishing.newsroom.inbox],
-            ['در حال کار', data.publishing.newsroom.preparing],
-            ['آماده', data.publishing.newsroom.ready],
+            ['در پردازش', data.publishing.newsroom.processing],
+            ['در حال انجام', data.publishing.newsroom.preparing],
+            ['آماده اقدام', data.publishing.newsroom.action],
             ['خطادار', data.publishing.newsroom.failed],
+            ['منتشر / استودیو', data.publishing.newsroom.archive],
             ['امروز', data.publishing.newsroom.publishedToday],
           ]}
         />
@@ -151,7 +163,7 @@ function PublishingSummary({
         </div>
         <Link href={href} className="text-sm font-medium text-primary-600 hover:text-primary-700">مشاهده</Link>
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {values.map(([label, value]) => (
           <div key={label} className="rounded-lg bg-slate-100 p-3 text-center">
             <p className="text-xs text-slate-500">{label}</p>

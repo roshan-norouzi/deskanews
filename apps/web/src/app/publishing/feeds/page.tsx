@@ -44,6 +44,7 @@ interface Feed {
   name: string;
   url: string;
   sourceType?: FeedSourceType;
+  catalogGroup?: FeedCatalogGroup;
   logoUrl?: string;
   sourceLanguage?: SourceLanguage;
   resolvedFeedUrl?: string;
@@ -135,7 +136,7 @@ export default function FeedsPage() {
   const feedsByGroup = useMemo(() => {
     const grouped = emptyFeedsByCatalogGroup<Feed>();
     for (const feed of feeds) {
-      grouped[resolveCatalogGroup(feed.sourceType, undefined, feed.sourceLanguage)].push(feed);
+      grouped[resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage)].push(feed);
     }
     for (const group of FEED_CATALOG_GROUP_ORDER) {
       grouped[group] = sortFeedsByName(grouped[group]);
@@ -171,7 +172,7 @@ export default function FeedsPage() {
   }
 
   function openEdit(feed: Feed) {
-    const group = resolveCatalogGroup(feed.sourceType, undefined, feed.sourceLanguage);
+    const group = resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage);
     setActiveGroup(group);
     setEditing(feed);
     editingIdRef.current = feed.id;
@@ -237,6 +238,7 @@ export default function FeedsPage() {
         body: {
           ...form,
           purpose: 'news-room',
+          catalogGroup: modalGroup,
           name: form.name.trim(),
           url: form.url.trim(),
           includeWords: form.includeWords,
@@ -245,6 +247,7 @@ export default function FeedsPage() {
         },
       });
       closeModal();
+      setActiveGroup(modalGroup);
       setNotice({ type: 'success', text: feedId ? 'منبع ذخیره شد.' : 'منبع اضافه شد.' });
       await refetch();
     });

@@ -1,4 +1,5 @@
 import type { FeedSourceType } from './feed-source-types';
+import { FEED_SOURCE_TYPES } from './feed-source-types';
 
 export type FeedCatalogGroup =
   | 'media-domestic'
@@ -67,4 +68,41 @@ export function feedCatalogGroupFromSourceType(
   if (sourceType === 'telegram') return 'telegram';
   if (sourceType === 'twitter') return 'twitter';
   return mediaScope === 'international' ? 'media-international' : 'media-domestic';
+}
+
+export function resolveFeedCatalogGroup(
+  sourceType?: string,
+  catalogGroup?: string | null,
+  sourceLanguage?: string | null,
+): FeedCatalogGroup {
+  const normalizedGroup = String(catalogGroup ?? '').trim();
+  if ((FEED_CATALOG_GROUP_ORDER as readonly string[]).includes(normalizedGroup)) {
+    return normalizedGroup as FeedCatalogGroup;
+  }
+
+  const type = (sourceType && (FEED_SOURCE_TYPES as readonly string[]).includes(sourceType)
+    ? sourceType
+    : 'rss') as FeedSourceType;
+
+  if (type === 'telegram') return 'telegram';
+  if (type === 'twitter') return 'twitter';
+
+  const language = String(sourceLanguage ?? 'auto').trim();
+  const mediaScope = language === 'fa' || language === 'auto' ? 'domestic' : 'international';
+  return feedCatalogGroupFromSourceType(type, mediaScope);
+}
+
+export function normalizeFeedCatalogGroupForSource(
+  requested: string | undefined,
+  sourceType: FeedSourceType,
+  sourceLanguage?: string,
+): FeedCatalogGroup {
+  const normalized = String(requested ?? '').trim();
+  if (
+    (FEED_CATALOG_GROUP_ORDER as readonly string[]).includes(normalized)
+    && (FEED_CATALOG_GROUPS[normalized as FeedCatalogGroup].sourceTypes as readonly string[]).includes(sourceType)
+  ) {
+    return normalized as FeedCatalogGroup;
+  }
+  return resolveFeedCatalogGroup(sourceType, undefined, sourceLanguage);
 }

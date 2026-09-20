@@ -104,11 +104,15 @@ function createPrismaMock() {
   return { prisma, categories, articles };
 }
 
+function createService(prisma, settings, wordpress, gapGpt = {}, sourceReader = { safeRequest: async () => ({ ok: false }) }) {
+  return new DestinationCategoryService(prisma, settings, wordpress, sourceReader, gapGpt);
+}
+
 test('destination category sync requires site url', async () => {
   const { prisma } = createPrismaMock();
   const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: '' }) };
   const wordpress = { categoriesPublic: async () => [] };
-  const service = new DestinationCategoryService(prisma, settings, wordpress, {});
+  const service = createService(prisma, settings, wordpress);
 
   await assert.rejects(
     () => service.syncFromDestination('tenant-a'),
@@ -125,7 +129,7 @@ test('destination category sync upserts WordPress categories as pending and keep
       { id: 22, name: 'فناوری', slug: 'technology', parent: 0 },
     ],
   };
-  const service = new DestinationCategoryService(prisma, settings, wordpress, {});
+  const service = createService(prisma, settings, wordpress);
 
   const result = await service.syncFromDestination('tenant-a', 'user-a');
 
@@ -139,11 +143,30 @@ test('destination category sync upserts WordPress categories as pending and keep
   );
 });
 
+test('destination category sync extracts IranSystem categories from site html', async () => {
+  const { prisma, categories } = createPrismaMock();
+  const settings = { getRaw: async () => ({ destination_platform: 'iransamaneh', is_site_url: 'https://news.example.ir' }) };
+  const wordpress = { categoriesPublic: async () => [] };
+  const sourceReader = {
+    safeRequest: async (url) => ({
+      ok: true,
+      text: async () => `<nav><a href="/fa/news/12">اقتصاد</a><a href="/fa/news/34">فناوری</a></nav>`,
+    }),
+  };
+  const service = createService(prisma, settings, wordpress, {}, sourceReader);
+
+  const result = await service.syncFromDestination('tenant-a');
+
+  assert.equal(result.synced, 2);
+  const rows = [...categories.values()].filter((row) => row.platform === 'iransamaneh' && !row.isGeneral);
+  assert.deepEqual(rows.map((row) => row.name).sort(), ['اقتصاد', 'فناوری']);
+});
+
 test('destination category approve updates status and approver metadata', async () => {
   const { prisma, categories } = createPrismaMock();
   const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: 'https://news.example.com' }) };
   const wordpress = { categoriesPublic: async () => [{ id: 22, name: 'فناوری', slug: 'technology', parent: 0 }] };
-  const service = new DestinationCategoryService(prisma, settings, wordpress, {});
+  const service = createService(prisma, settings, wordpress);
   await service.syncFromDestination('tenant-a');
   const pending = [...categories.values()].find((row) => row.externalId === '22');
 
@@ -161,7 +184,7 @@ test('article categorization falls back to general when AI selection fails', asy
   const gapGpt = {
     chooseWordPressCategory: async () => { throw new Error('ai unavailable'); },
   };
-  const service = new DestinationCategoryService(prisma, settings, wordpress, gapGpt);
+  const service = createService(prisma, settings, wordpress, gapGpt);
   await service.syncFromDestination('tenant-a');
   const approved = [...categories.values()].find((row) => row.externalId === '22');
   await service.updateStatus(approved.id, 'tenant-a', 'approved', 'user-a');

@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
+import { SourceReaderService } from './source-reader.service';
 import { WordPressClient } from './wordpress.client';
+import { extractDestinationCategoriesFromSite } from './destination-site-category-extractor';
 import type { WordPressCategory } from './wordpress-category';
 import type { DestinationCategoryStatus } from './dto/destination-category.dto';
 
@@ -18,6 +20,7 @@ export class DestinationCategoryService {
     private readonly prisma: PrismaService,
     private readonly settings: PublishingSettingsService,
     private readonly wordpress: WordPressClient,
+    private readonly sourceReader: SourceReaderService,
     private readonly gapGpt: GapGptClient,
   ) {}
 
@@ -62,22 +65,18 @@ export class DestinationCategoryService {
     const raw = await this.settings.getRaw(tenantId);
     const platform = this.resolvePlatform(raw);
 
-    if (platform !== 'wordpress') {
-      throw new BadRequestException('همگام‌سازی دسته‌بندی برای این پلتفرم هنوز پشتیبانی نمی‌شود');
-    }
-
     const siteUrl = this.resolveSiteUrl(raw, siteUrlOverride);
     if (!siteUrl) {
       throw new BadRequestException('آدرس سایت مقصد را وارد کنید');
     }
 
     await this.ensureGeneralCategory(tenantId, platform);
-    const wpCategories = await this.wordpress.categoriesPublic({ ...raw, wp_site_url: siteUrl });
+    const extractedCategories = await extractDestinationCategoriesFromSite(siteUrl, this.wordpress, this.sourceReader);
     const now = new Date();
     const seenExternalIds = new Set<string>([GENERAL_EXTERNAL_ID]);
 
-    for (const category of wpCategories) {
-      const externalId = String(category.id);
+    for (const category of extractedCategories) {
+      const externalId = String(category.externalId);
       seenExternalIds.add(externalId);
       const existing = await this.prisma.destinationCategory.findUnique({
         where: { tenantId_platform_externalId: { tenantId, platform, externalId } },
@@ -88,7 +87,7 @@ export class DestinationCategoryService {
           data: {
             name: category.name,
             slug: category.slug,
-            parentExternalId: category.parent > 0 ? String(category.parent) : '',
+            parentExternalId: category.parentExternalId || '',
             syncedAt: now,
             ...(existing.status === 'stale' ? { status: 'pending' } : {}),
           },
@@ -101,7 +100,7 @@ export class DestinationCategoryService {
             externalId,
             name: category.name,
             slug: category.slug,
-            parentExternalId: category.parent > 0 ? String(category.parent) : '',
+            parentExternalId: category.parentExternalId || '',
             status: 'pending',
             isGeneral: false,
             syncedAt: now,
@@ -124,7 +123,7 @@ export class DestinationCategoryService {
     const categories = await this.list(tenantId);
     return {
       ok: true,
-      synced: wpCategories.length,
+      synced: extractedCategories.length,
       categories,
     };
   }

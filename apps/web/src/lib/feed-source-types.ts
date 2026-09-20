@@ -9,6 +9,7 @@ import {
   feedCatalogGroupFromSourceType,
   feedSourceCategory,
   feedSourceTypeHint,
+  resolveFeedCatalogGroup,
   type FeedCatalogGroup,
   type FeedSourceCategory,
   type FeedSourceType,
@@ -27,6 +28,7 @@ export {
   feedCatalogGroupFromSourceType,
   feedSourceCategory,
   feedSourceTypeHint,
+  resolveFeedCatalogGroup,
 };
 
 /** @deprecated use FEED_CATALOG_GROUP_ORDER */
@@ -77,11 +79,5 @@ export function resolveCatalogGroup(
   catalogGroup?: string,
   sourceLanguage?: string,
 ): FeedCatalogGroup {
-  const normalized = String(catalogGroup || '').trim();
-  if ((FEED_CATALOG_GROUP_ORDER as readonly string[]).includes(normalized)) {
-    return normalized as FeedCatalogGroup;
-  }
-  const type = (sourceType && sourceType in FEED_SOURCE_UI ? sourceType : 'rss') as FeedSourceType;
-  const mediaScope = sourceLanguage === 'fa' ? 'domestic' : 'international';
-  return feedCatalogGroupFromSourceType(type, mediaScope);
+  return resolveFeedCatalogGroup(sourceType, catalogGroup, sourceLanguage);
 }

@@ -253,6 +253,12 @@ export class PlatformAdminController {
     return this.gapGpt.models(this.publishingSettings.mergeForGlobalAiTest(await this.publishingSettings.getGlobalAiRaw(), body));
   }
 
+  @Get('ai-settings/balance')
+  async gapGptBalance(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.gapGpt.accountBalance(await this.publishingSettings.getGlobalAiRaw());
+  }
+
   @Get('source-fetch-settings')
   sourceFetchSettings(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);

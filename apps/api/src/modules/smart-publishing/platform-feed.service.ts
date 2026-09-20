@@ -44,7 +44,7 @@ function mapCatalogFeed(feed: {
     catalogGroup: feed.catalogGroup,
     resolvedFeedUrl: feed.resolvedFeedUrl,
     sourceLanguage: feed.sourceLanguage,
-    logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl),
+    logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl, feed.sourceType),
     logoUrlOverride: feed.logoUrl,
     enabled: feed.enabled,
     lastFetchedAt: feed.lastFetchedAt,
@@ -90,7 +90,7 @@ function mapTenantPlatformFeedRow(row: {
     sourceType: row.platformFeed.sourceType,
     catalogGroup: row.platformFeed.catalogGroup,
     resolvedFeedUrl: row.platformFeed.resolvedFeedUrl,
-    logoUrl: resolveFeedLogoUrl(row.platformFeed.url, row.platformFeed.logoUrl),
+    logoUrl: resolveFeedLogoUrl(row.platformFeed.url, row.platformFeed.logoUrl, row.platformFeed.sourceType),
     includeWords: resolved.includeWords,
     excludeWords: resolved.excludeWords,
     pollIntervalMinutes: resolved.pollIntervalMinutes,
@@ -236,6 +236,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
 
   async listAll() {
     const feeds = await this.prisma.platformFeed.findMany({ orderBy: { name: 'asc' } });
+    await this.backfillSocialProfilePhotos(feeds);
     return feeds.map(mapCatalogFeed);
   }
 
@@ -254,6 +255,9 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     }
 
     const sourceLanguage = data.sourceLanguage ?? 'auto';
+    const profilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
+      ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
+      : '';
     const feed = await this.prisma.platformFeed.create({
       data: {
         name,
@@ -265,7 +269,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         excludeWords: [],
         pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
         sourceLanguage,
-        logoUrl: String(data.logoUrl ?? '').trim(),
+        logoUrl: String(data.logoUrl ?? '').trim() || profilePhoto,
         enabled: data.enabled ?? true,
       },
     });
@@ -489,7 +493,23 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       include: { platformFeed: true },
       orderBy: { platformFeed: { name: 'asc' } },
     });
+    await this.backfillSocialProfilePhotos(rows.map((row) => row.platformFeed));
     return rows.map((row) => mapTenantPlatformFeedRow(row));
+  }
+
+  private async backfillSocialProfilePhotos(
+    feeds: Array<{ id: string; url: string; sourceType: string; logoUrl: string }>,
+  ) {
+    const pending = feeds.filter(
+      (feed) => !String(feed.logoUrl || '').trim() && feed.sourceType === 'twitter',
+    );
+    if (!pending.length) return;
+    await Promise.all(pending.slice(0, 6).map(async (feed) => {
+      const photo = await this.sourceReader.resolveFeedProfilePhoto(feed.url, feed.sourceType as SourceType).catch(() => '');
+      if (!photo) return;
+      feed.logoUrl = photo;
+      await this.prisma.platformFeed.update({ where: { id: feed.id }, data: { logoUrl: photo } });
+    }));
   }
 
   async updateSubscriptionForTenant(

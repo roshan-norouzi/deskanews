@@ -3,6 +3,7 @@ import { AutomationJobService } from '../../common/services/automation-job.servi
 import { unifiedContentStage } from '../../common/services/content-workflow.service';
 import { NotificationService } from '../../common/services/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { computeNewsroomDashboardStats, newsroomArticleWhere } from '../smart-publishing/newsroom-article-stats';
 
 function countsByStatus(rows: Array<{ status: string; _count: { _all: number } }>) {
   return Object.fromEntries(rows.map((row) => [row.status, row._count._all]));
@@ -22,7 +23,7 @@ export class DashboardService {
     startOfDay.setHours(0, 0, 0, 0);
     const [
       memberCount,
-      newsroomGroups,
+      newsroomArticles,
       socialGroups,
       publishedToday,
       socialPublishedToday,
@@ -35,9 +36,17 @@ export class DashboardService {
       deadJobs,
     ] = await Promise.all([
       this.prisma.tenantMember.count({ where: { tenantId, status: 'active' } }),
-      this.prisma.newsArticle.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
+      this.prisma.newsArticle.findMany({
+        where: newsroomArticleWhere(tenantId),
+        select: { status: true, titleFa: true, summaryFa: true, publishedAt: true },
+      }),
       this.prisma.socialArticle.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
-      this.prisma.newsArticle.count({ where: { tenantId, publishedAt: { gte: startOfDay } } }),
+      this.prisma.newsArticle.count({
+        where: {
+          ...newsroomArticleWhere(tenantId),
+          publishedAt: { gte: startOfDay },
+        },
+      }),
       this.prisma.socialArticle.count({
         where: { tenantId, OR: [
           { telegramSentAt: { gte: startOfDay } }, { instagramSentAt: { gte: startOfDay } },
@@ -64,7 +73,7 @@ export class DashboardService {
       }),
     ]);
 
-    const newsroom = countsByStatus(newsroomGroups);
+    const newsroom = computeNewsroomDashboardStats(newsroomArticles, publishedToday);
     const social = countsByStatus(socialGroups);
     const workItems = [
       ...newsItems.map((item) => ({
@@ -88,11 +97,16 @@ export class DashboardService {
       members: { active: memberCount },
       publishing: {
         newsroom: {
-          inbox: newsroom.new ?? 0,
-          preparing: (newsroom.processing ?? 0) + (newsroom.social_processing ?? 0),
-          ready: newsroom.ready ?? 0,
-          failed: (newsroom.failed ?? 0) + (newsroom.publish_failed ?? 0) + (newsroom.social_failed ?? 0),
-          publishedToday,
+          action: newsroom.action,
+          processing: newsroom.processing,
+          archive: newsroom.archive,
+          rejected: newsroom.rejected,
+          preparing: newsroom.preparing,
+          failed: newsroom.failed,
+          publishedToday: newsroom.publishedToday,
+          total: newsroom.total,
+          inbox: newsroom.processing,
+          ready: newsroom.action,
         },
         social: {
           inbox: social.pending ?? 0,
