@@ -20,6 +20,7 @@ export class UpdateNewsArticleDto {
   @IsOptional() @IsString() @MaxLength(500) titleFa?: string;
   @IsOptional() @IsString() @MaxLength(4000) summaryFa?: string;
   @IsOptional() @IsIn(['ready']) status?: 'ready';
+  @IsOptional() @IsString() destinationCategoryId?: string | null;
 }
 
 export class PublishNewsArticleDto {

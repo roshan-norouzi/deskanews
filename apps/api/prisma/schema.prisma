@@ -141,17 +141,44 @@ model NewsArticle {
   publishedAt           DateTime?
   wordpressPostId       String    @default("")
   wordpressPostUrl      String    @default("")
+  destinationCategoryId String?
+  categorySource        String    @default("")
   lastError             String    @default("")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   feed                  NewsFeed?            @relation(fields: [feedId], references: [id], onDelete: SetNull)
   platformFeedArticle   PlatformFeedArticle? @relation(fields: [platformFeedArticleId], references: [id], onDelete: SetNull)
+  destinationCategory   DestinationCategory? @relation(fields: [destinationCategoryId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, canonicalUrl])
   @@index([platformFeedArticleId])
   @@index([tenantId, status])
+  @@index([tenantId, destinationCategoryId])
   @@index([status, purgeAfter])
+}
+
+model DestinationCategory {
+  id               String        @id @default(cuid())
+  tenantId         String
+  platform         String
+  externalId       String
+  name             String
+  slug             String        @default("")
+  parentExternalId String        @default("")
+  status           String        @default("pending")
+  isGeneral        Boolean       @default(false)
+  syncedAt         DateTime?
+  approvedAt       DateTime?
+  approvedByUserId String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  approvedBy       User?         @relation("DestinationCategoryApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  articles         NewsArticle[]
+
+  @@unique([tenantId, platform, externalId])
+  @@index([tenantId, status])
 }
 
 model SocialArticle {
@@ -239,6 +266,7 @@ model User {
   auditLogs              AuditLog[]           @relation("AuditUser")
   activities             Activity[]           @relation("ActivityUser")
   userDocuments          UserDocument[]
+  approvedCategories     DestinationCategory[] @relation("DestinationCategoryApprover")
 
   @@index([nationalId])
 }
@@ -312,6 +340,7 @@ model Tenant {
   integrationHealth        IntegrationHealth[]
   contentWorkflowEvents    ContentWorkflowEvent[]
   usageCounters            TenantUsageCounter[]
+  destinationCategories    DestinationCategory[]
 
   @@index([status])
   @@index([createdByUserId])

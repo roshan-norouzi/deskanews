@@ -17,6 +17,7 @@ import {
 import type { CreatePlatformFeedDto, UpdatePlatformFeedDto } from '../../platform/admin/dto/platform-feed.dto';
 import type { ProbeFeedDto, SourceType, UpdateTenantPlatformFeedDto } from './dto/feed.dto';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
+import { DestinationCategoryService } from './destination-category.service';
 
 const PLATFORM_ARTICLE_MAX_AGE_DAYS = 10;
 
@@ -149,6 +150,7 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     private readonly gapGpt: GapGptClient,
     private readonly settings: PublishingSettingsService,
     private readonly usageTracking: UsageTrackingService,
+    private readonly destinationCategories: DestinationCategoryService,
   ) {}
 
   onModuleInit() {
@@ -660,6 +662,12 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
 
     if (result.count > 0) {
       await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_MONITORED, result.count);
+      await this.destinationCategories.categorizeArticlesByCanonicalUrls(
+        tenantId,
+        filtered.map((article) => article.canonicalUrl),
+      ).catch((error) => {
+        this.logger.warn(`Platform feed categorization failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+      });
     }
 
     for (const article of filtered.filter((row) => row.prepStatus === 'ready')) {

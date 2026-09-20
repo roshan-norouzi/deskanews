@@ -3,8 +3,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { Public, RequirePermission } from '../../common/decorators/metadata.decorator';
-import { TenantCtx } from '../../common/decorators/params.decorator';
-import type { TenantContext } from '../../common/decorators/params.decorator';
+import { TenantCtx, User } from '../../common/decorators/params.decorator';
+import type { AuthUser, TenantContext } from '../../common/decorators/params.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -21,6 +21,8 @@ import { SocialNetworkPublisherService } from './social-network-publisher.servic
 import { PublishingOperationsService } from './publishing-operations.service';
 import { FeedBulkService } from './feed-bulk.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
+import { DestinationCategoryService } from './destination-category.service';
+import { BulkApproveDestinationCategoriesDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
 @Controller('publishing')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 @RequirePermission('publishing.view')
@@ -35,6 +37,7 @@ export class SmartPublishingController {
     private readonly operations: PublishingOperationsService,
     private readonly feedBulk: FeedBulkService,
     private readonly integrationHealth: IntegrationHealthService,
+    private readonly destinationCategoryService: DestinationCategoryService,
   ) {}
 
   @Get('operations') operationsOverview(@TenantCtx() tenant: TenantContext) { return this.operations.overview(tenant.tenantId); }
@@ -86,6 +89,19 @@ export class SmartPublishingController {
   @Delete('settings/fonts/:id') @RequirePermission('publishing.settings') removeFont(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.settingsService.removeFont(tenant.tenantId, id).then(() => ({ ok: true })); }
   @Post('settings/images') @RequirePermission('publishing.settings') @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })) uploadCoverImage(@TenantCtx() tenant: TenantContext, @UploadedFile() file: { originalname: string; mimetype?: string; buffer: Buffer }) { return this.settingsService.addImage(tenant.tenantId, file); }
 
+  @Get('destination/categories') listDestinationCategories(@TenantCtx() tenant: TenantContext, @Query('status') status?: string) {
+    return this.destinationCategoryService.list(tenant.tenantId, status as 'pending' | 'approved' | 'rejected' | 'stale' | undefined);
+  }
+  @Post('destination/categories/sync') @RequirePermission('publishing.settings') syncDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser) {
+    return this.destinationCategoryService.syncFromDestination(tenant.tenantId, user.id);
+  }
+  @Patch('destination/categories/:id') @RequirePermission('publishing.settings') updateDestinationCategory(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Param('id') id: string, @Body() body: UpdateDestinationCategoryStatusDto) {
+    return this.destinationCategoryService.updateStatus(id, tenant.tenantId, body.status, user.id);
+  }
+  @Post('destination/categories/bulk-approve') @RequirePermission('publishing.settings') bulkApproveDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Body() body: BulkApproveDestinationCategoriesDto) {
+    return this.destinationCategoryService.bulkApprove(tenant.tenantId, body.ids, user.id);
+  }
+
   @Get('proxy/image') async proxyImage(@Query('url') url: string, @Res() response: Response) { const result = await this.sourceReader.proxyImage(String(url || '')); response.setHeader('Content-Type', result.contentType); response.setHeader('Cache-Control', 'private, max-age=3600'); return response.send(result.buffer); }
 
   @Get('feeds') feeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId); }
@@ -131,14 +147,27 @@ export class SmartPublishingController {
   @Post('news/feeds/:id/test') @RequirePermission('publishing.manage') testNewsFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.testFeed(tenant.tenantId, id); }
   @Post('news/feeds/probe') @RequirePermission('publishing.manage') probeNewsFeed(@Body() body: ProbeFeedDto) { return this.newsroom.probeFeed(body); }
   @Post('news/sync') @RequirePermission('publishing.manage') syncNews(@TenantCtx() tenant: TenantContext) { return this.newsroom.sync(tenant.tenantId); }
-  @Get('news/articles') newsArticles(@TenantCtx() tenant: TenantContext, @Query('status') status?: string) { return this.newsroom.articles(tenant.tenantId, status); }
+  @Get('news/articles') newsArticles(
+    @TenantCtx() tenant: TenantContext,
+    @Query('status') status?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('generalOnly') generalOnly?: string,
+  ) {
+    return this.newsroom.articles(tenant.tenantId, {
+      status,
+      categoryId,
+      generalOnly: generalOnly === 'true',
+    });
+  }
   @Delete('news/articles') @RequirePermission('publishing.manage') deleteAllNewsArticles(@TenantCtx() tenant: TenantContext) { return this.newsroom.deleteAllArticles(tenant.tenantId); }
   @Post('news/articles/:id/summarize') @RequirePermission('publishing.manage') summarize(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.summarize(tenant.tenantId, id); }
   @Post('news/articles/:id/reject') @RequirePermission('publishing.manage') reject(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.reject(tenant.tenantId, id); }
   @Post('news/articles/:id/send-to-social') @RequirePermission('publishing.manage') sendNewsToSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.sendNewsToStudio(tenant.tenantId, id); }
   @Post('news/articles/:id/translate-full') @RequirePermission('publishing.manage') translateNewsFull(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.translateFull(tenant.tenantId, id); }
   @Post('news/articles/:id/publish') @RequirePermission('publishing.publish') publishNews(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: PublishNewsArticleDto) { return this.newsroom.publish(tenant.tenantId, id, body); }
-  @Patch('news/articles/:id') @RequirePermission('publishing.manage') updateNews(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateNewsArticleDto) { return this.newsroom.updateArticle(tenant.tenantId, id, body); }
+  @Patch('news/articles/:id') @RequirePermission('publishing.manage') updateNews(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Param('id') id: string, @Body() body: UpdateNewsArticleDto) {
+    return this.newsroom.updateArticle(tenant.tenantId, id, body, user.id);
+  }
 
   @Get('social/feeds') socialFeeds(@TenantCtx() tenant: TenantContext) { return this.socialStudio.feeds(tenant.tenantId); }
   @Post('social/feeds') @RequirePermission('publishing.manage') addSocialFeed(@TenantCtx() tenant: TenantContext, @Body() body: CreateFeedDto) { return this.newsroom.addFeed(tenant.tenantId, { ...body, purpose: 'social-studio' }); }

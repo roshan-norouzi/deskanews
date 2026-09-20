@@ -23,10 +23,21 @@ import {
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 
 interface Feed { id: string; name: string; purpose: string; enabled: boolean }
+interface DestinationCategoryOption { id: string; name: string; isGeneral: boolean; status: string }
 
 export default function NewsPage() {
   const feedsApi = useApi<Feed[]>('/publishing/feeds');
-  const articlesApi = useApi<NewsArticleCardData[]>('/publishing/news/articles');
+  const categoriesApi = useApi<DestinationCategoryOption[]>('/publishing/destination/categories?status=approved');
+  const [categoryId, setCategoryId] = useState('');
+  const [generalOnly, setGeneralOnly] = useState(false);
+  const articlesPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (categoryId) params.set('categoryId', categoryId);
+    if (generalOnly) params.set('generalOnly', 'true');
+    const query = params.toString();
+    return `/publishing/news/articles${query ? `?${query}` : ''}`;
+  }, [categoryId, generalOnly]);
+  const articlesApi = useApi<NewsArticleCardData[]>(articlesPath);
   const { data: feedData } = feedsApi;
   const { data: articleData, execute: executeArticles } = articlesApi;
   const [status, setStatus] = useState<NewsroomFilter>('action');
@@ -46,6 +57,10 @@ export default function NewsPage() {
   const feeds = useMemo(
     () => (Array.isArray(feedData) ? feedData.filter((feed) => feed.purpose === 'news-room') : []),
     [feedData],
+  );
+  const approvedCategories = useMemo(
+    () => (Array.isArray(categoriesApi.data) ? categoriesApi.data : []),
+    [categoriesApi.data],
   );
   const articles = useMemo(() => (Array.isArray(articleData) ? articleData : []), [articleData]);
 
@@ -176,6 +191,26 @@ export default function NewsPage() {
     'خبر با تیتر و خلاصه کوتاه در استودیوی اجتماعی آماده شد.',
   );
 
+  const assignCategory = useCallback(async (articleId: string, destinationCategoryId: string | null) => {
+    setBusy(`category-${articleId}`);
+    setNotice(null);
+    try {
+      await apiFetch(`/publishing/news/articles/${articleId}`, {
+        method: 'PATCH',
+        body: { destinationCategoryId },
+      });
+      setNotice({ type: 'success', text: 'دسته‌بندی خبر به‌روزرسانی شد.' });
+      await articlesApi.refetch();
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        text: error instanceof ApiError ? error.message : 'تغییر دسته‌بندی انجام نشد.',
+      });
+    } finally {
+      setBusy(null);
+    }
+  }, [articlesApi]);
+
   const reject = (id: string) => {
     if (!window.confirm('این خبر رد شود؟ خبر پس از ۳ روز برای همیشه حذف خواهد شد.')) return;
     void run(
@@ -275,7 +310,7 @@ export default function NewsPage() {
         </section>
 
         <Card className="p-4">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="grid gap-1.5 text-sm font-medium text-slate-700">
               نمایش
               <select className="rounded-xl border px-3 py-2.5" value={status} onChange={(event) => setStatus(event.target.value as NewsroomFilter)}>
@@ -292,6 +327,29 @@ export default function NewsPage() {
                   <option key={feed.id} value={feed.id}>
                     {feed.name}{feed.enabled ? '' : ' (متوقف)'}
                   </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              دسته‌بندی مقصد
+              <select
+                className="rounded-xl border px-3 py-2.5"
+                value={generalOnly ? '__general__' : categoryId}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === '__general__') {
+                    setGeneralOnly(true);
+                    setCategoryId('');
+                    return;
+                  }
+                  setGeneralOnly(false);
+                  setCategoryId(value);
+                }}
+              >
+                <option value="">همه دسته‌ها</option>
+                <option value="__general__">فقط عمومی (دسته‌بندی‌نشده)</option>
+                {approvedCategories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
                 ))}
               </select>
             </label>
@@ -336,6 +394,8 @@ export default function NewsPage() {
                 key={article.id}
                 article={article}
                 busyKey={busy}
+                categories={approvedCategories}
+                onAssignCategory={assignCategory}
                 onSummarize={summarize}
                 onTranslateFull={(id) => { void translateFull(id); }}
                 onSendToSocial={sendToSocial}

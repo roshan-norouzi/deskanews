@@ -17,6 +17,7 @@ import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-
 import { buildLatestFeedPreviewItems } from './feed-preview';
 import { PlatformFeedService } from './platform-feed.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
+import { DestinationCategoryService } from './destination-category.service';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
@@ -129,6 +130,7 @@ export class NewsroomService {
     private readonly workflow: ContentWorkflowService,
     private readonly platformFeeds: PlatformFeedService,
     private readonly usageTracking: UsageTrackingService,
+    private readonly destinationCategories: DestinationCategoryService,
   ) {}
 
   private recordWorkflow(params: {
@@ -275,8 +277,9 @@ export class NewsroomService {
     return { ok: true };
   }
 
-  async articles(tenantId: string, status?: string) {
+  async articles(tenantId: string, filters: { status?: string; categoryId?: string; generalOnly?: boolean } = {}) {
     await this.purgeRejected();
+    const { status, categoryId, generalOnly } = filters;
     if (status && !NEWS_STATUSES.includes(status as (typeof NEWS_STATUSES)[number])) {
       throw new BadRequestException('وضعیت خبر معتبر نیست');
     }
@@ -288,8 +291,13 @@ export class NewsroomService {
           { platformFeedArticleId: { not: null } },
         ],
         ...(status ? { status } : {}),
+        ...(categoryId ? { destinationCategoryId: categoryId } : {}),
+        ...(generalOnly ? { destinationCategory: { isGeneral: true } } : {}),
       },
-      include: { feed: { select: { id: true, name: true, purpose: true } } },
+      include: {
+        feed: { select: { id: true, name: true, purpose: true } },
+        destinationCategory: { select: { id: true, name: true, isGeneral: true } },
+      },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
       take: 200,
     });
@@ -308,10 +316,13 @@ export class NewsroomService {
     return { ok: true, deleted: result.count };
   }
 
-  async updateArticle(tenantId: string, id: string, data: UpdateNewsArticleDto) {
+  async updateArticle(tenantId: string, id: string, data: UpdateNewsArticleDto, userId?: string) {
     const article = await this.findArticle(tenantId, id);
     if (['rejected', 'publishing', 'published', 'social_processing', 'social_sent'].includes(article.status)) {
       throw new BadRequestException('ویرایش خبر در وضعیت فعلی مجاز نیست');
+    }
+    if (data.destinationCategoryId !== undefined) {
+      return this.destinationCategories.assignManualCategory(tenantId, id, data.destinationCategoryId, userId);
     }
     const titleFa = data.titleFa !== undefined ? data.titleFa.trim() : article.titleFa;
     const summaryFa = data.summaryFa !== undefined ? data.summaryFa.trim() : article.summaryFa;
@@ -324,6 +335,9 @@ export class NewsroomService {
         ...(data.titleFa !== undefined ? { titleFa } : {}),
         ...(data.summaryFa !== undefined ? { summaryFa } : {}),
         ...(data.status ? { status: data.status } : {}),
+      },
+      include: {
+        destinationCategory: { select: { id: true, name: true, isGeneral: true } },
       },
     });
     if (data.status && data.status !== article.status) {
@@ -367,6 +381,10 @@ export class NewsroomService {
       }) : { count: 0 };
       if (result.count > 0) {
         await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_MONITORED, result.count);
+        await this.destinationCategories.categorizeArticlesByCanonicalUrls(
+          tenantId,
+          filtered.map((entry) => entry.canonicalUrl),
+        ).catch((error) => this.logger.warn(`Feed categorization failed: ${error instanceof Error ? error.message : 'unknown error'}`));
       }
       await this.prisma.newsFeed.update({
         where: { id: feedId },
@@ -554,7 +572,16 @@ export class NewsroomService {
       await this.usageTracking.record(tenantId, summaryIsPersian ? USAGE_METRIC_KEYS.NEWS_REWRITTEN : USAGE_METRIC_KEYS.NEWS_SUMMARIZED, 1);
       await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_PREPARED, 1);
       await this.recordWorkflow({ tenantId, id, fromStatus: 'processing', toStatus: 'ready', action: 'prepared', title: `خبر «${updated.titleFa}» آماده شد` });
-      return updated;
+      const current = await this.prisma.newsArticle.findUnique({
+        where: { id },
+        include: { destinationCategory: { select: { isGeneral: true } } },
+      });
+      if (current?.categorySource !== 'manual' && current?.destinationCategory?.isGeneral) {
+        await this.destinationCategories.categorizeArticle(tenantId, id).catch((error) => {
+          this.logger.warn(`Re-categorization after summarize failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+        });
+      }
+      return this.findArticle(tenantId, id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'خطای ناشناخته GapGPT';
       await this.prisma.newsArticle.updateMany({ where: { id, tenantId, status: 'processing' }, data: { status: 'failed', processingStartedAt: null, lastError: message.slice(0, 1000) } });

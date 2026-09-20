@@ -2,6 +2,13 @@
 
 All notable releases of Deska News follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.7 — 2026-09-20
+
+- Destination category sync from WordPress with admin approve/reject workflow
+- Newsroom articles auto-categorized to approved destination categories (AI with general fallback)
+- Category filter and manual reassignment in newsroom UI
+- Database migration: `DestinationCategory` model and article category fields
+
 ## 1.0.6 — 2026-09-20
 
 - Fix Prisma migration chain drift so CI and production deploy stay in sync with `schema.prisma`

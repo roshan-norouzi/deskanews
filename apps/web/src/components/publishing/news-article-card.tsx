@@ -50,6 +50,13 @@ export interface NewsArticleCardData {
   featuredImageUrl: string | null;
   contentFa?: string;
   lastError: string;
+  destinationCategory?: { id: string; name: string; isGeneral: boolean } | null;
+}
+
+interface DestinationCategoryOption {
+  id: string;
+  name: string;
+  isGeneral: boolean;
 }
 
 export const NEWS_STATUS_META: Record<NewsStatus, { label: string; badge: BadgeProps['variant'] }> = {
@@ -79,6 +86,8 @@ type CardAction = {
 interface NewsArticleCardProps {
   article: NewsArticleCardData;
   busyKey: string | null;
+  categories?: DestinationCategoryOption[];
+  onAssignCategory?: (articleId: string, destinationCategoryId: string | null) => void;
   onSummarize: (id: string) => void;
   onTranslateFull: (id: string) => void;
   onSendToSocial: (id: string) => void;
@@ -96,6 +105,8 @@ function isProcessing(status: NewsStatus) {
 export function NewsArticleCard({
   article,
   busyKey,
+  categories = [],
+  onAssignCategory,
   onSummarize,
   onTranslateFull,
   onSendToSocial,
@@ -210,6 +221,30 @@ export function NewsArticleCard({
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
                   {article.sourceName || 'منبع نامشخص'}
                 </span>
+                {article.destinationCategory ? (
+                  <span className={cn(
+                    'rounded-full px-2.5 py-1 font-medium',
+                    article.destinationCategory.isGeneral
+                      ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-100'
+                      : 'bg-violet-50 text-violet-800 ring-1 ring-violet-100',
+                  )}>
+                    {article.destinationCategory.name}
+                  </span>
+                ) : null}
+                {categories.length > 0 && onAssignCategory ? (
+                  <select
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                    value={article.destinationCategory?.id || ''}
+                    disabled={isBusy(busyKey, article.id, 'category')}
+                    onChange={(event) => onAssignCategory(article.id, event.target.value || null)}
+                    aria-label="تغییر دسته‌بندی خبر"
+                  >
+                    <option value="">عمومی</option>
+                    {categories.filter((category) => !category.isGeneral).map((category) => (
+                      <option key={category.id} value={category.id}>{category.name}</option>
+                    ))}
+                  </select>
+                ) : null}
                 <span className="text-slate-400">·</span>
                 <time dateTime={article.publishedAtSource ?? undefined}>
                   {article.publishedAtSource
