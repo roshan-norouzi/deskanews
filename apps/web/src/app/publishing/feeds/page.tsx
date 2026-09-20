@@ -147,8 +147,9 @@ export default function FeedsPage() {
   const visibleFeeds = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
     return feedsByGroup[activeGroup].filter((feed) => {
-      const queryMatches = !normalized || `${feed.name} ${feed.url} ${(feed.includeWords || []).join(' ')}`.toLocaleLowerCase('fa').includes(normalized);
-      return queryMatches;
+      if (!normalized) return true;
+      return feed.name.toLocaleLowerCase('fa').includes(normalized)
+        || feed.url.toLocaleLowerCase('fa').includes(normalized);
     });
   }, [activeGroup, feedsByGroup, query]);
 
@@ -267,7 +268,28 @@ export default function FeedsPage() {
           }
         />
 
-        <PlatformFeedsSection activeGroup={activeGroup} onActiveGroupChange={setActiveGroup} />
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label className="relative w-full sm:max-w-md">
+              <span className="sr-only">جست‌وجوی نام رسانه</span>
+              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="جست‌وجوی نام رسانه..."
+                className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+              />
+            </label>
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Radio className="h-4 w-4" />
+              {query.trim()
+                ? `نمایش نتایج جست‌وجو`
+                : 'همه منابع'}
+            </div>
+          </div>
+        </Card>
+
+        <PlatformFeedsSection activeGroup={activeGroup} onActiveGroupChange={setActiveGroup} searchQuery={query} />
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -286,12 +308,12 @@ export default function FeedsPage() {
         {loadError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">دریافت فیدها انجام نشد: {loadError}</div>}
 
         <Card className="overflow-hidden">
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="جست‌وجوی نام یا آدرس منبع..." className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" />
-            </div>
-              <div className="flex items-center gap-2 text-sm text-slate-500"><Radio className="h-4 w-4" /> {visibleFeeds.length} منبع</div>
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-500">
+              {query.trim()
+                ? `${visibleFeeds.length} منبع اختصاصی در نتایج جست‌وجو`
+                : `${visibleFeeds.length} منبع اختصاصی`}
+            </p>
           </div>
 
           {isLoading ? (

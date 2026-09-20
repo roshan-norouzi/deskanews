@@ -61,6 +61,11 @@ model PlatformFeed {
   enabled             Boolean                @default(true)
   lastFetchedAt       DateTime?
   lastError           String                 @default("")
+  healthStatus        String                 @default("unknown")
+  healthCheckedAt     DateTime?
+  healthItemCount     Int                    @default(0)
+  healthError         String                 @default("")
+  healthFailSince     DateTime?
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
   articles            PlatformFeedArticle[]

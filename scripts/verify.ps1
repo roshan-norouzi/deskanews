@@ -33,6 +33,32 @@ function Test-Step {
     }
 }
 
+function Invoke-QuietCommand {
+    param(
+        [scriptblock]$Command,
+        [string]$FailureMessage = 'Command failed'
+    )
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
+function Get-QuietCommandOutput {
+    param([scriptblock]$Command)
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        return (& $Command 2>&1 | Out-String)
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
 function Test-PortInUse {
     param([int]$Port)
     $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -63,10 +89,46 @@ $apiBase = "http://localhost:$apiPort"
 
 if (-not $LiveOnly) {
     Test-Step "Prisma schema" {
-        pnpm --filter @deska/api db:generate | Out-Null
-        pnpm --filter @deska/api exec prisma validate | Out-Null
+        $generateAttempts = 0
+        $generateOk = $false
+        while ($generateAttempts -lt 3) {
+            $generateAttempts++
+            $previousPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                pnpm --filter @deska/api db:generate 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    $generateOk = $true
+                    break
+                }
+            } finally {
+                $ErrorActionPreference = $previousPreference
+            }
+            Start-Sleep -Seconds 2
+        }
+        if (-not $generateOk) {
+            $clientEngine = Join-Path $root 'node_modules\.pnpm\@prisma+client@*\node_modules\.prisma\client\query_engine-windows.dll.node'
+            $existingClient = @(Get-ChildItem -Path $clientEngine -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if (-not $existingClient) {
+                throw 'prisma generate failed (Windows EPERM usually means the API dev process is locking query_engine-windows.dll.node; stop dev servers and retry)'
+            }
+            Write-Host '  WARN: prisma generate skipped because the dev API process locks the query engine; using existing client' -ForegroundColor DarkYellow
+        }
+        Invoke-QuietCommand { pnpm --filter @deska/api exec prisma validate } -FailureMessage 'prisma validate failed'
     }
-    Test-Step "Database migrations" { pnpm --filter @deska/api exec prisma migrate status | Out-Null }
+    Test-Step "Database migrations" {
+        Invoke-QuietCommand { pnpm --filter @deska/api exec prisma migrate deploy } -FailureMessage 'prisma migrate deploy failed'
+        $migrationStatus = Get-QuietCommandOutput { pnpm --filter @deska/api exec prisma migrate status }
+        if ($migrationStatus -match 'Following migrations have not yet been applied') {
+            throw 'Pending migrations remain after migrate deploy'
+        }
+        if ($migrationStatus -match 'migrations? from the database are not found locally') {
+            throw 'Database migration history does not match prisma/migrations (restore missing migration folders or run prisma migrate resolve)'
+        }
+        if ($migrationStatus -notmatch 'Database schema is up to date') {
+            throw "Unexpected migration status:`n$migrationStatus"
+        }
+    }
     Test-Step "Tenant data integrity" { pnpm db:audit | Out-Null }
     Test-Step "Build shared" { pnpm --filter @deska/shared build | Out-Null }
     Test-Step "Typecheck" { pnpm typecheck | Out-Null }

@@ -11,6 +11,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r --if-present test",
     "db:migrate": "pnpm --filter @deska/api db:migrate",
+    "db:migrate:deploy": "pnpm --filter @deska/api db:migrate:deploy",
     "db:sync": "pnpm --filter @deska/api db:sync",
     "db:seed": "pnpm --filter @deska/api db:seed",
     "db:audit": "node scripts/audit-db-integrity.cjs",

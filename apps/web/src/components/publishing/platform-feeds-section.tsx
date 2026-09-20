@@ -71,9 +71,17 @@ const DEFAULT_ORG_POLL_MINUTES = 240;
 interface PlatformFeedsSectionProps {
   activeGroup: FeedCatalogGroup;
   onActiveGroupChange: (group: FeedCatalogGroup) => void;
+  searchQuery?: string;
 }
 
-export function PlatformFeedsSection({ activeGroup, onActiveGroupChange }: PlatformFeedsSectionProps) {
+function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery: string) {
+  const normalized = searchQuery.trim().toLocaleLowerCase('fa');
+  if (!normalized) return true;
+  return feed.name.toLocaleLowerCase('fa').includes(normalized)
+    || String(feed.url || '').toLocaleLowerCase('fa').includes(normalized);
+}
+
+export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQuery = '' }: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
   const { isSuperAdmin } = useAuth();
   const { activeTenant } = useTenant();
@@ -90,6 +98,10 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange }: Platf
     }
     return grouped;
   }, [feeds]);
+  const visibleFeeds = useMemo(
+    () => feedsByGroup[activeGroup].filter((feed) => matchesFeedNameSearch(feed, searchQuery)),
+    [activeGroup, feedsByGroup, searchQuery],
+  );
   const activeCountsByGroup = useMemo(() => {
     const counts = {} as Record<FeedCatalogGroup, number>;
     for (const group of FEED_CATALOG_GROUP_ORDER) {
@@ -201,8 +213,15 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange }: Platf
 
       <Card className="overflow-hidden">
         <div className="border-b border-slate-100 px-5 py-4">
-          <h3 className="font-semibold text-slate-900">{FEED_CATALOG_GROUPS[activeGroup].label}</h3>
-          <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-semibold text-slate-900">{FEED_CATALOG_GROUPS[activeGroup].label}</h3>
+              <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
+            </div>
+            {searchQuery.trim() ? (
+              <p className="text-xs text-slate-500">{formatPersianDigits(visibleFeeds.length)} نتیجه از {formatPersianDigits(feedsByGroup[activeGroup].length)} منبع</p>
+            ) : null}
+          </div>
         </div>
         {isLoading ? (
           <div className="grid min-h-40 place-items-center"><span className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
@@ -212,9 +231,13 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange }: Platf
               ? 'منبع پیش‌فرض فعالی ثبت نشده است.'
               : `در دسته «${FEED_CATALOG_GROUPS[activeGroup].label}» منبعی وجود ندارد.`}
           </div>
+        ) : visibleFeeds.length === 0 ? (
+          <div className="px-6 py-10 text-center text-sm text-slate-500">
+            رسانه‌ای با نام «{searchQuery.trim()}» در این دسته پیدا نشد.
+          </div>
         ) : (
           <FeedSourceCardGrid>
-            {feedsByGroup[activeGroup].map((feed) => (
+            {visibleFeeds.map((feed) => (
               <FeedSourceCard
                 key={feed.id}
                 name={feed.name}

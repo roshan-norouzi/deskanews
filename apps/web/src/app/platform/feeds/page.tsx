@@ -42,7 +42,18 @@ interface PlatformFeed {
   enabled: boolean;
   lastFetchedAt: string | null;
   lastError: string;
+  healthStatus?: 'healthy' | 'degraded' | 'down' | 'unknown';
+  healthCheckedAt?: string | null;
+  healthItemCount?: number;
+  healthError?: string;
+  healthFailSince?: string | null;
 }
+
+type CatalogHealthSettings = {
+  catalog_health_enabled: string;
+  catalog_health_interval_hours: string;
+  catalog_health_last_run_at: string;
+};
 
 interface FeedForm {
   name: string;
@@ -99,6 +110,11 @@ export default function PlatformFeedsPage() {
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
   const [form, setForm] = useState<FeedForm>(EMPTY_FORM);
   const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
+  const [healthSettings, setHealthSettings] = useState<CatalogHealthSettings>({
+    catalog_health_enabled: 'true',
+    catalog_health_interval_hours: '6',
+    catalog_health_last_run_at: '',
+  });
   const editingIdRef = useRef<string | null>(null);
 
   const feedsByGroup = useMemo(() => {
@@ -117,8 +133,12 @@ export default function PlatformFeedsPage() {
     setLoading(true);
     setError('');
     try {
-      const result = await apiFetch<PlatformFeed[]>('/platform/feeds', { skipTenant: true });
+      const [result, settings] = await Promise.all([
+        apiFetch<PlatformFeed[]>('/platform/feeds', { skipTenant: true }),
+        apiFetch<CatalogHealthSettings>('/platform/catalog-health-settings', { skipTenant: true }),
+      ]);
       setFeeds(Array.isArray(result) ? result : []);
+      setHealthSettings(settings);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'دریافت منابع پیش‌فرض انجام نشد');
     } finally {
@@ -191,11 +211,56 @@ export default function PlatformFeedsPage() {
     setBusy(`test-${feed.id}`);
     setNotice(null);
     try {
-      const result = await apiFetch<HealthResult>(`/platform/feeds/${feed.id}/test`, { method: 'POST', skipTenant: true });
+      const result = await apiFetch<HealthResult & { healthStatus?: PlatformFeed['healthStatus']; healthError?: string }>(
+        `/platform/feeds/${feed.id}/test`,
+        { method: 'POST', skipTenant: true },
+      );
       setHealth(result);
       setHealthOpen(true);
+      await load();
     } catch (reason) {
       setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'تست منبع انجام نشد' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function saveHealthSettings() {
+    setBusy('health-settings');
+    setNotice(null);
+    try {
+      const saved = await apiFetch<CatalogHealthSettings>('/platform/catalog-health-settings', {
+        method: 'PUT',
+        skipTenant: true,
+        body: {
+          catalog_health_enabled: healthSettings.catalog_health_enabled,
+          catalog_health_interval_hours: healthSettings.catalog_health_interval_hours,
+        },
+      });
+      setHealthSettings(saved);
+      setNotice({ type: 'success', text: 'تنظیمات تست سلامت ذخیره شد.' });
+    } catch (reason) {
+      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'ذخیره تنظیمات انجام نشد' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function runHealthChecksNow() {
+    setBusy('health-run');
+    setNotice(null);
+    try {
+      const result = await apiFetch<{ healthy: number; degraded: number; down: number }>('/platform/feeds/health-check', {
+        method: 'POST',
+        skipTenant: true,
+      });
+      await load();
+      setNotice({
+        type: 'success',
+        text: `تست سلامت انجام شد: ${result.healthy} سالم، ${result.degraded} موقت، ${result.down} قطع.`,
+      });
+    } catch (reason) {
+      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'اجرای تست سلامت انجام نشد' });
     } finally {
       setBusy('');
     }
@@ -279,6 +344,63 @@ export default function PlatformFeedsPage() {
           </div>
         )}
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+        <Card className="p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="font-bold text-slate-900">تست سلامت خودکار کاتالوگ</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                در بازه زمانی مشخص، هر منبع فعال بررسی می‌شود که ۵ مطلب آخر را دریافت کند. وضعیت با دایره رنگی کنار نام منبع نمایش داده می‌شود.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" isLoading={busy === 'health-run'} onClick={() => void runHealthChecksNow()}>
+                اجرای فوری
+              </Button>
+              <Button size="sm" isLoading={busy === 'health-settings'} onClick={() => void saveHealthSettings()}>
+                ذخیره تنظیمات
+              </Button>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+              فاصله تست (ساعت)
+              <input
+                type="number"
+                min={1}
+                max={168}
+                dir="ltr"
+                className="rounded-xl border px-3 py-2.5"
+                value={healthSettings.catalog_health_interval_hours}
+                onChange={(e) => setHealthSettings((current) => ({ ...current, catalog_health_interval_hours: e.target.value }))}
+              />
+            </label>
+            <label className="flex items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+              <input
+                type="checkbox"
+                checked={healthSettings.catalog_health_enabled === 'true'}
+                onChange={(e) => setHealthSettings((current) => ({
+                  ...current,
+                  catalog_health_enabled: e.target.checked ? 'true' : 'false',
+                }))}
+              />
+              <span>تست خودکار فعال باشد</span>
+            </label>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              <div className="font-medium text-slate-800">آخرین اجرای خودکار</div>
+              <div className="mt-1">
+                {healthSettings.catalog_health_last_run_at
+                  ? new Date(healthSettings.catalog_health_last_run_at).toLocaleString('fa-IR')
+                  : 'هنوز اجرا نشده'}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> سالم</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> مشکل موقت</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> قطع طولانی</span>
+              </div>
+            </div>
+          </div>
+        </Card>
 
         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
           {FEED_CATALOG_GROUP_ORDER.map((group) => {

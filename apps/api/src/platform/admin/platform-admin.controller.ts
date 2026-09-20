@@ -23,6 +23,7 @@ import { PublishingSettingsService } from '../../modules/smart-publishing/publis
 import { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
 import { UpdatePlatformAiSettingsDto } from './dto/platform-ai-settings.dto';
 import { UpdatePlatformSourceFetchSettingsDto } from './dto/platform-source-fetch-settings.dto';
+import { UpdatePlatformCatalogHealthSettingsDto } from './dto/platform-catalog-health-settings.dto';
 import { SourceReaderService } from '../../modules/smart-publishing/source-reader.service';
 
 @Controller('platform')
@@ -227,6 +228,24 @@ export class PlatformAdminController {
   fetchPlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
     this.assertSuperAdmin(actor);
     return this.platformFeeds.fetch(id);
+  }
+
+  @Post('feeds/health-check')
+  runCatalogHealthChecks(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.platformFeeds.runCatalogHealthChecks();
+  }
+
+  @Get('catalog-health-settings')
+  catalogHealthSettings(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.publishingSettings.getGlobalCatalogHealthPublic();
+  }
+
+  @Put('catalog-health-settings')
+  saveCatalogHealthSettings(@User() actor: AuthUser, @Body() body: UpdatePlatformCatalogHealthSettingsDto) {
+    this.assertSuperAdmin(actor);
+    return this.publishingSettings.saveGlobalCatalogHealth(body);
   }
 
   @Get('ai-settings')

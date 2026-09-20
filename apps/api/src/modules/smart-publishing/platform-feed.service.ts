@@ -18,6 +18,13 @@ import type { CreatePlatformFeedDto, UpdatePlatformFeedDto } from '../../platfor
 import type { ProbeFeedDto, SourceType, UpdateTenantPlatformFeedDto } from './dto/feed.dto';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { DestinationCategoryService } from './destination-category.service';
+import {
+  evaluatePlatformFeedHealth,
+  normalizeCatalogHealthIntervalHours,
+  parseCatalogHealthEnabled,
+  PLATFORM_FEED_HEALTH_ITEM_TARGET,
+  type PlatformFeedHealthStatus,
+} from './platform-feed-health';
 
 const PLATFORM_ARTICLE_MAX_AGE_DAYS = 10;
 
@@ -33,6 +40,11 @@ function mapCatalogFeed(feed: {
   enabled: boolean;
   lastFetchedAt: Date | null;
   lastError: string;
+  healthStatus?: string;
+  healthCheckedAt?: Date | null;
+  healthItemCount?: number;
+  healthError?: string;
+  healthFailSince?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
@@ -49,6 +61,11 @@ function mapCatalogFeed(feed: {
     enabled: feed.enabled,
     lastFetchedAt: feed.lastFetchedAt,
     lastError: feed.lastError,
+    healthStatus: feed.healthStatus || 'unknown',
+    healthCheckedAt: feed.healthCheckedAt,
+    healthItemCount: feed.healthItemCount ?? 0,
+    healthError: feed.healthError || '',
+    healthFailSince: feed.healthFailSince,
     createdAt: feed.createdAt,
     updatedAt: feed.updatedAt,
   };
@@ -143,6 +160,7 @@ function normalizeCatalogGroup(
 @Injectable()
 export class PlatformFeedService implements OnModuleInit {  private readonly logger = new Logger(PlatformFeedService.name);
   private maintenanceRunning = false;
+  private healthMaintenanceRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -338,10 +356,10 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
 
   async test(id: string) {
     const feed = await this.findFeed(id);
-    const entries = await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url);
-    const items = buildLatestFeedPreviewItems(entries, [], []);
+    const health = await this.checkFeedHealth(feed);
+    const items = health.items;
     return {
-      ok: true,
+      ok: health.status === 'healthy',
       source: {
         id: feed.id,
         name: feed.name,
@@ -350,8 +368,113 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
         resolvedFeedUrl: feed.resolvedFeedUrl,
       },
       discoveredFeedUrl: feed.resolvedFeedUrl || null,
+      healthStatus: health.status,
+      healthError: health.errorMessage,
       items,
     };
+  }
+
+  async runCatalogHealthChecks() {
+    const feeds = await this.prisma.platformFeed.findMany({
+      where: { enabled: true },
+      orderBy: [{ catalogGroup: 'asc' }, { name: 'asc' }],
+    });
+    const results = [];
+    for (const feed of feeds) {
+      results.push(await this.checkFeedHealth(feed));
+    }
+    await this.settings.markCatalogHealthLastRun(new Date());
+    return {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      total: results.length,
+      healthy: results.filter((item) => item.status === 'healthy').length,
+      degraded: results.filter((item) => item.status === 'degraded').length,
+      down: results.filter((item) => item.status === 'down').length,
+      results: results.map((item) => ({
+        id: item.feedId,
+        name: item.name,
+        status: item.status,
+        itemCount: item.itemCount,
+        errorMessage: item.errorMessage,
+      })),
+    };
+  }
+
+  private async checkFeedHealth(feed: {
+    id: string;
+    name: string;
+    url: string;
+    sourceType: string;
+    resolvedFeedUrl: string;
+    healthFailSince?: Date | null;
+  }) {
+    try {
+      const { entries } = await this.sourceReader.readSourceWithMeta(feed.sourceType || 'rss', feed.url, {
+        resolvedFeedUrl: feed.resolvedFeedUrl,
+      });
+      const items = buildLatestFeedPreviewItems(entries, [], [], PLATFORM_FEED_HEALTH_ITEM_TARGET);
+      const evaluation = evaluatePlatformFeedHealth({
+        itemCount: items.length,
+        totalEntries: entries.length,
+        previousFailSince: feed.healthFailSince,
+      });
+      await this.persistFeedHealth(feed.id, evaluation, items.length);
+      return {
+        feedId: feed.id,
+        name: feed.name,
+        status: evaluation.status,
+        itemCount: items.length,
+        errorMessage: evaluation.errorMessage,
+        items,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'خطای ناشناخته دریافت منبع';
+      const evaluation = evaluatePlatformFeedHealth({
+        itemCount: 0,
+        totalEntries: 0,
+        previousFailSince: feed.healthFailSince,
+        failed: true,
+        errorMessage: message.slice(0, 500),
+      });
+      await this.persistFeedHealth(feed.id, evaluation, 0);
+      return {
+        feedId: feed.id,
+        name: feed.name,
+        status: evaluation.status,
+        itemCount: 0,
+        errorMessage: evaluation.errorMessage,
+        items: [],
+      };
+    }
+  }
+
+  private async persistFeedHealth(
+    feedId: string,
+    evaluation: { status: PlatformFeedHealthStatus; failSince: Date | null; errorMessage: string },
+    itemCount: number,
+  ) {
+    await this.prisma.platformFeed.update({
+      where: { id: feedId },
+      data: {
+        healthStatus: evaluation.status,
+        healthCheckedAt: new Date(),
+        healthItemCount: itemCount,
+        healthError: evaluation.errorMessage,
+        healthFailSince: evaluation.failSince,
+      },
+    });
+  }
+
+  private async shouldRunScheduledCatalogHealth(now = new Date()): Promise<boolean> {
+    const settings = await this.settings.getGlobalCatalogHealthPublic();
+    if (!parseCatalogHealthEnabled(settings.catalog_health_enabled)) return false;
+    const intervalHours = normalizeCatalogHealthIntervalHours(settings.catalog_health_interval_hours);
+    const lastRunRaw = settings.catalog_health_last_run_at;
+    if (!lastRunRaw) return true;
+    const lastRun = new Date(lastRunRaw);
+    if (Number.isNaN(lastRun.getTime())) return true;
+    return now.getTime() - lastRun.getTime() >= intervalHours * 60 * 60 * 1000;
   }
 
   async auditAll() {
@@ -830,6 +953,23 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
       this.logger.error(`Platform feed maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       this.maintenanceRunning = false;
+    }
+  }
+
+  @Interval('platform-feed-health', 60_000)
+  async healthMaintenance() {
+    if (this.healthMaintenanceRunning) return;
+    this.healthMaintenanceRunning = true;
+    try {
+      if (!(await this.shouldRunScheduledCatalogHealth())) return;
+      const result = await this.runCatalogHealthChecks();
+      this.logger.log(
+        `Catalog health checks completed: ${result.healthy} healthy, ${result.degraded} degraded, ${result.down} down`,
+      );
+    } catch (error) {
+      this.logger.warn(`Catalog health maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      this.healthMaintenanceRunning = false;
     }
   }
 

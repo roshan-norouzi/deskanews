@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
 import { feedSourceMeta } from '@/lib/feed-source-types';
+import { cn } from '@/lib/utils';
+
+export type PlatformFeedHealthStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 
 export interface PlatformFeedRow {
   id: string;
@@ -18,6 +21,29 @@ export interface PlatformFeedRow {
   enabled: boolean;
   lastFetchedAt: string | null;
   lastError: string;
+  healthStatus?: PlatformFeedHealthStatus;
+  healthCheckedAt?: string | null;
+  healthItemCount?: number;
+  healthError?: string;
+  healthFailSince?: string | null;
+}
+
+const HEALTH_META: Record<PlatformFeedHealthStatus, { label: string; className: string }> = {
+  healthy: { label: 'سالم — ۵ مطلب آخر دریافت می‌شود', className: 'bg-emerald-500' },
+  degraded: { label: 'مشکل موقت — تست سلامت اخیر ناموفق یا ناقص بود', className: 'bg-amber-400' },
+  down: { label: 'قطع طولانی — مدت زیادی است منبع پاسخ نمی‌دهد', className: 'bg-red-500' },
+  unknown: { label: 'هنوز تست سلامت انجام نشده', className: 'bg-slate-300' },
+};
+
+export function FeedHealthDot({ status, title }: { status?: PlatformFeedHealthStatus; title?: string }) {
+  const meta = HEALTH_META[status || 'unknown'];
+  return (
+    <span
+      className={cn('inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white', meta.className)}
+      title={title || meta.label}
+      aria-label={title || meta.label}
+    />
+  );
 }
 
 interface PlatformFeedCatalogTableProps {
@@ -64,6 +90,12 @@ export function PlatformFeedCatalogTable({
           {feeds.map((feed) => {
             const sourceMeta = feedSourceMeta(feed.sourceType);
             const SourceIcon = sourceMeta.icon;
+            const healthStatus = (feed.healthStatus || 'unknown') as PlatformFeedHealthStatus;
+            const healthTitle = feed.healthError
+              ? `${HEALTH_META[healthStatus].label} — ${feed.healthError}`
+              : feed.healthCheckedAt
+                ? `${HEALTH_META[healthStatus].label} — ${new Date(feed.healthCheckedAt).toLocaleString('fa-IR')}`
+                : HEALTH_META[healthStatus].label;
             return (
               <tr key={feed.id} className="hover:bg-slate-50/80">
                 <td className="px-5 py-4">
@@ -75,14 +107,23 @@ export function PlatformFeedCatalogTable({
                       size="sm"
                     />
                     <div className="min-w-0">
-                      <div className="font-semibold text-slate-900">{feed.name}</div>
+                      <div className="flex items-center gap-2 font-semibold text-slate-900">
+                        <FeedHealthDot status={healthStatus} title={healthTitle} />
+                        <span>{feed.name}</span>
+                      </div>
                       <div className="mt-1 truncate text-xs text-slate-500" dir="ltr">{feed.url}</div>
-                  {feed.resolvedFeedUrl && (
-                    <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">
-                      فید: {feed.resolvedFeedUrl}
-                    </div>
-                  )}
-                  {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
+                      {feed.resolvedFeedUrl && (
+                        <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">
+                          فید: {feed.resolvedFeedUrl}
+                        </div>
+                      )}
+                      {feed.healthCheckedAt && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          آخرین تست سلامت: {new Date(feed.healthCheckedAt).toLocaleString('fa-IR')}
+                          {typeof feed.healthItemCount === 'number' ? ` · ${feed.healthItemCount} مطلب` : ''}
+                        </div>
+                      )}
+                      {feed.lastError && <div className="mt-1 text-xs text-red-600">{feed.lastError}</div>}
                     </div>
                   </div>
                 </td>
@@ -108,8 +149,8 @@ export function PlatformFeedCatalogTable({
                     <Button
                       size="sm"
                       variant="ghost"
-                      title="آزمایش منبع"
-                      aria-label="آزمایش منبع"
+                      title="تست سلامت"
+                      aria-label="تست سلامت"
                       isLoading={busy === `test-${feed.id}`}
                       onClick={() => onTest(feed)}
                     >
