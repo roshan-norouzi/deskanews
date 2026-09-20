@@ -40,6 +40,8 @@ type DestinationCategoryDraft = {
   rssUrl: string;
 };
 
+const EMPTY_CATEGORY_DRAFT: DestinationCategoryDraft = { name: '', serviceUrl: '', rssUrl: '' };
+
 type DestinationCategorySyncChanges = {
   added: Array<{ externalId: string; name: string }>;
   updated: Array<{ externalId: string; name: string; previousName?: string }>;
