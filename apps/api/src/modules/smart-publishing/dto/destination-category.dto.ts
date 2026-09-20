@@ -8,6 +8,39 @@ export class UpdateDestinationCategoryStatusDto {
   status!: 'approved' | 'rejected';
 }
 
+export class UpdateDestinationCategoryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  serviceUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  rssUrl?: string;
+}
+
+export class CreateDestinationCategoryDto {
+  @IsString()
+  @MaxLength(120)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  serviceUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  rssUrl?: string;
+}
+
 export class BulkApproveDestinationCategoriesDto {
   @IsArray()
   @ArrayNotEmpty()

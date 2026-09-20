@@ -166,6 +166,8 @@ model DestinationCategory {
   externalId       String
   name             String
   slug             String        @default("")
+  serviceUrl       String        @default("")
+  rssUrl           String        @default("")
   parentExternalId String        @default("")
   status           String        @default("pending")
   isGeneral        Boolean       @default(false)

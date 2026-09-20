@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "DestinationCategory" ADD COLUMN IF NOT EXISTS "serviceUrl" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "DestinationCategory" ADD COLUMN IF NOT EXISTS "rssUrl" TEXT NOT NULL DEFAULT '';

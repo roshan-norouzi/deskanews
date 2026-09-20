@@ -78,6 +78,15 @@ function createPrismaMock() {
         }
         return { count };
       },
+      delete: async ({ where }) => {
+        for (const [key, row] of categories.entries()) {
+          if (row.id === where.id) {
+            categories.delete(key);
+            return row;
+          }
+        }
+        throw new Error('category not found');
+      },
     },
     newsArticle: {
       findFirst: async ({ where }) => articles.get(where.id) || null,
@@ -87,6 +96,16 @@ function createPrismaMock() {
         if (where.destinationCategoryId === null && row.destinationCategoryId !== null) return false;
         return true;
       }),
+      updateMany: async ({ where, data }) => {
+        let count = 0;
+        for (const [id, row] of articles.entries()) {
+          if (where.tenantId && row.tenantId !== where.tenantId) continue;
+          if (where.destinationCategoryId && row.destinationCategoryId !== where.destinationCategoryId) continue;
+          articles.set(id, { ...row, ...data });
+          count++;
+        }
+        return { count };
+      },
       update: async ({ where, data, include }) => {
         const row = { ...articles.get(where.id), ...data };
         articles.set(where.id, row);
@@ -150,7 +169,23 @@ test('destination category sync extracts IranSystem categories from site html', 
   const sourceReader = {
     safeRequest: async (url) => ({
       ok: true,
-      text: async () => `<nav><a href="/fa/news/12">اقتصاد</a><a href="/fa/news/34">فناوری</a></nav>`,
+      text: async () => {
+        if (String(url).includes('/fa/rss')) {
+          return `
+            <div class="rss_block">
+              <div class="rss_row"><div class="rss_list_pn">اقتصاد:</div><a href="/fa/rss/10" class="rss_list_link">https://news.example.ir/fa/rss/10</a></div>
+              <div class="rss_row"><div class="rss_list_pn">فناوری:</div><a href="/fa/rss/16" class="rss_list_link">https://news.example.ir/fa/rss/16</a></div>
+            </div>
+          `;
+        }
+        return `
+          <div class="header_services">
+            <a class="nav_link" href="/fa/economic"><span>اقتصاد</span></a>
+            <a class="nav_link" href="/fa/science-tech-ai"><span>فناوری</span></a>
+            <a href="/fa/news/2391634/article">خبر</a>
+          </div>
+        `;
+      },
     }),
   };
   const service = createService(prisma, settings, wordpress, {}, sourceReader);
@@ -160,6 +195,22 @@ test('destination category sync extracts IranSystem categories from site html', 
   assert.equal(result.synced, 2);
   const rows = [...categories.values()].filter((row) => row.platform === 'iransamaneh' && !row.isGeneral);
   assert.deepEqual(rows.map((row) => row.name).sort(), ['اقتصاد', 'فناوری']);
+  assert.ok(rows.every((row) => row.serviceUrl.includes('/fa/')));
+  assert.ok(rows.every((row) => row.rssUrl.includes('/fa/rss/')));
+});
+
+test('destination category reject deletes the row', async () => {
+  const { prisma, categories } = createPrismaMock();
+  const settings = { getRaw: async () => ({ destination_platform: 'wordpress', wp_site_url: 'https://news.example.com' }) };
+  const wordpress = { categoriesPublic: async () => [{ id: 22, name: 'فناوری', slug: 'technology', parent: 0 }] };
+  const service = createService(prisma, settings, wordpress);
+  await service.syncFromDestination('tenant-a');
+  const pending = [...categories.values()].find((row) => row.externalId === '22');
+
+  const rejected = await service.updateStatus(pending.id, 'tenant-a', 'rejected');
+
+  assert.equal(rejected.deleted, true);
+  assert.equal([...categories.values()].some((row) => row.id === pending.id), false);
 });
 
 test('destination category approve updates status and approver metadata', async () => {

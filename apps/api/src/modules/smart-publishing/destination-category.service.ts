@@ -4,7 +4,7 @@ import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import { SourceReaderService } from './source-reader.service';
 import { WordPressClient } from './wordpress.client';
-import { extractDestinationCategoriesFromSite } from './destination-site-category-extractor';
+import { extractDestinationCategoriesFromSite, slugifyCategoryName } from './destination-site-category-extractor';
 import type { WordPressCategory } from './wordpress-category';
 import type { DestinationCategoryStatus } from './dto/destination-category.dto';
 
@@ -88,6 +88,8 @@ export class DestinationCategoryService {
             name: category.name,
             slug: category.slug,
             parentExternalId: category.parentExternalId || '',
+            serviceUrl: category.serviceUrl || existing.serviceUrl,
+            rssUrl: category.rssUrl || existing.rssUrl,
             syncedAt: now,
             ...(existing.status === 'stale' ? { status: 'pending' } : {}),
           },
@@ -101,6 +103,8 @@ export class DestinationCategoryService {
             name: category.name,
             slug: category.slug,
             parentExternalId: category.parentExternalId || '',
+            serviceUrl: category.serviceUrl || '',
+            rssUrl: category.rssUrl || '',
             status: 'pending',
             isGeneral: false,
             syncedAt: now,
@@ -135,9 +139,65 @@ export class DestinationCategoryService {
       where: {
         tenantId,
         platform,
-        ...(status ? { status } : {}),
+        ...(status ? { status } : { status: { not: 'rejected' } }),
       },
       orderBy: [{ isGeneral: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  async createManual(
+    tenantId: string,
+    data: { name: string; serviceUrl?: string; rssUrl?: string },
+    userId?: string,
+  ) {
+    const name = String(data.name || '').trim();
+    if (!name) throw new BadRequestException('نام سرویس الزامی است');
+
+    const raw = await this.settings.getRaw(tenantId);
+    const platform = this.resolvePlatform(raw);
+    await this.ensureGeneralCategory(tenantId, platform);
+
+    const slug = slugifyCategoryName(name) || 'service';
+    const externalId = `manual-${slug}-${Date.now()}`;
+
+    return this.prisma.destinationCategory.create({
+      data: {
+        tenantId,
+        platform,
+        externalId,
+        name,
+        slug,
+        serviceUrl: String(data.serviceUrl || '').trim(),
+        rssUrl: String(data.rssUrl || '').trim(),
+        status: 'approved',
+        isGeneral: false,
+        approvedAt: new Date(),
+        approvedByUserId: userId ?? null,
+        syncedAt: new Date(),
+      },
+    });
+  }
+
+  async updateDetails(
+    id: string,
+    tenantId: string,
+    data: { name?: string; serviceUrl?: string; rssUrl?: string },
+  ) {
+    const category = await this.prisma.destinationCategory.findFirst({ where: { id, tenantId } });
+    if (!category) throw new NotFoundException('دسته‌بندی یافت نشد');
+    if (category.isGeneral) throw new BadRequestException('دسته عمومی قابل ویرایش نیست');
+
+    const name = data.name !== undefined ? String(data.name).trim() : category.name;
+    if (!name) throw new BadRequestException('نام سرویس الزامی است');
+
+    return this.prisma.destinationCategory.update({
+      where: { id },
+      data: {
+        name,
+        slug: slugifyCategoryName(name) || category.slug,
+        ...(data.serviceUrl !== undefined ? { serviceUrl: String(data.serviceUrl).trim() } : {}),
+        ...(data.rssUrl !== undefined ? { rssUrl: String(data.rssUrl).trim() } : {}),
+      },
     });
   }
 
@@ -146,12 +206,23 @@ export class DestinationCategoryService {
     if (!category) throw new NotFoundException('دسته‌بندی یافت نشد');
     if (category.isGeneral) throw new BadRequestException('دسته عمومی قابل تغییر وضعیت نیست');
 
+    if (status === 'rejected') {
+      const platform = this.resolvePlatform(await this.settings.getRaw(tenantId));
+      const general = await this.ensureGeneralCategory(tenantId, platform);
+      await this.prisma.newsArticle.updateMany({
+        where: { tenantId, destinationCategoryId: category.id },
+        data: { destinationCategoryId: general.id, categorySource: 'general' },
+      });
+      await this.prisma.destinationCategory.delete({ where: { id } });
+      return { id, status: 'rejected' as const, deleted: true };
+    }
+
     return this.prisma.destinationCategory.update({
       where: { id },
       data: {
         status,
-        approvedAt: status === 'approved' ? new Date() : null,
-        approvedByUserId: status === 'approved' ? userId ?? null : null,
+        approvedAt: new Date(),
+        approvedByUserId: userId ?? null,
       },
     });
   }

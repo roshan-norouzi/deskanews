@@ -30,7 +30,17 @@ type DestinationCategoryRow = {
   isGeneral: boolean;
   externalId: string;
   parentExternalId: string;
+  serviceUrl: string;
+  rssUrl: string;
 };
+
+type DestinationCategoryDraft = {
+  name: string;
+  serviceUrl: string;
+  rssUrl: string;
+};
+
+const EMPTY_CATEGORY_DRAFT: DestinationCategoryDraft = { name: '', serviceUrl: '', rssUrl: '' };
 
 const DESTINATION_CATEGORY_STATUS_META: Record<DestinationCategoryRow['status'], { label: string; className: string }> = {
   pending: { label: 'در انتظار تأیید', className: 'border-amber-200 bg-amber-50 text-amber-800' },
@@ -177,6 +187,9 @@ export default function PublishingSettingsPage() {
   const hasSavedInSession = useRef(false);
   const [selectedCoverTemplateId, setSelectedCoverTemplateId] = useState('');
   const [destinationCategoryRows, setDestinationCategoryRows] = useState<DestinationCategoryRow[]>([]);
+  const [categoryDraft, setCategoryDraft] = useState<DestinationCategoryDraft>(EMPTY_CATEGORY_DRAFT);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryDraft, setEditingCategoryDraft] = useState<DestinationCategoryDraft>(EMPTY_CATEGORY_DRAFT);
   const coverTemplateLibrary = useMemo(
     () => parseTemplateLibrary(values.social_image_templates, values.social_image_template),
     [values.social_image_template, values.social_image_templates],
@@ -334,10 +347,67 @@ export default function PublishingSettingsPage() {
   async function updateDestinationCategoryStatus(id: string, status: 'approved' | 'rejected') {
     setBusy(`category-${id}`); setError('');
     try {
-      const updated = await apiFetch<DestinationCategoryRow>(`/publishing/destination/categories/${id}`, { method: 'PATCH', body: { status } });
-      setDestinationCategoryRows((current) => current.map((row) => (row.id === id ? updated : row)));
+      const updated = await apiFetch<DestinationCategoryRow & { deleted?: boolean }>(`/publishing/destination/categories/${id}/status`, { method: 'PATCH', body: { status } });
+      if (status === 'rejected' || updated.deleted) {
+        setDestinationCategoryRows((current) => current.filter((row) => row.id !== id));
+        if (editingCategoryId === id) {
+          setEditingCategoryId(null);
+          setEditingCategoryDraft(EMPTY_CATEGORY_DRAFT);
+        }
+        setMessage('سرویس اشتباه حذف شد.');
+        return;
+      }
+      setDestinationCategoryRows((current) => current.map((row) => (row.id === id ? { ...row, ...updated } : row)));
     } catch (reason) {
       setError(reason instanceof ApiError ? reason.message : 'به‌روزرسانی دسته‌بندی انجام نشد');
+    } finally { setBusy(null); }
+  }
+
+  function startEditingDestinationCategory(category: DestinationCategoryRow) {
+    setEditingCategoryId(category.id);
+    setEditingCategoryDraft({
+      name: category.name,
+      serviceUrl: category.serviceUrl || '',
+      rssUrl: category.rssUrl || '',
+    });
+  }
+
+  async function saveDestinationCategoryEdit(id: string) {
+    if (!editingCategoryDraft.name.trim()) {
+      setError('نام سرویس الزامی است');
+      return;
+    }
+    setBusy(`category-edit-${id}`); setError('');
+    try {
+      const updated = await apiFetch<DestinationCategoryRow>(`/publishing/destination/categories/${id}`, {
+        method: 'PATCH',
+        body: editingCategoryDraft,
+      });
+      setDestinationCategoryRows((current) => current.map((row) => (row.id === id ? updated : row)));
+      setEditingCategoryId(null);
+      setEditingCategoryDraft(EMPTY_CATEGORY_DRAFT);
+      setMessage('سرویس به‌روزرسانی شد.');
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'ویرایش سرویس انجام نشد');
+    } finally { setBusy(null); }
+  }
+
+  async function createDestinationCategory() {
+    if (!categoryDraft.name.trim()) {
+      setError('نام سرویس الزامی است');
+      return;
+    }
+    setBusy('category-create'); setError('');
+    try {
+      const created = await apiFetch<DestinationCategoryRow>('/publishing/destination/categories', {
+        method: 'POST',
+        body: categoryDraft,
+      });
+      setDestinationCategoryRows((current) => [...current, created].sort((a, b) => Number(b.isGeneral) - Number(a.isGeneral) || a.name.localeCompare(b.name, 'fa')));
+      setCategoryDraft(EMPTY_CATEGORY_DRAFT);
+      setMessage('سرویس جدید اضافه شد.');
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'افزودن سرویس انجام نشد');
     } finally { setBusy(null); }
   }
 
@@ -502,7 +572,7 @@ export default function PublishingSettingsPage() {
                 <p className="mt-1 text-xs leading-5 text-slate-600">
                   {destinationPlatform === 'wordpress'
                     ? 'فقط آدرس سایت WordPress کافی است؛ REST API عمومی دسته‌ها خوانده می‌شود و نیازی به Application Password نیست.'
-                    : `دسته‌بندی‌ها از منوی و صفحات خبری سایت ${destinationMeta.label} استخراج می‌شوند؛ برای همگام‌سازی فقط آدرس سایت کافی است.`}
+                    : `دسته‌بندی‌ها از منوی سایت و صفحه RSS راهنمای ${destinationMeta.label} استخراج می‌شوند؛ لینک سرویس و RSS هر دسته قابل ویرایش است.`}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -531,12 +601,33 @@ export default function PublishingSettingsPage() {
                 }}
               />
             </Field>
+            <div className="mt-4 rounded-xl border border-sky-100 bg-white p-4">
+              <p className="text-sm font-semibold text-slate-800">افزودن سرویس دستی</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <Field label="نام سرویس">
+                  <input className="rounded-xl border px-3 py-2.5" value={categoryDraft.name} onChange={(e) => setCategoryDraft((current) => ({ ...current, name: e.target.value }))} />
+                </Field>
+                <Field label="لینک صفحه سرویس">
+                  <input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://example.com/fa/sport" value={categoryDraft.serviceUrl} onChange={(e) => setCategoryDraft((current) => ({ ...current, serviceUrl: e.target.value }))} />
+                </Field>
+                <Field label="آدرس RSS">
+                  <input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://example.com/fa/rss/7" value={categoryDraft.rssUrl} onChange={(e) => setCategoryDraft((current) => ({ ...current, rssUrl: e.target.value }))} />
+                </Field>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button size="sm" isLoading={busy === 'category-create'} onClick={() => void createDestinationCategory()}>
+                  <Plus className="h-4 w-4" /> افزودن سرویس
+                </Button>
+              </div>
+            </div>
             {destinationCategoryRows.length ? (
               <div className="mt-4 overflow-x-auto rounded-xl border border-sky-100 bg-white">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
                       <th className="px-3 py-2 text-right font-medium">نام</th>
+                      <th className="px-3 py-2 text-right font-medium">لینک سرویس</th>
+                      <th className="px-3 py-2 text-right font-medium">RSS</th>
                       <th className="px-3 py-2 text-right font-medium">وضعیت</th>
                       <th className="px-3 py-2 text-right font-medium">عملیات</th>
                     </tr>
@@ -545,12 +636,37 @@ export default function PublishingSettingsPage() {
                     {destinationCategoryRows.map((category) => {
                       const statusMeta = DESTINATION_CATEGORY_STATUS_META[category.status];
                       const parent = destinationCategoryRows.find((row) => row.externalId === category.parentExternalId);
+                      const isEditing = editingCategoryId === category.id;
                       return (
-                        <tr key={category.id} className="border-t border-slate-100">
+                        <tr key={category.id} className="border-t border-slate-100 align-top">
                           <td className="px-3 py-2.5 text-slate-800">
-                            {parent ? <span className="text-slate-500">{parent.name} ← </span> : null}
-                            {category.name}
-                            {category.isGeneral ? <span className="mr-2 text-xs text-slate-500">(پیش‌فرض)</span> : null}
+                            {isEditing ? (
+                              <input className="w-full rounded-lg border px-2 py-1.5" value={editingCategoryDraft.name} onChange={(e) => setEditingCategoryDraft((current) => ({ ...current, name: e.target.value }))} />
+                            ) : (
+                              <>
+                                {parent ? <span className="text-slate-500">{parent.name} ← </span> : null}
+                                {category.name}
+                                {category.isGeneral ? <span className="mr-2 text-xs text-slate-500">(پیش‌فرض)</span> : null}
+                              </>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {isEditing ? (
+                              <input dir="ltr" className="w-full min-w-[220px] rounded-lg border px-2 py-1.5" value={editingCategoryDraft.serviceUrl} onChange={(e) => setEditingCategoryDraft((current) => ({ ...current, serviceUrl: e.target.value }))} />
+                            ) : category.serviceUrl ? (
+                              <a dir="ltr" href={category.serviceUrl} target="_blank" rel="noreferrer" className="break-all text-sky-700 hover:underline">{category.serviceUrl}</a>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {isEditing ? (
+                              <input dir="ltr" className="w-full min-w-[220px] rounded-lg border px-2 py-1.5" value={editingCategoryDraft.rssUrl} onChange={(e) => setEditingCategoryDraft((current) => ({ ...current, rssUrl: e.target.value }))} />
+                            ) : category.rssUrl ? (
+                              <a dir="ltr" href={category.rssUrl} target="_blank" rel="noreferrer" className="break-all text-sky-700 hover:underline">{category.rssUrl}</a>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2.5">
                             <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-medium ${statusMeta.className}`}>
@@ -558,10 +674,24 @@ export default function PublishingSettingsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2.5">
-                            {!category.isGeneral && category.status === 'pending' ? (
+                            {!category.isGeneral ? (
                               <div className="flex flex-wrap gap-2">
-                                <button type="button" className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'approved')}>تأیید</button>
-                                <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>رد</button>
+                                {isEditing ? (
+                                  <>
+                                    <button type="button" className="rounded-lg bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-60" disabled={busy === `category-edit-${category.id}`} onClick={() => void saveDestinationCategoryEdit(category.id)}>ذخیره</button>
+                                    <button type="button" className="rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => { setEditingCategoryId(null); setEditingCategoryDraft(EMPTY_CATEGORY_DRAFT); }}>انصراف</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button type="button" className="rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => startEditingDestinationCategory(category)}>ویرایش</button>
+                                    {category.status === 'pending' ? (
+                                      <>
+                                        <button type="button" className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'approved')}>تأیید</button>
+                                        <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>حذف</button>
+                                      </>
+                                    ) : null}
+                                  </>
+                                )}
                               </div>
                             ) : (
                               <span className="text-xs text-slate-400">—</span>

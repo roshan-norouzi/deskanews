@@ -22,7 +22,7 @@ import { PublishingOperationsService } from './publishing-operations.service';
 import { FeedBulkService } from './feed-bulk.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { DestinationCategoryService } from './destination-category.service';
-import { BulkApproveDestinationCategoriesDto, SyncDestinationCategoriesDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
+import { BulkApproveDestinationCategoriesDto, CreateDestinationCategoryDto, SyncDestinationCategoriesDto, UpdateDestinationCategoryDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
 @Controller('publishing')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 @RequirePermission('publishing.view')
@@ -95,7 +95,13 @@ export class SmartPublishingController {
   @Post('destination/categories/sync') @RequirePermission('publishing.settings') syncDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Body() body: SyncDestinationCategoriesDto) {
     return this.destinationCategoryService.syncFromDestination(tenant.tenantId, user.id, body.siteUrl);
   }
-  @Patch('destination/categories/:id') @RequirePermission('publishing.settings') updateDestinationCategory(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Param('id') id: string, @Body() body: UpdateDestinationCategoryStatusDto) {
+  @Post('destination/categories') @RequirePermission('publishing.settings') createDestinationCategory(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Body() body: CreateDestinationCategoryDto) {
+    return this.destinationCategoryService.createManual(tenant.tenantId, body, user.id);
+  }
+  @Patch('destination/categories/:id') @RequirePermission('publishing.settings') updateDestinationCategory(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Param('id') id: string, @Body() body: UpdateDestinationCategoryDto) {
+    return this.destinationCategoryService.updateDetails(id, tenant.tenantId, body);
+  }
+  @Patch('destination/categories/:id/status') @RequirePermission('publishing.settings') updateDestinationCategoryStatus(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Param('id') id: string, @Body() body: UpdateDestinationCategoryStatusDto) {
     return this.destinationCategoryService.updateStatus(id, tenant.tenantId, body.status, user.id);
   }
   @Post('destination/categories/bulk-approve') @RequirePermission('publishing.settings') bulkApproveDestinationCategories(@TenantCtx() tenant: TenantContext, @User() user: AuthUser, @Body() body: BulkApproveDestinationCategoriesDto) {

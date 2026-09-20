@@ -246,8 +246,6 @@ export class PlatformFeedService implements OnModuleInit {  private readonly log
     const sourceType = normalizeSourceType(data.sourceType);
     const duplicate = await this.prisma.platformFeed.findUnique({ where: { url } });
     if (duplicate) throw new ConflictException('این منبع پیش‌فرض قبلاً ثبت شده است');
-    const tenantDuplicate = await this.prisma.newsFeed.findFirst({ where: { url } });
-    if (tenantDuplicate) throw new ConflictException('این آدرس قبلاً به‌عنوان منبع سازمانی ثبت شده است');
 
     let resolvedFeedUrl = '';
     if (sourceType === 'website') {
