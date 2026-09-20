@@ -2,6 +2,10 @@
 
 All notable releases of Deska News follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.6 — 2026-09-20
+
+- Fix Prisma migration chain drift so CI and production deploy stay in sync with `schema.prisma`
+
 ## 1.0.5 — 2026-09-20
 
 - Bulk Excel import/export for platform catalog (super admin) and org custom news feeds
