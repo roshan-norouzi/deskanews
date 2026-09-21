@@ -62,8 +62,19 @@ export class WordPressClient {
     const appPassword = String(settings.wp_app_password ?? '')
       .normalize('NFKC')
       .replace(/[^a-z\d]/gi, '');
-    if (!siteUrl || !username || !appPassword) {
+    if (!siteUrl && !username && !appPassword) {
       throw new BadRequestException('آدرس سایت، نام کاربری و رمز برنامه WordPress را در تنظیمات وارد کنید');
+    }
+    if (!siteUrl) {
+      throw new BadRequestException('آدرس سایت WordPress را وارد کنید (نشانی اصلی نصب، بدون wp-admin).');
+    }
+    if (!username) {
+      throw new BadRequestException('نام کاربری WordPress را وارد کنید.');
+    }
+    if (!appPassword) {
+      throw new BadRequestException(
+        'رمز برنامه (Application Password) WordPress را وارد کنید. اگر آدرس سایت را عوض کرده‌اید، رمز را دوباره وارد کنید؛ فقط فاصله و خط تیرهٔ نمایشی حذف می‌شود.',
+      );
     }
     let url: URL;
     try { url = new URL(siteUrl); } catch { throw new BadRequestException('آدرس WordPress معتبر نیست'); }

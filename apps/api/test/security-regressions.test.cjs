@@ -201,6 +201,11 @@ test('stored integration secrets are not reused for a caller-controlled host', (
 
   assert.equal(gapChanged.gapgpt_api_key, '');
   assert.equal(wpChanged.wp_app_password, '');
+
+  const wpTrailingSlash = service.mergeForTest(current, {
+    wp_site_url: 'https://trusted-wp.example/',
+  });
+  assert.equal(wpTrailingSlash.wp_app_password, 'stored-wp-secret');
 });
 
 test('legacy GapGPT credentials remain usable when publishing JSON is empty but flat settings exist', async () => {

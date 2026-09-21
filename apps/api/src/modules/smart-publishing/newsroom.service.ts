@@ -386,7 +386,8 @@ export class NewsroomService {
         ...(generalOnly ? { destinationCategory: { isGeneral: true } } : {}),
       },
       include: {
-        feed: { select: { id: true, name: true, purpose: true } },
+        feed: { select: { id: true, name: true, purpose: true, sourceLanguage: true } },
+        platformFeedArticle: { select: { platformFeed: { select: { sourceLanguage: true } } } },
         destinationCategory: { select: { id: true, name: true, isGeneral: true } },
       },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],

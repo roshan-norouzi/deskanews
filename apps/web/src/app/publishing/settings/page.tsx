@@ -386,6 +386,22 @@ export default function PublishingSettingsPage() {
     try {
       const body = editableSettings(Object.fromEntries(destinationKeys.map((key) => [key, values[key] ?? ''])));
       body.destination_platform = destinationPlatform;
+      if (destinationPlatform === 'wordpress') {
+        const siteUrl = String(body.wp_site_url || values[destinationSiteUrlSettingKey] || '').trim().replace(/\/$/, '');
+        body.wp_site_url = siteUrl;
+        if (!siteUrl) {
+          setError('آدرس سایت WordPress را وارد کنید.');
+          return;
+        }
+        if (!String(body.wp_username || '').trim()) {
+          setError('نام کاربری WordPress را وارد کنید.');
+          return;
+        }
+        if (!String(body.wp_app_password || '').trim() && values.wp_app_password_configured !== 'true') {
+          setError('رمز برنامه (Application Password) را وارد کنید؛ این رمز از پروفایل کاربر در وردپرس ساخته می‌شود، نه رمز ورود معمولی.');
+          return;
+        }
+      }
       const response = await apiFetch<{ ok: true; message?: string; categories?: WordPressCategory[] }>('/publishing/settings/test-wordpress', {
         method: 'POST',
         body,

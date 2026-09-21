@@ -51,6 +51,8 @@ export interface NewsArticleCardData {
   contentFa?: string;
   lastError: string;
   destinationCategory?: { id: string; name: string; isGeneral: boolean } | null;
+  feed?: { sourceLanguage?: string | null } | null;
+  platformFeedArticle?: { platformFeed?: { sourceLanguage?: string | null } | null } | null;
 }
 
 interface DestinationCategoryOption {

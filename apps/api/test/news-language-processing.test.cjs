@@ -38,7 +38,7 @@ test('news language detection distinguishes Persian copy from foreign copy', () 
   assert.equal(isLikelyPersianNews('أعلنت الوكالة عن برنامج جديد للتعاون الإقليمي بعد الاجتماع.'), false);
 });
 
-test('Persian news uses its dedicated rewrite prompt', async () => {
+test('Persian news uses only the admin rewrite prompt as system instructions', async () => {
   let requestBody;
   const outbound = {
     safeRequest: async (_url, options) => {
@@ -56,9 +56,12 @@ test('Persian news uses its dedicated rewrite prompt', async () => {
     sourceName: 'رسانه فارسی',
     title: 'دولت برنامه جدید اقتصادی را اعلام کرد',
     summary: 'این برنامه برای حمایت از تولید و افزایش سرمایه‌گذاری در کشور اجرا می‌شود.',
+    sourceLanguage: 'fa',
   });
 
   assert.equal(requestBody.messages[0].content, 'PERSIAN_REWRITE_PROMPT');
+  assert.doesNotMatch(requestBody.messages[1].content, /۲ تا ۴ جمله/);
+  assert.match(requestBody.messages[1].content, /"title"/);
   assert.equal(result.title, 'تیتر بازنویسی‌شده');
 });
 

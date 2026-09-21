@@ -229,12 +229,20 @@ export class GapGptClient {
     const systemPrompt = isPersian
       ? String(settings.news_persian_rewrite_prompt ?? '').trim() || DEFAULT_NEWS_PERSIAN_REWRITE_PROMPT
       : String(settings.news_summary_prompt ?? '').trim() || DEFAULT_NEWS_SUMMARY_PROMPT;
-    const raw = await this.complete(settings, systemPrompt, [
-      `منبع: ${input.sourceName}`,
-      `${isPersian ? 'عنوان فارسی منبع' : 'عنوان اصلی'}: ${input.title}`,
-      `خلاصه یا متن ورودی:\n${input.summary}`,
-      `فقط یک JSON معتبر با ساختار {"title":"${isPersian ? 'عنوان فارسی بازنویسی‌شده' : 'عنوان فارسی'}","summary":"خلاصه فارسی بازنویسی‌شده در ۲ تا ۴ جمله"} برگردان.`,
-    ].join('\n\n'), 1400, 'newsSummary');
+    const userMessage = isPersian
+      ? [
+        `منبع: ${input.sourceName}`,
+        `عنوان: ${input.title}`,
+        `متن:\n${input.summary}`,
+        'خروجی را فقط به‌صورت یک شیء JSON معتبر با کلیدهای "title" و "summary" برگردان، بدون Markdown و بدون توضیح اضافه.',
+      ].join('\n\n')
+      : [
+        `منبع: ${input.sourceName}`,
+        `عنوان اصلی: ${input.title}`,
+        `خلاصه یا متن ورودی:\n${input.summary}`,
+        'فقط یک JSON معتبر با ساختار {"title":"عنوان فارسی","summary":"خلاصه فارسی بازنویسی‌شده در ۲ تا ۴ جمله"} برگردان.',
+      ].join('\n\n');
+    const raw = await this.complete(settings, systemPrompt, userMessage, 1400, 'newsSummary');
     const parsed = extractJson(raw);
     const title = String(parsed?.title ?? '').trim();
     const summary = String(parsed?.summary ?? '').trim();

@@ -171,6 +171,17 @@ function normalizeHttpUrl(value: string, label: string): string {
   }
 }
 
+/** Compare stored vs submitted site URLs without treating trailing slashes as a host change. */
+function normalizeHttpUrlForCompare(value: string): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  try {
+    return normalizeHttpUrl(normalized, 'url');
+  } catch {
+    return normalized.replace(/\/$/, '');
+  }
+}
+
 function normalizeSecureServiceUrl(value: string, label: string): string {
   const normalized = normalizeHttpUrl(value, label);
   if (!normalized) return '';
@@ -1085,7 +1096,7 @@ export class PublishingSettingsService implements OnModuleInit {
 
     const secretsToClear = new Set<PublishingSettingKey>();
     const wordPressHostChanged = has('wp_site_url')
-      && String(next.wp_site_url ?? '').trim() !== String(current.wp_site_url ?? '').trim();
+      && normalizeHttpUrlForCompare(next.wp_site_url ?? '') !== normalizeHttpUrlForCompare(current.wp_site_url ?? '');
     const wordPressSecretProvided = has('wp_app_password') && Boolean(String(input.wp_app_password ?? '').trim());
     if (wordPressHostChanged && !wordPressSecretProvided) {
       next.wp_app_password = '';
@@ -1180,17 +1191,24 @@ export class PublishingSettingsService implements OnModuleInit {
       const candidate = input[key as keyof UpdatePublishingSettingsDto];
       if (typeof candidate === 'string' && candidate.trim()) merged[key] = candidate.trim();
     }
+    if (typeof input.wp_site_url === 'string' && input.wp_site_url.trim()) {
+      try {
+        merged.wp_site_url = normalizeHttpUrl(input.wp_site_url.trim(), 'آدرس WordPress');
+      } catch {
+        merged.wp_site_url = input.wp_site_url.trim().replace(/\/$/, '');
+      }
+    }
     const gapGptHostChanged = Boolean(
       input.gapgpt_base_url?.trim()
       && input.gapgpt_base_url.trim() !== String(current.gapgpt_base_url ?? '').trim(),
     );
     if (gapGptHostChanged && !input.gapgpt_api_key?.trim()) merged.gapgpt_api_key = '';
 
-    const wordPressHostChanged = Boolean(
-      input.wp_site_url?.trim()
-      && input.wp_site_url.trim() !== String(current.wp_site_url ?? '').trim(),
-    );
-    if (wordPressHostChanged && !input.wp_app_password?.trim()) merged.wp_app_password = '';
+    const submittedWpSiteUrl = typeof input.wp_site_url === 'string' ? normalizeHttpUrlForCompare(input.wp_site_url) : '';
+    const storedWpSiteUrl = normalizeHttpUrlForCompare(current.wp_site_url ?? '');
+    const wordPressHostChanged = Boolean(submittedWpSiteUrl && submittedWpSiteUrl !== storedWpSiteUrl);
+    const wordPressSecretProvided = Boolean(String(input.wp_app_password ?? '').trim());
+    if (wordPressHostChanged && !wordPressSecretProvided) merged.wp_app_password = '';
     const iranSamanehHostChanged = Boolean(
       input.is_site_url?.trim()
       && input.is_site_url.trim() !== String(current.is_site_url ?? '').trim(),
