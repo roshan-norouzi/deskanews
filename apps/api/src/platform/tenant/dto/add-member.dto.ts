@@ -13,6 +13,12 @@ export class AddMemberDto {
   permissions!: string[];
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(64, { each: true })
+  newsroomServiceIds?: string[];
+
+  @IsOptional()
   @IsString()
   @MaxLength(120)
   jobTitle?: string;

@@ -342,7 +342,7 @@ test('newsroom publishes with the category selected from live WordPress categori
   assert.equal(publishInput.categoryId, 22);
   assert.equal(publishInput.excerpt, article.summaryFa);
   assert.match(publishInput.content, /<p>.*<a href="https:\/\/source\.example\/story"[^>]*>رسانه فناوری<\/a>.*متن کامل خبر<\/p>/);
-  assert.doesNotMatch(publishInput.content, /<hr>|<strong>منبع:/);
+  assert.match(publishInput.content, /<p>منبع: <a href="https:\/\/source\.example\/story"[^>]*>رسانه فناوری<\/a><\/p>/);
 });
 
 test('newsroom never publishes an RSS summary as the full WordPress article', async () => {

@@ -262,6 +262,8 @@ export class AuthService {
         status: m.tenant.status,
         primaryOwnerUserId: m.tenant.primaryOwnerUserId,
         memberRole: m.role,
+        permissions: m.permissions,
+        newsroomServiceIds: m.newsroomServiceIds,
         membershipStatus: m.status,
         joinedAt: m.joinedAt,
       })),

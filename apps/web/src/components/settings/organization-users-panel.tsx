@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Pencil, Plus, RefreshCw, Search, Trash2, UserCheck, Users } from 'lucide-react';
-import { TENANT_ROLE_LABELS, TENANT_ROLES } from '@deska/shared';
+import { NEWSROOM_ALL_SERVICES, permissionsForPicker, TENANT_ROLE_LABELS, TENANT_ROLES } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +33,7 @@ export interface OrganizationMember {
   userId: string;
   role: string;
   permissions: string[];
+  newsroomServiceIds?: string[];
   joinedAt: string;
   user: MemberUser;
 }
@@ -53,7 +54,8 @@ interface OrganizationUsersPanelProps {
 
 type MemberModalMode = 'add' | 'edit';
 
-const EMPTY_PERMISSIONS: string[] = ['dashboard.view', 'publishing.view'];
+const EMPTY_PERMISSIONS: string[] = ['dashboard.view', 'publishing.news'];
+const EMPTY_NEWSROOM_SERVICES: string[] = [NEWSROOM_ALL_SERVICES];
 
 export function OrganizationUsersPanel({
   tenantId,
@@ -67,6 +69,7 @@ export function OrganizationUsersPanel({
   const [modalMode, setModalMode] = useState<MemberModalMode | null>(null);
   const [editingMember, setEditingMember] = useState<OrganizationMember | null>(null);
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>(EMPTY_PERMISSIONS);
+  const [selectedNewsroomServiceIds, setSelectedNewsroomServiceIds] = useState<string[]>(EMPTY_NEWSROOM_SERVICES);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [requestSuccess, setRequestSuccess] = useState<string | null>(null);
@@ -79,13 +82,19 @@ export function OrganizationUsersPanel({
   const members = Array.isArray(data) ? data : [];
   const canManage = memberRole === TENANT_ROLES.OWNER;
 
+  const servicesPath = modalMode && tenantId ? '/publishing/destination/categories?status=approved' : null;
+  const { data: serviceData } = useApi<Array<{ id: string; name: string; isGeneral: boolean }>>(servicesPath);
+  const newsroomServices = Array.isArray(serviceData) ? serviceData : [];
+
   useEffect(() => {
     if (modalMode === 'edit' && editingMember) {
-      setSelectedPermissions(editingMember.permissions ?? []);
+      setSelectedPermissions(permissionsForPicker(editingMember.permissions ?? []));
+      setSelectedNewsroomServiceIds(editingMember.newsroomServiceIds?.length ? editingMember.newsroomServiceIds : EMPTY_NEWSROOM_SERVICES);
       setSaveError(null);
     }
     if (modalMode === 'add') {
       setSelectedPermissions([...EMPTY_PERMISSIONS]);
+      setSelectedNewsroomServiceIds([...EMPTY_NEWSROOM_SERVICES]);
       setSaveError(null);
     }
   }, [modalMode, editingMember]);
@@ -94,6 +103,7 @@ export function OrganizationUsersPanel({
     setModalMode(null);
     setEditingMember(null);
     setSelectedPermissions([...EMPTY_PERMISSIONS]);
+    setSelectedNewsroomServiceIds([...EMPTY_NEWSROOM_SERVICES]);
     setSaveError(null);
     setUserSearchQuery('');
     setUserSearchResults([]);
@@ -115,9 +125,18 @@ export function OrganizationUsersPanel({
     e.preventDefault();
     if (!tenantId || !modalMode) return;
     if (!selectedPermissions.length) {
-      setSaveError('حداقل یک سطح دسترسی انتخاب کنید');
+      setSaveError('حداقل یک دسترسی منو انتخاب کنید');
       return;
     }
+    if (selectedPermissions.includes('publishing.news') && !selectedNewsroomServiceIds.length) {
+      setSaveError('برای دسترسی به اتاق خبر، حداقل یک سرویس انتخاب کنید');
+      return;
+    }
+
+    const body = {
+      permissions: selectedPermissions,
+      newsroomServiceIds: selectedPermissions.includes('publishing.news') ? selectedNewsroomServiceIds : [],
+    };
 
     setSaving(true);
     setSaveError(null);
@@ -132,14 +151,14 @@ export function OrganizationUsersPanel({
           method: 'POST',
           body: {
             userId: selectedPlatformUser.id,
-            permissions: selectedPermissions,
+            ...body,
           },
         });
         setRequestSuccess('کاربر با موفقیت به سازمان اضافه شد.');
       } else if (editingMember) {
         await apiFetch(`/tenants/${tenantId}/members/${editingMember.userId}`, {
           method: 'PATCH',
-          body: { permissions: selectedPermissions },
+          body,
         });
       }
       closeModal();
@@ -256,7 +275,10 @@ export function OrganizationUsersPanel({
                     {member.role === TENANT_ROLES.OWNER ? (
                       <Badge variant="success">دسترسی کامل</Badge>
                     ) : (
-                      <PermissionBadges permissions={member.permissions ?? []} />
+                      <PermissionBadges
+                        permissions={member.permissions ?? []}
+                        newsroomServiceIds={member.newsroomServiceIds}
+                      />
                     )}
                   </TableCell>
                   <TableCell>
@@ -387,6 +409,9 @@ export function OrganizationUsersPanel({
                 <PermissionPicker
                   value={selectedPermissions}
                   onChange={setSelectedPermissions}
+                  newsroomServiceIds={selectedNewsroomServiceIds}
+                  onNewsroomServiceIdsChange={setSelectedNewsroomServiceIds}
+                  services={newsroomServices}
                 />
               )}
 

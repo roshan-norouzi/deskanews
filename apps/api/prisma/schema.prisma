@@ -356,18 +356,19 @@ model Tenant {
 }
 
 model TenantMember {
-  tenantId      String
-  userId        String
-  role          String    @default("member")
-  permissions   String[]  @default([])
-  status        String    @default("active")
-  jobTitle      String?
-  metadata      Json      @default("{}")
-  joinedAt      DateTime  @default(now())
-  roleChangedAt DateTime?
-  leftAt        DateTime?
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId             String
+  userId               String
+  role                 String    @default("member")
+  permissions          String[]  @default([])
+  newsroomServiceIds   String[]  @default([])
+  status               String    @default("active")
+  jobTitle             String?
+  metadata             Json      @default("{}")
+  joinedAt             DateTime  @default(now())
+  roleChangedAt        DateTime?
+  leftAt               DateTime?
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([tenantId, userId])
   @@index([userId])

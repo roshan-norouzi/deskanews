@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -19,6 +19,13 @@ import {
 } from './platform-feed-health';
 import { mergeSourceLanguageCatalog, normalizeSourceLanguage } from '@deska/shared';
 import { DEFAULT_NEWS_PROCESSING_PROMPTS } from './news-processing-prompts';
+import {
+  fallbackCoverTemplateFromSample,
+  normalizeInferredCoverTemplate,
+  readRasterImageSize,
+  resolveCoverCanvasSize,
+} from './cover-template-from-sample';
+import { GapGptClient } from './gapgpt.client';
 import { SecretProtectionService } from './secret-protection.service';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -357,6 +364,7 @@ export class PublishingSettingsService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly secrets: SecretProtectionService,
+    @Optional() private readonly gapGpt?: GapGptClient,
   ) {}
 
   async onModuleInit() {
@@ -456,6 +464,41 @@ export class PublishingSettingsService implements OnModuleInit {
     const dir = this.tenantAssetDirectory('cover-images', tenantId);
     await this.writeTenantAsset(dir, filename, file.buffer, 'تصویر');
     return { url: `/publishing/settings/images/file/${tenantId}/${filename}` };
+  }
+
+  async inferCoverTemplateFromSample(
+    tenantId: string,
+    imageUrl: string,
+  ): Promise<{ name: string; template: ReturnType<typeof normalizeInferredCoverTemplate>; usedAi: boolean }> {
+    const prefix = `/publishing/settings/images/file/${tenantId}/`;
+    if (!imageUrl.startsWith(prefix) || imageUrl.includes('..')) {
+      throw new BadRequestException('تصویر نمونه باید از فایل‌های همین سازمان باشد');
+    }
+    const filename = imageUrl.slice(prefix.length);
+    const file = await this.imageFile(tenantId, filename);
+    const measured = readRasterImageSize(file.buffer, file.contentType);
+    const canvas = resolveCoverCanvasSize(measured?.width || 1080, measured?.height || 1080);
+    const fallback = fallbackCoverTemplateFromSample(canvas);
+
+    try {
+      const dataUrl = `data:${file.contentType};base64,${file.buffer.toString('base64')}`;
+      if (dataUrl.length > 3_500_000) {
+        return { name: 'قالب از تصویر نمونه', template: fallback, usedAi: false };
+      }
+      const settings = await this.getRaw(tenantId);
+      if (!this.gapGpt) {
+        return { name: 'قالب از تصویر نمونه', template: fallback, usedAi: false };
+      }
+      const inferred = await this.gapGpt.inferCoverTemplateFromSample(settings, { imageDataUrl: dataUrl, canvas });
+      return {
+        name: 'قالب از تصویر نمونه',
+        template: normalizeInferredCoverTemplate(inferred, canvas),
+        usedAi: true,
+      };
+    } catch (error) {
+      this.logger.warn(`Cover template inference fell back: ${error instanceof Error ? error.message : 'unknown error'}`);
+      return { name: 'قالب از تصویر نمونه', template: fallback, usedAi: false };
+    }
   }
 
   async removeImage(tenantId: string, url: string | null | undefined): Promise<void> {

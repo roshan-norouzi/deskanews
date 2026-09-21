@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   getDefaultPermissionsForTenantRole,
   TENANT_ROLES,
+  expandMemberPermissions,
 } from '@deska/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -24,9 +25,9 @@ export class TenantGuard implements CanActivate {
       return ['*'];
     }
     if (member.permissions?.length) {
-      return member.permissions;
+      return expandMemberPermissions(member.permissions);
     }
-    return getDefaultPermissionsForTenantRole(member.role);
+    return expandMemberPermissions(getDefaultPermissionsForTenantRole(member.role));
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -57,7 +58,7 @@ export class TenantGuard implements CanActivate {
       if (!tenant.isActive || tenant.status !== 'active') {
         throw new ForbiddenException('این سازمان غیرفعال است');
       }
-      request.tenant = { tenantId, memberRole: 'owner' };
+      request.tenant = { tenantId, memberRole: 'owner', newsroomServiceIds: ['*'] };
       request.user.permissions = ['*'];
       return true;
     }
@@ -83,7 +84,11 @@ export class TenantGuard implements CanActivate {
       member.role === TENANT_ROLES.OWNER || member.tenant.primaryOwnerUserId === user.id;
     request.user.permissions = isOwner ? ['*'] : this.resolvePermissions(member);
 
-    request.tenant = { tenantId, memberRole: isOwner ? TENANT_ROLES.OWNER : member.role };
+    request.tenant = {
+      tenantId,
+      memberRole: isOwner ? TENANT_ROLES.OWNER : member.role,
+      newsroomServiceIds: isOwner ? ['*'] : (member.newsroomServiceIds ?? []),
+    };
     return true;
   }
 }

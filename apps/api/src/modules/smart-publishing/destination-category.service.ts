@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { memberHasPermission, resolveNewsroomServiceAccess } from '@deska/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
@@ -7,6 +8,7 @@ import { WordPressClient } from './wordpress.client';
 import { extractDestinationCategoriesFromSite, slugifyCategoryName } from './destination-site-category-extractor';
 import type { WordPressCategory } from './wordpress-category';
 import type { DestinationCategoryStatus } from './dto/destination-category.dto';
+import type { TenantContext } from '../../common/decorators/params.decorator';
 
 const GENERAL_EXTERNAL_ID = '0';
 const GENERAL_NAME = 'عمومی';
@@ -269,6 +271,57 @@ export class DestinationCategoryService {
         tenantId,
         platform,
         ...(status ? { status } : { status: { not: 'rejected' } }),
+      },
+      orderBy: [{ isGeneral: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  async listForMember(
+    tenant: TenantContext,
+    permissions: string[],
+    status?: DestinationCategoryStatus,
+  ) {
+    const canManageSettings = permissions.includes('*')
+      || tenant.memberRole === 'owner'
+      || memberHasPermission(permissions, 'publishing.settings');
+    if (canManageSettings) {
+      return this.list(tenant.tenantId, status);
+    }
+
+    const resolved = resolveNewsroomServiceAccess(permissions, tenant.newsroomServiceIds);
+    const platform = this.resolvePlatform(await this.settings.getRaw(tenant.tenantId));
+    await this.ensureGeneralCategory(tenant.tenantId, platform);
+    const effectiveStatus = status ?? 'approved';
+
+    if (resolved === 'none') {
+      return this.prisma.destinationCategory.findMany({
+        where: {
+          tenantId: tenant.tenantId,
+          platform,
+          status: effectiveStatus,
+          isGeneral: true,
+        },
+        orderBy: [{ isGeneral: 'desc' }, { name: 'asc' }],
+      });
+    }
+
+    if (resolved === 'all') {
+      return this.prisma.destinationCategory.findMany({
+        where: {
+          tenantId: tenant.tenantId,
+          platform,
+          status: effectiveStatus,
+        },
+        orderBy: [{ isGeneral: 'desc' }, { name: 'asc' }],
+      });
+    }
+
+    return this.prisma.destinationCategory.findMany({
+      where: {
+        tenantId: tenant.tenantId,
+        platform,
+        status: effectiveStatus,
+        OR: [{ isGeneral: true }, { id: { in: resolved } }],
       },
       orderBy: [{ isGeneral: 'desc' }, { name: 'asc' }],
     });

@@ -9,6 +9,10 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
+import {
+  ORGANIZATION_MENU_PERMISSIONS,
+  memberHasPermission,
+} from '@deska/shared';
 
 export interface NavItem {
   href: string;
@@ -87,24 +91,43 @@ function isSeparator(entry: NavEntry): entry is NavSeparator {
   return 'type' in entry && entry.type === 'separator';
 }
 
-function filterNavItem(item: NavItem, isSuperAdmin: boolean, isOwner: boolean): boolean {
-  if (item.superAdminOnly && !isSuperAdmin) return false;
-  if (item.ownerOnly && !isSuperAdmin && !isOwner) return false;
-  return true;
+function menuPermissionForHref(href: string): string | null {
+  const exact = ORGANIZATION_MENU_PERMISSIONS.find((item) => item.href === href);
+  if (exact) return exact.key;
+  const nested = ORGANIZATION_MENU_PERMISSIONS.find((item) => href.startsWith(`${item.href}/`));
+  return nested?.key ?? null;
 }
 
-export function filterNavSections(isSuperAdmin: boolean, isOwner: boolean): NavSection[] {
+function filterNavItem(
+  item: NavItem,
+  isSuperAdmin: boolean,
+  isOwner: boolean,
+  permissions: string[],
+): boolean {
+  if (item.superAdminOnly && !isSuperAdmin) return false;
+  if (item.ownerOnly && !isSuperAdmin && !isOwner) return false;
+  if (isSuperAdmin || isOwner) return true;
+  const permission = menuPermissionForHref(item.href);
+  if (!permission) return true;
+  return memberHasPermission(permissions, permission);
+}
+
+export function filterNavSections(
+  isSuperAdmin: boolean,
+  isOwner: boolean,
+  permissions: string[] = [],
+): NavSection[] {
   return NAV_SECTIONS
     .filter((section) => !section.superAdminOnly || isSuperAdmin)
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => filterNavItem(item, isSuperAdmin, isOwner)),
+      items: section.items.filter((item) => filterNavItem(item, isSuperAdmin, isOwner, permissions)),
     }))
     .filter((section) => section.items.length > 0);
 }
 
-export function filterNavEntries(isSuperAdmin: boolean, isOwner: boolean): NavEntry[] {
-  const sections = filterNavSections(isSuperAdmin, isOwner);
+export function filterNavEntries(isSuperAdmin: boolean, isOwner: boolean, permissions: string[] = []): NavEntry[] {
+  const sections = filterNavSections(isSuperAdmin, isOwner, permissions);
   const result: NavEntry[] = [];
 
   sections.forEach((section, index) => {
@@ -116,12 +139,12 @@ export function filterNavEntries(isSuperAdmin: boolean, isOwner: boolean): NavEn
 }
 
 /** @deprecated Use filterNavEntries */
-export function filterNavItems(isSuperAdmin: boolean, isOwner: boolean): NavItem[] {
-  return filterNavEntries(isSuperAdmin, isOwner).filter((entry): entry is NavItem => !isSeparator(entry));
+export function filterNavItems(isSuperAdmin: boolean, isOwner: boolean, permissions: string[] = []): NavItem[] {
+  return filterNavEntries(isSuperAdmin, isOwner, permissions).filter((entry): entry is NavItem => !isSeparator(entry));
 }
 
-export function filterNavGroups(isSuperAdmin: boolean, isOwner: boolean): NavGroup[] {
-  return filterNavSections(isSuperAdmin, isOwner).map((section) => ({
+export function filterNavGroups(isSuperAdmin: boolean, isOwner: boolean, permissions: string[] = []): NavGroup[] {
+  return filterNavSections(isSuperAdmin, isOwner, permissions).map((section) => ({
     id: section.id,
     label: section.label,
     items: section.items,

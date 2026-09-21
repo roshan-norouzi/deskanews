@@ -6,6 +6,7 @@ import {
   DEFAULT_NEWS_PERSIAN_REWRITE_PROMPT,
   DEFAULT_NEWS_SUMMARY_PROMPT,
 } from './news-processing-prompts';
+import { COVER_TEMPLATE_FROM_SAMPLE_PROMPT } from './cover-template-from-sample';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { parseWordPressCategories, type WordPressCategory } from './wordpress-category';
@@ -354,7 +355,31 @@ export class GapGptClient {
     };
   }
 
-  private async complete(settings: PublishingSettings, system: string, user: string, maxTokens: number, activity: GapGptActivity): Promise<string> {
+  async inferCoverTemplateFromSample(
+    settings: PublishingSettings,
+    input: { imageDataUrl: string; canvas: { width: 1080; height: 1080 | 1350 | 1920 } },
+  ): Promise<Record<string, unknown>> {
+    const raw = await this.complete(
+      settings,
+      COVER_TEMPLATE_FROM_SAMPLE_PROMPT,
+      `اندازه پیشنهادی خروجی ${input.canvas.width}×${input.canvas.height} است. لایه‌ها را مطابق تصویر نمونه بساز.`,
+      2500,
+      'social',
+      input.imageDataUrl,
+    );
+    const parsed = extractJson(raw);
+    if (!parsed) throw new Error('پاسخ GapGPT قالب تصویری معتبری نداشت');
+    return parsed;
+  }
+
+  private async complete(
+    settings: PublishingSettings,
+    system: string,
+    user: string,
+    maxTokens: number,
+    activity: GapGptActivity,
+    imageDataUrl?: string,
+  ): Promise<string> {
     const { baseUrl, apiKey, model } = this.credentials(settings, activity);
     const response = await this.outbound.safeRequest(endpoint(baseUrl, 'chat/completions'), {
       method: 'POST',
@@ -369,7 +394,15 @@ export class GapGptClient {
         max_tokens: maxTokens,
         messages: [
           { role: 'system', content: system },
-          { role: 'user', content: user },
+          {
+            role: 'user',
+            content: imageDataUrl
+              ? [
+                  { type: 'text', text: user },
+                  { type: 'image_url', image_url: { url: imageDataUrl } },
+                ]
+              : user,
+          },
         ],
       }),
       timeoutMs: 120_000,

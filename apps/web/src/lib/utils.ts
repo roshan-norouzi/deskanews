@@ -8,6 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 const TOKEN_KEY = 'deska_access_token';
 const REFRESH_KEY = 'deska_refresh_token';
 const TENANT_KEY = 'deska_tenant_id';
+const PUBLISHING_SETTINGS_DRAFT_KEY = 'deska_publishing_settings_draft';
+export const TENANT_CHANGED_EVENT = 'deska-tenant-changed';
+
+function notifyTenantChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(TENANT_CHANGED_EVENT));
+}
 
 export function withBasePath(path: string): string {
   const basePath = runtimeBasePath();
@@ -44,10 +51,17 @@ export function clearTokens() {
 
 export function setTenantId(tenantId: string) {
   localStorage.setItem(TENANT_KEY, tenantId);
+  notifyTenantChanged();
 }
 
 export function clearTenantId() {
   localStorage.removeItem(TENANT_KEY);
+  notifyTenantChanged();
+}
+
+export function clearPublishingSettingsDraft() {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(PUBLISHING_SETTINGS_DRAFT_KEY);
 }
 
 let refreshPromise: Promise<boolean> | null = null;

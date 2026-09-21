@@ -65,7 +65,26 @@ export const ORGANIZATIONAL_ROLES = [
 
 export type OrganizationalRole = (typeof ORGANIZATIONAL_ROLES)[number];
 
-// Permission catalog — platform + smart publishing only
+export const NEWSROOM_ALL_SERVICES = '*';
+
+/** Menu items an organization owner can grant to members. */
+export const ORGANIZATION_MENU_PERMISSIONS = [
+  { key: 'dashboard.view', label: 'داشبورد', group: 'خانه', href: '/dashboard' },
+  { key: 'publishing.feeds', label: 'منابع خبری', group: 'محتوا', href: '/publishing/feeds' },
+  { key: 'publishing.news', label: 'اتاق خبر', group: 'محتوا', href: '/publishing/news' },
+  { key: 'publishing.social', label: 'استودیوی اجتماعی', group: 'محتوا', href: '/publishing/social' },
+  { key: 'publishing.media', label: 'فایل‌ها', group: 'محتوا', href: '/publishing/media' },
+  { key: 'publishing.operations', label: 'مرکز عملیات', group: 'پیکربندی', href: '/publishing/operations' },
+  { key: 'settings.manage', label: 'تنظیمات سازمان', group: 'پیکربندی', href: '/settings' },
+] as const;
+
+export type OrganizationMenuPermission = (typeof ORGANIZATION_MENU_PERMISSIONS)[number]['key'];
+
+const PUBLISHING_MENU_PERMISSIONS = ORGANIZATION_MENU_PERMISSIONS
+  .map((item) => item.key)
+  .filter((key) => key.startsWith('publishing.'));
+
+// Permission catalog — platform + organization menu + legacy keys
 export const APP_PERMISSIONS = [
   { key: 'platform.admin', label: 'مدیریت پلتفرم', moduleId: 'platform' },
   { key: 'platform.users.view', label: 'مشاهده کاربران پلتفرم', moduleId: 'platform' },
@@ -76,20 +95,23 @@ export const APP_PERMISSIONS = [
   { key: 'organization.members.add', label: 'افزودن عضو سازمان', moduleId: 'platform' },
   { key: 'organization.members.manage', label: 'مدیریت اعضای سازمان', moduleId: 'platform' },
   { key: 'organization.owners.manage', label: 'مدیریت مالکان سازمان', moduleId: 'platform' },
-  { key: 'dashboard.view', label: 'مشاهده داشبورد', moduleId: 'platform' },
-  { key: 'settings.manage', label: 'مدیریت تنظیمات', moduleId: 'platform' },
+  { key: 'dashboard.view', label: 'داشبورد', moduleId: 'platform' },
+  { key: 'settings.manage', label: 'تنظیمات سازمان', moduleId: 'platform' },
   { key: 'users.manage', label: 'مدیریت کاربران', moduleId: 'platform' },
+  { key: 'publishing.feeds', label: 'منابع خبری', moduleId: 'smart-publishing' },
+  { key: 'publishing.news', label: 'اتاق خبر', moduleId: 'smart-publishing' },
+  { key: 'publishing.social', label: 'استودیوی اجتماعی', moduleId: 'smart-publishing' },
+  { key: 'publishing.media', label: 'فایل‌ها', moduleId: 'smart-publishing' },
+  { key: 'publishing.operations', label: 'مرکز عملیات', moduleId: 'smart-publishing' },
+  { key: 'publishing.settings', label: 'تنظیمات انتشار', moduleId: 'smart-publishing' },
   { key: 'publishing.view', label: 'مشاهده انتشار', moduleId: 'smart-publishing' },
   { key: 'publishing.manage', label: 'مدیریت محتوای انتشار', moduleId: 'smart-publishing' },
   { key: 'publishing.publish', label: 'انتشار محتوا', moduleId: 'smart-publishing' },
-  { key: 'publishing.settings', label: 'مدیریت تنظیمات انتشار', moduleId: 'smart-publishing' },
 ] as const;
 
 export type AppPermission = (typeof APP_PERMISSIONS)[number]['key'];
 
-const VIEW_PERMISSIONS = APP_PERMISSIONS
-  .map((permission) => permission.key)
-  .filter((permission) => permission.endsWith('.view'));
+const MENU_PERMISSION_SET = new Set<string>(ORGANIZATION_MENU_PERMISSIONS.map((item) => item.key));
 
 /**
  * Safe defaults for the built-in organizational roles.
@@ -97,29 +119,88 @@ const VIEW_PERMISSIONS = APP_PERMISSIONS
 export const DEFAULT_TENANT_ROLE_PERMISSIONS: Record<TenantRole, readonly AppPermission[]> = {
   owner: APP_PERMISSIONS.map((permission) => permission.key),
   admin: APP_PERMISSIONS.map((permission) => permission.key),
-  manager: APP_PERMISSIONS
-    .map((permission) => permission.key)
-    .filter((permission) => !permission.startsWith('platform.') && !['users.manage', 'organization.owners.manage', 'organization.members.add'].includes(permission)),
-  senior_specialist: [
-    ...VIEW_PERMISSIONS,
-    'publishing.manage',
-    'publishing.publish',
-  ] as AppPermission[],
-  member: VIEW_PERMISSIONS as AppPermission[],
-  viewer: VIEW_PERMISSIONS as AppPermission[],
+  manager: ORGANIZATION_MENU_PERMISSIONS.map((item) => item.key),
+  senior_specialist: ORGANIZATION_MENU_PERMISSIONS
+    .map((item) => item.key)
+    .filter((key) => key !== 'settings.manage'),
+  member: ['dashboard.view', 'publishing.news', 'publishing.social'],
+  viewer: ['dashboard.view', 'publishing.news'],
 };
 
 export function getDefaultPermissionsForTenantRole(role: string): string[] {
   return [...(DEFAULT_TENANT_ROLE_PERMISSIONS[role as TenantRole] ?? [])];
 }
 
-/** Permissions an organization owner can assign to members (excludes platform-wide controls). */
-export const ORGANIZATION_ASSIGNABLE_PERMISSIONS = APP_PERMISSIONS
-  .map((permission) => permission.key)
-  .filter((key) => !key.startsWith('platform.') && key !== 'organization.owners.manage') as AppPermission[];
+export const ORGANIZATION_ASSIGNABLE_PERMISSIONS = ORGANIZATION_MENU_PERMISSIONS.map((item) => item.key);
 
-export function isOrganizationAssignablePermission(key: string): key is AppPermission {
-  return (ORGANIZATION_ASSIGNABLE_PERMISSIONS as readonly string[]).includes(key);
+export function isOrganizationAssignablePermission(key: string): key is OrganizationMenuPermission {
+  return MENU_PERMISSION_SET.has(key);
+}
+
+export function expandMemberPermissions(permissions: readonly string[]): string[] {
+  const expanded = new Set(permissions);
+  if (expanded.has('*')) return ['*'];
+  if (expanded.has('publishing.view') || expanded.has('publishing.manage') || expanded.has('publishing.publish')) {
+    for (const key of PUBLISHING_MENU_PERMISSIONS) expanded.add(key);
+  }
+  if (expanded.has('users.manage') || expanded.has('organization.members.manage') || expanded.has('organization.members.view') || expanded.has('organization.members.add')) {
+    expanded.add('settings.manage');
+  }
+  return [...expanded];
+}
+
+export function memberHasPermission(permissions: readonly string[], required: string): boolean {
+  const expanded = expandMemberPermissions(permissions);
+  if (expanded.includes('*') || expanded.includes(required)) return true;
+  if (required === 'publishing.view') {
+    return ['publishing.settings', ...PUBLISHING_MENU_PERMISSIONS].some((key) => expanded.includes(key));
+  }
+  return false;
+}
+
+export function permissionsForPicker(permissions: readonly string[]): OrganizationMenuPermission[] {
+  const expanded = expandMemberPermissions(permissions);
+  if (expanded.includes('*')) return [...ORGANIZATION_ASSIGNABLE_PERMISSIONS];
+  return ORGANIZATION_ASSIGNABLE_PERMISSIONS.filter((key) => expanded.includes(key));
+}
+
+export function normalizeNewsroomServiceIds(
+  permissions: readonly string[],
+  serviceIds: readonly string[] | null | undefined,
+): string[] {
+  const expanded = expandMemberPermissions(permissions);
+  if (!expanded.includes('*') && !expanded.includes('publishing.news')) return [];
+  const unique = [...new Set((serviceIds ?? []).map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!unique.length || unique.includes(NEWSROOM_ALL_SERVICES)) return [NEWSROOM_ALL_SERVICES];
+  return unique;
+}
+
+export function resolveNewsroomServiceAccess(
+  permissions: readonly string[],
+  serviceIds: readonly string[] | null | undefined,
+): 'all' | 'none' | string[] {
+  const expanded = expandMemberPermissions(permissions);
+  if (expanded.includes('*')) return 'all';
+  if (!expanded.includes('publishing.news')) return 'none';
+  const normalized = normalizeNewsroomServiceIds(permissions, serviceIds);
+  if (normalized.includes(NEWSROOM_ALL_SERVICES)) return 'all';
+  return normalized;
+}
+
+export function organizationMenuPermissionGroups() {
+  const groups = new Map<string, Array<(typeof ORGANIZATION_MENU_PERMISSIONS)[number]>>();
+  for (const item of ORGANIZATION_MENU_PERMISSIONS) {
+    const current = groups.get(item.group) ?? [];
+    current.push(item);
+    groups.set(item.group, current);
+  }
+  return [...groups.entries()].map(([title, items]) => ({ title, items }));
+}
+
+export function menuPermissionLabel(key: string): string {
+  return ORGANIZATION_MENU_PERMISSIONS.find((item) => item.key === key)?.label
+    ?? APP_PERMISSIONS.find((item) => item.key === key)?.label
+    ?? key;
 }
 
 export const USAGE_METRIC_KEYS = {

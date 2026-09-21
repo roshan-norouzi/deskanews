@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, LogOut, Menu, Search, X } from 'lucide-react';
@@ -22,13 +22,18 @@ interface AppShellProps {
 export function AppShell({ children, title }: AppShellProps) {
   const pathname = usePathname();
   const { user, logout, isSuperAdmin } = useAuth();
-  const { activeTenant } = useTenant();
+  const { activeTenant, activeTenantId, tenants } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const navSections = filterNavSections(isSuperAdmin, activeTenant?.memberRole === 'owner');
-  const navGroups = filterNavGroups(isSuperAdmin, activeTenant?.memberRole === 'owner');
+  const resolvedActiveTenant = useMemo(
+    () => activeTenant ?? tenants.find((t) => t.id === activeTenantId) ?? null,
+    [activeTenant, activeTenantId, tenants],
+  );
+  const memberPermissions = resolvedActiveTenant?.permissions ?? [];
+  const navSections = filterNavSections(isSuperAdmin, resolvedActiveTenant?.memberRole === 'owner', memberPermissions);
+  const navGroups = filterNavGroups(isSuperAdmin, resolvedActiveTenant?.memberRole === 'owner', memberPermissions);
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? '1.0.0';
 
   useEffect(() => {
@@ -189,10 +194,10 @@ export function AppShell({ children, title }: AppShellProps) {
           {title && <h1 className="lytic-page-title">{title}</h1>}
 
           <div className="mr-auto flex items-center gap-2 sm:gap-3">
-            {activeTenant && <NotificationBell key={activeTenant.id} />}
+            {resolvedActiveTenant && <NotificationBell key={resolvedActiveTenant.id} />}
             <TenantSwitcher />
-            {activeTenant && (
-              <span className="hidden max-w-[10rem] truncate text-sm text-slate-500 md:inline">{activeTenant.name}</span>
+            {resolvedActiveTenant && (
+              <span className="hidden max-w-[10rem] truncate text-sm text-slate-500 md:inline">{resolvedActiveTenant.name}</span>
             )}
           </div>
         </header>

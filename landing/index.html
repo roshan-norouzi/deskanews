@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="دسکا — اتاق خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران. دریافت خبر از منابع چندزبانه (انگلیسی، آلمانی، چینی، فرانسوی، ترکی و...)، تبدیل توییت به خبر، ترجمه با AI و انتشار در سایت و شبکه‌های اجتماعی.">
-  <meta name="keywords" content="دسکا, اتاق خبر, نشر هوشمند, خبرگزاری, رسانه, هوش مصنوعی, انتشار خودکار">
+  <meta name="description" content="دسکا — اتاق خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران. پایش منابع، آماده‌سازی با مدل‌های هوش مصنوعی، انتشار در سایت و شبکه‌های اجتماعی.">
   <title>دسکا — اتاق خبر هوشمند</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,36 +13,30 @@
 </head>
 <body>
 
-  <!-- Navigation -->
   <nav class="nav" id="nav">
     <div class="nav-inner">
       <a href="#" class="nav-logo">
         <span class="logo-icon">
-          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="32" height="32" rx="8" fill="currentColor"/>
-            <path d="M8 10h16M8 16h12M8 22h8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-          </svg>
+          <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M8 10h16M8 16h12M8 22h8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
         </span>
         <span class="logo-text">دسکا</span>
       </a>
       <div class="nav-links">
-        <a href="#features">ویژگی‌ها</a>
-        <a href="#workflow">نحوه کار</a>
+        <a href="#modules">ماژول‌ها</a>
+        <a href="#ai">هوش مصنوعی</a>
+        <a href="#workflow">جریان کار</a>
         <a href="#integrations">اتصالات</a>
-        <a href="#sources">منابع جهانی</a>
-        <a href="#source-logos">منابع</a>
+        <a href="#sources">منابع</a>
       </div>
       <a href="https://app.deska.ir" class="btn btn-primary btn-sm">ورود به سامانه</a>
-      <button class="nav-toggle" id="navToggle" aria-label="منو">
-        <span></span><span></span><span></span>
-      </button>
+      <button class="nav-toggle" id="navToggle" aria-label="منو"><span></span><span></span><span></span></button>
     </div>
     <div class="nav-mobile" id="navMobile">
-      <a href="#features">ویژگی‌ها</a>
-      <a href="#workflow">نحوه کار</a>
+      <a href="#modules">ماژول‌ها</a>
+      <a href="#ai">هوش مصنوعی</a>
+      <a href="#workflow">جریان کار</a>
       <a href="#integrations">اتصالات</a>
-      <a href="#sources">منابع جهانی</a>
-      <a href="#source-logos">منابع</a>
+      <a href="#sources">منابع</a>
       <a href="https://app.deska.ir" class="btn btn-primary">ورود به سامانه</a>
     </div>
   </nav>
@@ -67,38 +60,38 @@
         <span class="gradient-text">برای رسانه‌های ایران</span>
       </h1>
       <p class="hero-subtitle fade-up delay-2">
-        خبر را از منابع فارسی و بین‌المللی — انگلیسی، آلمانی، چینی، فرانسوی، ترکی، عربی و بیشتر — بگیرید. توییت‌های X را به خبر تبدیل کنید، با هوش مصنوعی ترجمه و آماده‌سازی کنید و در سایت و شبکه‌های اجتماعی منتشر کنید.
+        خبر را از منابع فارسی و بین‌المللی بگیرید، با مدل‌های هوش مصنوعی آماده کنید و در سایت یا شبکه‌های اجتماعی منتشر کنید — WordPress، ایران‌سامانه، نستوه، تلگرام، اینستاگرام و بیشتر.
       </p>
       <div class="hero-actions fade-up delay-3">
         <a href="https://app.deska.ir" class="btn btn-primary btn-lg">
           شروع رایگان
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </a>
-        <a href="#workflow" class="btn btn-ghost btn-lg">ببینید چطور کار می‌کند</a>
+        <a href="#modules" class="btn btn-ghost btn-lg">امکانات پلتفرم</a>
       </div>
-      <div class="hero-stats fade-up delay-4">
+      <div class="hero-stats fade-up delay-4" id="heroStats">
         <div class="stat">
-          <span class="stat-value">۱۰+</span>
+          <span class="stat-value" data-count="10" data-suffix="+">۰</span>
           <span class="stat-label">زبان منبع</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat">
-          <span class="stat-value">۵+</span>
-          <span class="stat-label">نوع منبع خبری</span>
+          <span class="stat-value" data-count="5">۰</span>
+          <span class="stat-label">نوع منبع</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat">
-          <span class="stat-value">۴</span>
+          <span class="stat-value" data-count="4">۰</span>
           <span class="stat-label">شبکه اجتماعی</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat">
-          <span class="stat-value">۳</span>
-          <span class="stat-label">پلتفرم انتشار سایت</span>
+          <span class="stat-value" data-count="3">۰</span>
+          <span class="stat-label">پلتفرم سایت</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat">
-          <span class="stat-value">۱۰۰٪</span>
+          <span class="stat-value" data-count="100" data-suffix="٪">۰</span>
           <span class="stat-label">فارسی و RTL</span>
         </div>
       </div>
@@ -106,49 +99,56 @@
     <div class="hero-visual-wrap fade-up delay-5">
       <div class="hero-float hero-float-1">
         <span class="float-icon float-icon-green">✓</span>
-        <span>خبر آماده انتشار</span>
+        <span>آماده انتشار</span>
       </div>
       <div class="hero-float hero-float-2">
         <span class="float-icon float-icon-blue">AI</span>
-        <span>ترجمه خودکار</span>
+        <span>ترجمه و بازنویسی</span>
       </div>
       <div class="hero-float hero-float-3">
         <span class="float-icon float-icon-violet">𝕏</span>
         <span>توییت → خبر</span>
       </div>
       <div class="hero-float hero-float-4">
-        <span class="float-icon float-icon-amber">GL</span>
-        <span>ترجمه ۱۰+ زبان</span>
+        <span class="float-icon float-icon-amber">RSS</span>
+        <span>پایش خودکار</span>
       </div>
       <div class="hero-mockup" id="heroMockup">
         <div class="mockup-window mockup-glow">
           <div class="mockup-bar">
             <div class="mockup-dots"><span></span><span></span><span></span></div>
-            <span class="mockup-url">app.deska.ir/publishing/news</span>
+            <span class="mockup-url" id="heroMockupUrl">app.deska.ir/publishing/news</span>
           </div>
-          <div class="platform-mock platform-mock--hero">
+          <div class="platform-mock platform-mock--hero" id="heroMockupApp">
             <aside class="pm-sidebar">
-              <div class="pm-logo-row"><div class="pm-logo">د</div></div>
-              <div class="pm-nav-item"></div>
-              <div class="pm-nav-item"></div>
-              <div class="pm-nav-item active"></div>
-              <div class="pm-nav-item"></div>
+              <div class="pm-logo-row"><div class="pm-logo">د</div><span class="pm-logo-text">دسکا</span></div>
+              <div class="pm-nav-item" data-hero-nav="feeds"><span>منابع خبری</span></div>
+              <div class="pm-nav-item active" data-hero-nav="news"><span>اتاق خبر</span></div>
+              <div class="pm-nav-item" data-hero-nav="social"><span>استودیوی اجتماعی</span></div>
+              <div class="pm-nav-item" data-hero-nav="ops"><span>مرکز عملیات</span></div>
             </aside>
-            <main class="pm-main">
+            <main class="pm-main" id="heroMockupMain">
               <div class="pm-title">اتاق خبر</div>
-              <div class="pm-filters"><span class="pm-pill active">آماده اقدام</span><span class="pm-pill">در پردازش</span></div>
-              <div class="pm-article">
+              <div class="pm-subtitle">دریافت، آماده‌سازی و انتشار خبرها</div>
+              <div class="pm-filters">
+                <span class="pm-pill active" id="heroPillReady">آماده اقدام</span>
+                <span class="pm-pill" id="heroPillProcess">در پردازش</span>
+                <span class="pm-pill" id="heroPillPublished">منتشر شده</span>
+              </div>
+              <div class="pm-article hero-article-live" id="heroArticle1">
                 <div class="pm-article-img g1"></div>
                 <div class="pm-article-body">
                   <div class="pm-article-title">تیم ملی فوتبال در بازی دوستانه مقابل ژاپن به پیروزی رسید</div>
-                  <div class="pm-article-meta">ورزش۳ • ۵ دقیقه پیش</div>
-                  <span class="pm-badge green">آماده بررسی</span>
+                  <div class="pm-article-meta">ورزش۳ · ۵ دقیقه پیش</div>
+                  <span class="pm-badge green" id="heroBadge1">آماده بررسی</span>
                 </div>
+                <div class="pm-btn-publish">انتشار</div>
               </div>
-              <div class="pm-article">
+              <div class="pm-article" id="heroArticle2">
                 <div class="pm-article-img g2"></div>
                 <div class="pm-article-body">
-                  <div class="pm-article-title">رونمایی از نسل جدید پردازنده‌های هوش مصنوعی در نمایشگاه CES</div>
+                  <div class="pm-article-title">رونمایی از نسل جدید پردازنده‌ها در نمایشگاه CES</div>
+                  <div class="pm-article-meta">دیجیاتو · ۱۲ دقیقه پیش</div>
                   <span class="pm-badge blue">در حال آماده‌سازی</span>
                 </div>
               </div>
@@ -160,487 +160,336 @@
     </div>
   </section>
 
-  <!-- Features -->
-  <section class="section" id="features">
+  <!-- Modules -->
+  <section class="section" id="modules">
     <div class="container">
-      <div class="section-header">
-        <span class="section-tag">امکانات</span>
-        <h2 class="section-title">همه‌چیز برای اتاق خبر مدرن</h2>
-        <p class="section-desc">از دریافت خبر تا انتشار نهایی — هر مرحله با ابزارهای حرفه‌ای و اتوماسیون هوشمند</p>
+      <div class="section-header center">
+        <span class="section-tag">ماژول‌های پلتفرم</span>
+        <h2 class="section-title">همه ابزارهای اتاق خبر در یک سامانه</h2>
+        <p class="section-desc">از پایش منبع تا انتشار نهایی — هر بخش با اتوماسیون و کنترل دستی</p>
       </div>
-      <div class="features-grid">
 
-        <div class="feature-card">
-          <div class="feature-icon feature-icon-indigo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-          </div>
-          <h3>منابع خبری چندلایه و چندزبانه</h3>
-          <p>کاتالوگ منابع پیش‌تعریف از رسانه‌های داخلی و بین‌المللی — انگلیسی، آلمانی، چینی، فرانسوی، ترکی، عبری، ژاپنی و بیشتر — به‌علاوه فیدهای اختصاصی سازمان شما.</p>
-          <ul class="feature-list">
-            <li>RSS، Atom و JSON Feed</li>
-            <li>کانال‌های تلگرام و اکانت‌های X</li>
-            <li>تشخیص خودکار زبان منبع</li>
-          </ul>
+      <div class="module-showcase" id="moduleShowcase">
+        <div class="module-tabs" role="tablist">
+          <button class="module-tab active" data-module="dashboard" type="button"><span class="module-tab-num">۱</span>داشبورد</button>
+          <button class="module-tab" data-module="feeds" type="button"><span class="module-tab-num">۲</span>منابع خبری</button>
+          <button class="module-tab" data-module="newsroom" type="button"><span class="module-tab-num">۳</span>اتاق خبر</button>
+          <button class="module-tab" data-module="social" type="button"><span class="module-tab-num">۴</span>استودیوی اجتماعی</button>
+          <button class="module-tab" data-module="ops" type="button"><span class="module-tab-num">۵</span>مرکز عملیات</button>
+          <button class="module-tab" data-module="settings" type="button"><span class="module-tab-num">۶</span>تنظیمات</button>
         </div>
 
-        <div class="feature-card featured">
-          <div class="feature-icon feature-icon-violet">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2z"/></svg>
+        <div class="module-panels">
+          <div class="module-panel active" data-module="dashboard">
+            <div class="module-panel-text">
+              <h3>داشبورد</h3>
+              <p>نمای کلی عملیات: ورودی اتاق خبر، استودیو، صف اتوماسیون، سلامت اتصال‌ها و اعلان‌ها.</p>
+              <ul class="module-features-list">
+                <li>آمار لحظه‌ای ورودی و انتشار</li>
+                <li>وضعیت اتصال سایت و شبکه‌ها</li>
+                <li>کارهای در صف و متوقف‌شده</li>
+              </ul>
+            </div>
+            <div class="module-mock">
+              <div class="platform-mock platform-mock--module">
+                <aside class="pm-sidebar">
+                  <div class="pm-logo-row"><div class="pm-logo">د</div><span class="pm-logo-text">دسکا</span></div>
+                  <div class="pm-nav-item active"><span>داشبورد</span></div>
+                  <div class="pm-nav-item"><span>منابع خبری</span></div>
+                  <div class="pm-nav-item"><span>اتاق خبر</span></div>
+                  <div class="pm-nav-item"><span>استودیوی اجتماعی</span></div>
+                </aside>
+                <main class="pm-main">
+                  <div class="pm-title">داشبورد</div>
+                  <div class="pm-subtitle">آخرین بروزرسانی: امروز</div>
+                  <div class="pm-stats">
+                    <div class="pm-stat-card"><div class="pm-stat-label">ورودی اتاق خبر</div><div class="pm-stat-value blue">۲۴</div></div>
+                    <div class="pm-stat-card"><div class="pm-stat-label">ورودی استودیو</div><div class="pm-stat-value violet">۱۲</div></div>
+                    <div class="pm-stat-card"><div class="pm-stat-label">کارهای صف</div><div class="pm-stat-value cyan">۸</div></div>
+                    <div class="pm-stat-card"><div class="pm-stat-label">منتشرشده امروز</div><div class="pm-stat-value green">۴۷</div></div>
+                  </div>
+                  <div class="pm-panels">
+                    <div class="pm-panel"><h4>اتاق خبر</h4><div class="pm-panel-line">آماده: ۱۸</div></div>
+                    <div class="pm-panel"><h4>استودیو</h4><div class="pm-panel-line">آماده: ۸</div></div>
+                  </div>
+                </main>
+              </div>
+            </div>
           </div>
-          <h3>اتاق خبر</h3>
-          <p>قلب سامانه — دریافت خودکار خبر، خلاصه‌سازی با AI، ترجمه و بازنویسی، و انتشار مستقیم در سایت یا ارسال به استودیوی اجتماعی.</p>
-          <ul class="feature-list">
-            <li>بروزرسانی لحظه‌ای</li>
-            <li>ویرایش قبل از انتشار</li>
-            <li>گردش کار هوشمند</li>
-          </ul>
+
+          <div class="module-panel" data-module="feeds">
+            <div class="module-panel-text">
+              <h3>منابع خبری</h3>
+              <p>کاتالوگ پیش‌فرض و منابع اختصاصی — از خبرگزاری‌های فارسی تا Reuters، AFP و کانال‌های X و تلگرام؛ هر منبع با زبان خودش پایش می‌شود.</p>
+              <ul class="module-features-list">
+                <li>RSS، وب‌سایت، وبلاگ، تلگرام، X — چندزبانه</li>
+                <li>تشخیص خودکار زبان منبع</li>
+                <li>فیلتر کلمات و اتوماسیون پایش per منبع</li>
+              </ul>
+            </div>
+            <div class="module-mock">
+              <div class="platform-mock platform-mock--module">
+                <aside class="pm-sidebar">
+                  <div class="pm-logo-row"><div class="pm-logo">د</div><span class="pm-logo-text">دسکا</span></div>
+                  <div class="pm-nav-item active"><span>منابع خبری</span></div>
+                  <div class="pm-nav-item"><span>اتاق خبر</span></div>
+                </aside>
+                <main class="pm-main">
+                  <div class="pm-feeds-header"><div class="pm-title" style="margin:0">منابع خبری</div><span class="pm-feeds-badge">کاتالوگ + اختصاصی</span></div>
+                  <div class="pm-table">
+                    <div class="pm-table-row pm-table-head"><span>نام منبع</span><span>زبان</span><span>نوع</span><span>آخرین پایش</span></div>
+                    <div class="pm-table-row"><span>خبرگزاری مهر</span><span class="pm-lang">داخلی</span><span class="pm-tag">RSS</span><span>۲ دقیقه پیش</span></div>
+                    <div class="pm-table-row"><span>Reuters</span><span class="pm-lang"><img class="pm-lang-flag" src="images/flags/gb.svg" alt="" width="18" height="12">انگلیسی</span><span class="pm-tag">RSS</span><span>۵ دقیقه پیش</span></div>
+                    <div class="pm-table-row"><span>AFP</span><span class="pm-lang"><img class="pm-lang-flag" src="images/flags/fr.svg" alt="" width="18" height="12">فرانسوی</span><span class="pm-tag">RSS</span><span>۸ دقیقه پیش</span></div>
+                    <div class="pm-table-row"><span>NHK World</span><span class="pm-lang"><img class="pm-lang-flag" src="images/flags/jp.svg" alt="" width="18" height="12">ژاپنی</span><span class="pm-tag">RSS</span><span>۱۲ دقیقه پیش</span></div>
+                  </div>
+                </main>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-panel" data-module="newsroom">
+            <div class="module-panel-text">
+              <h3>اتاق خبر</h3>
+              <p>خبر از منابع انگلیسی، عربی، چینی و… به‌صورت خودکار به فارسی ترجمه می‌شود — سردبیر و خبرنگار همان‌جا ویرایش، تأیید و منتشر می‌کند.</p>
+              <ul class="module-features-list">
+                <li>ورودی چندزبانه → خروجی فارسی برای تیم تحریریه</li>
+                <li>وضعیت: ورودی → پردازش → آماده → منتشر</li>
+                <li>ترجمه، بازنویسی و انتشار در سایت یا استودیو</li>
+              </ul>
+            </div>
+            <div class="module-mock">
+              <div class="platform-mock platform-mock--module">
+                <aside class="pm-sidebar">
+                  <div class="pm-logo-row"><div class="pm-logo">د</div><span class="pm-logo-text">دسکا</span></div>
+                  <div class="pm-nav-item"><span>منابع خبری</span></div>
+                  <div class="pm-nav-item active"><span>اتاق خبر</span></div>
+                  <div class="pm-nav-item"><span>استودیوی اجتماعی</span></div>
+                </aside>
+                <main class="pm-main">
+                  <div class="pm-title">اتاق خبر</div>
+                  <div class="pm-filters"><span class="pm-pill active">آماده اقدام</span><span class="pm-pill">در پردازش</span><span class="pm-pill">منتشر شده</span></div>
+                  <div class="pm-article">
+                    <div class="pm-article-img g1"></div>
+                    <div class="pm-article-body">
+                      <div class="pm-article-title">تیم ملی فوتبال در بازی دوستانه به پیروزی رسید</div>
+                      <div class="pm-article-meta">ورزش۳ · ۵ دقیقه پیش</div>
+                      <span class="pm-badge green">آماده بررسی</span>
+                    </div>
+                    <div class="pm-btn-publish">انتشار</div>
+                  </div>
+                </main>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-panel" data-module="social">
+            <div class="module-panel-text">
+              <h3>استودیوی اجتماعی</h3>
+              <p>تولید لید، خلاصه، کپشن و تصویر کاور — انتشار در تلگرام، اینستاگرام، لینکدین و فیسبوک.</p>
+              <ul class="module-features-list">
+                <li>طراح قالب تصویر کاور</li>
+                <li>کپشن با متغیرهای پویا</li>
+                <li>منابع مستقل از اتاق خبر</li>
+              </ul>
+            </div>
+            <div class="module-mock">
+              <div class="platform-mock platform-mock--module">
+                <aside class="pm-sidebar">
+                  <div class="pm-logo-row"><div class="pm-logo">د</div><span class="pm-logo-text">دسکا</span></div>
+                  <div class="pm-nav-item"><span>اتاق خبر</span></div>
+                  <div class="pm-nav-item active"><span>استودیوی اجتماعی</span></div>
+                </aside>
+                <main class="pm-main">
+                  <div class="pm-title">استودیوی اجتماعی</div>
+                  <div class="pm-subtitle">تولید و انتشار محتوای شبکه‌های اجتماعی</div>
+                  <div class="pm-social-card">
+                    <div class="pm-article-title" style="margin-bottom:10px">تیم ملی فوتبال به پیروزی رسید</div>
+                    <div class="pm-social-layout">
+                      <div class="pm-cover"><div class="pm-cover-title">خبر ورزشی</div><div class="pm-cover-brand">deska.ir</div></div>
+                      <div class="pm-caption-box">تیم ملی فوتبال ایران در بازی دوستانه مقابل ژاپن به پیروزی رسید...</div>
+                    </div>
+                    <div class="pm-networks">
+                      <span class="pm-network-btn tg">تلگرام</span>
+                      <span class="pm-network-btn ig">اینستاگرام</span>
+                      <span class="pm-network-btn li">لینکدین</span>
+                    </div>
+                  </div>
+                </main>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-panel" data-module="ops">
+            <div class="module-panel-text">
+              <h3>مرکز عملیات</h3>
+              <p>صف فرایندها، سلامت GapGPT و اتصال‌ها، تاریخچه گردش محتوا، retry و cancel.</p>
+              <ul class="module-features-list">
+                <li>مانیتورینگ کارهای در صف و متوقف</li>
+                <li>سلامت فیدها و APIها</li>
+                <li>Audit log و تاریخچه workflow</li>
+              </ul>
+            </div>
+            <div class="module-mock">
+              <div class="ops-mock" id="opsMock">
+                <div class="ops-header">
+                  <span>مرکز عملیات</span>
+                  <span class="ops-health ops-health--ok">اتصال‌ها سالم</span>
+                </div>
+                <div class="ops-stats">
+                  <div class="ops-stat"><strong>۳</strong><span>در صف</span></div>
+                  <div class="ops-stat"><strong>۱</strong><span>در حال اجرا</span></div>
+                  <div class="ops-stat"><strong>۴۷</strong><span>تکمیل امروز</span></div>
+                </div>
+                <div class="ops-job ops-job--run"><span class="ops-dot"></span><span>news.prepare</span><span class="ops-status">در حال اجرا</span></div>
+                <div class="ops-job"><span class="ops-dot"></span><span>news.feed.fetch</span><span class="ops-status">در صف</span></div>
+                <div class="ops-job ops-job--done"><span class="ops-dot"></span><span>news.publish</span><span class="ops-status">تکمیل</span></div>
+                <div class="ops-job ops-job--fail"><span class="ops-dot"></span><span>social.cover</span><span class="ops-status">متوقف — retry</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-panel" data-module="settings">
+            <div class="module-panel-text">
+              <h3>تنظیمات انتشار</h3>
+              <p>اتصال سایت مقصد، شبکه‌های اجتماعی، اتوماسیون، قالب‌های استودیو و پرامپت‌های AI.</p>
+              <ul class="module-features-list">
+                <li>WordPress · ایران‌سامانه · نستوه</li>
+                <li>اتوماسیون پایش، آماده‌سازی، انتشار</li>
+                <li>مدیریت کاربران و دسترسی‌های سازمان</li>
+              </ul>
+            </div>
+            <div class="module-mock">
+              <div class="settings-mock">
+                <div class="settings-row"><span>اتصال سایت</span><span class="settings-badge on">WordPress</span></div>
+                <div class="settings-row"><span>پایش خودکار</span><span class="settings-badge on">فعال</span></div>
+                <div class="settings-row"><span>آماده‌سازی AI</span><span class="settings-badge on">فعال</span></div>
+                <div class="settings-row"><span>انتشار خودکار</span><span class="settings-badge">غیرفعال</span></div>
+                <div class="settings-row"><span>تلگرام · اینستاگرام</span><span class="settings-badge on">متصل</span></div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="feature-card">
-          <div class="feature-icon feature-icon-pink">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 4V2M17 4V2M3 8h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9 14l2 2 4-4"/></svg>
-          </div>
-          <h3>استودیوی اجتماعی</h3>
-          <p>تولید محتوای شبکه‌های اجتماعی با قالب‌های تصویری، کپشن‌های هوشمند و انتشار یک‌کلیکی در تلگرام، اینستاگرام، لینکدین و فیسبوک.</p>
-          <ul class="feature-list">
-            <li>طراح قالب تصویر کاور</li>
-            <li>کتابخانه فونت</li>
-            <li>کپشن با متغیرهای پویا</li>
-          </ul>
+        <div class="module-progress" id="moduleProgress">
+          <span class="module-dot active"></span><span class="module-dot"></span><span class="module-dot"></span>
+          <span class="module-dot"></span><span class="module-dot"></span><span class="module-dot"></span>
         </div>
-
-        <div class="feature-card">
-          <div class="feature-icon feature-icon-emerald">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          </div>
-          <h3>اتوماسیون کامل</h3>
-          <p>هر مرحله — پایش، آماده‌سازی، انتشار سایت، ارسال به استودیو — مستقل و قابل تنظیم برای هر منبع یا کل سازمان.</p>
-          <ul class="feature-list">
-            <li>پایش خودکار فیدها</li>
-            <li>انتشار بدون دخالت دستی</li>
-            <li>فاصله پایش قابل تنظیم</li>
-          </ul>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon feature-icon-amber">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2zm0 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m-6 0a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2m0 0V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z"/></svg>
-          </div>
-          <h3>مرکز عملیات</h3>
-          <p>مانیتورینگ لحظه‌ای صف فرایندها، سلامت اتصال‌ها، ثبت رویدادها و تلاش مجدد خودکار برای فرایندهای متوقف‌شده.</p>
-          <ul class="feature-list">
-            <li>سلامت فیدها و APIها</li>
-            <li>Audit log کامل</li>
-            <li>Retry گروهی</li>
-          </ul>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon feature-icon-sky">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </div>
-          <h3>چندسازمانی</h3>
-          <p>هر رسانه داده و تنظیمات مستقل دارد. مدیریت نقش‌ها، دعوت اعضا و سطح دسترسی دقیق برای تیم‌های مختلف.</p>
-          <ul class="feature-list">
-            <li>مالک، مدیر، کارشناس</li>
-            <li>دسترسی‌های قابل تخصیص</li>
-            <li>جابجایی بین سازمان‌ها</li>
-          </ul>
-        </div>
-
       </div>
     </div>
   </section>
 
-  <!-- Multilingual + AI (unified) -->
-  <section class="section section-multilingual" id="sources">
+  <!-- AI -->
+  <section class="section section-ai" id="ai">
     <div class="container">
-      <div class="multilingual-layout">
-        <div class="multilingual-content reveal">
-          <span class="section-tag">منابع جهانی و هوش مصنوعی</span>
-          <h2 class="section-title">خبر از هر زبانی، به فارسی</h2>
-          <p class="section-desc">پلتفرم دسکا به انواع مدل‌های هوش مصنوعی متصل می‌شود — زبان منبع را تشخیص می‌دهد، توییت و پست تلگرام را به خبر تبدیل می‌کند، خبر خارجی را ترجمه و خبر فارسی را بازنویسی می‌کند.</p>
-          <div class="lang-chips" id="langChips">
-            <span class="lang-chip lang-chip-interactive" data-slide="1">فارسی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="0">انگلیسی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="4">آلمانی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="5">فرانسوی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="3">ترکی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="2">چینی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="6">عربی</span>
-            <span class="lang-chip lang-chip-interactive" data-slide="7">ژاپنی</span>
-            <span class="lang-chip">عبری</span>
-            <span class="lang-chip">روسی</span>
-            <span class="lang-chip lang-chip-more">و بیشتر...</span>
-          </div>
-          <p class="ai-models-label">مدل‌های هوش مصنوعی قابل اتصال</p>
+      <div class="ai-layout">
+        <div class="ai-content reveal">
+          <span class="section-tag">هوش مصنوعی</span>
+          <h2 class="section-title">اتصال به مدل‌های هوش مصنوعی</h2>
+          <p class="section-desc">دسکا به API سازگار با OpenAI متصل می‌شود — مدل جداگانه برای خلاصه‌سازی، پردازش متن کامل و استودیوی اجتماعی. زبان منبع تشخیص داده می‌شود: فارسی بازنویسی، خارجی ترجمه.</p>
           <div class="ai-model-badges">
-            <span class="ai-model-badge">OpenAI GPT</span>
-            <span class="ai-model-badge">Claude</span>
-            <span class="ai-model-badge">Gemini</span>
-            <span class="ai-model-badge">DeepSeek</span>
-            <span class="ai-model-badge">و سایر مدل‌ها</span>
+            <span class="ai-model-badge">GPT-4o</span>
+            <span class="ai-model-badge">GPT-4o mini</span>
+            <span class="ai-model-badge">مدل‌های GapGPT</span>
           </div>
-          <div class="ai-features ai-features-compact">
-            <div class="ai-feature">
-              <div class="ai-check">✓</div>
-              <div>
-                <strong>تبدیل توییت و پست به خبر</strong>
-                <p>متن کوتاه X و تلگرام → تیتر، لید و متن کامل</p>
-              </div>
-            </div>
-            <div class="ai-feature">
-              <div class="ai-check">✓</div>
-              <div>
-                <strong>ترجمه چندزبانه</strong>
-                <p>انگلیسی، آلمانی، چینی، فرانسوی، ترکی، عربی، ژاپنی و بیشتر</p>
-              </div>
-            </div>
-            <div class="ai-feature">
-              <div class="ai-check">✓</div>
-              <div>
-                <strong>خلاصه‌سازی و بازنویسی</strong>
-                <p>تیتر و متن متناسب با مخاطب و سبک انتشار</p>
-              </div>
-            </div>
-            <div class="ai-feature">
-              <div class="ai-check">✓</div>
-              <div>
-                <strong>پرامپت‌های سفارشی</strong>
-                <p>دستورالعمل AI مخصوص هر سازمان</p>
-              </div>
-            </div>
+          <div class="ai-capabilities">
+            <div class="ai-cap"><span>✓</span> خلاصه و بازنویسی تیتر</div>
+            <div class="ai-cap"><span>✓</span> ترجمه متن کامل</div>
+            <div class="ai-cap"><span>✓</span> تبدیل توییت به خبر</div>
+            <div class="ai-cap"><span>✓</span> انتخاب دسته WordPress</div>
+            <div class="ai-cap"><span>✓</span> کپشن و کاور اجتماعی</div>
+            <div class="ai-cap"><span>✓</span> پرامپت سفارشی per سازمان</div>
           </div>
         </div>
         <div class="conversion-demo reveal" id="conversionDemo">
-          <div class="conversion-tabs" role="tablist">
-            <button class="conversion-tab active" data-slide="0" type="button" aria-selected="true">
-              <span class="conv-tab-icon conv-tab-x">𝕏</span> توییت
-            </button>
-            <button class="conversion-tab" data-slide="1" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-tg">✈</span> تلگرام
-            </button>
-            <button class="conversion-tab" data-slide="2" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-zh">中</span> چینی
-            </button>
-            <button class="conversion-tab" data-slide="3" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-tr">TR</span> ترکی
-            </button>
-            <button class="conversion-tab" data-slide="4" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-de">DE</span> آلمانی
-            </button>
-            <button class="conversion-tab" data-slide="5" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-fr">FR</span> فرانسوی
-            </button>
-            <button class="conversion-tab" data-slide="6" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-ar">AR</span> عربی
-            </button>
-            <button class="conversion-tab" data-slide="7" type="button" aria-selected="false">
-              <span class="conv-tab-icon conv-tab-ja">日</span> ژاپنی
-            </button>
+          <div class="conversion-tabs">
+            <button class="conversion-tab active" data-slide="0" type="button">𝕏 توییت</button>
+            <button class="conversion-tab" data-slide="1" type="button">RSS انگلیسی</button>
+            <button class="conversion-tab" data-slide="2" type="button">تلگرام</button>
+            <button class="conversion-tab" data-slide="3" type="button">RSS عربی</button>
           </div>
-
           <div class="conversion-viewer">
-            <!-- Slide 0: X Tweet -->
             <div class="conversion-slide active" data-slide="0">
               <div class="conv-card">
-                <div class="conv-header conv-header-x">
-                  <span class="conv-header-icon">𝕏</span>
-                  <span>تبدیل توییت به خبر</span>
-                </div>
+                <div class="conv-header conv-header-x"><span>تبدیل توییت به خبر</span></div>
                 <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">توییت منبع · انگلیسی · X</span>
-                    <p class="conv-text conv-ltr">NASA's James Webb telescope captures the clearest image yet of a forming exoplanet 120 light-years from Earth.</p>
-                    <span class="conv-meta conv-ltr">@NASA · ۳ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>تلسکوپ جیمز وب تصویر واضح‌تری از سیاره‌ای در حال شکل‌گیری ثبت کرد</strong></p>
-                    <p>ناسا از ثبت تصویری بی‌نظیر از یک سیاره خارجی در حال شکل‌گیری در فاصله ۱۲۰ سال نوری از زمین توسط تلسکوپ جیمز وب خبر داد...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
+                  <div class="conv-source conv-animate-in"><span class="conv-label">منبع · X · انگلیسی</span><p class="conv-text conv-ltr">NASA's Webb telescope captures clearest image yet of a forming exoplanet.</p></div>
+                  <div class="conv-processor"><div class="conv-processor-ring"></div><span>مدل هوش مصنوعی</span></div>
+                  <div class="conv-result conv-animate-in conv-delay"><span class="conv-label">خروجی · فارسی</span><p><strong>وب تصویر واضح‌تری از سیاره در حال شکل‌گیری ثبت کرد</strong></p><span class="pm-badge green">آماده اتاق خبر</span></div>
                 </div>
               </div>
             </div>
-
-            <!-- Slide 1: Telegram -->
             <div class="conversion-slide" data-slide="1">
               <div class="conv-card">
-                <div class="conv-header conv-header-tg">
-                  <span class="conv-header-icon">✈</span>
-                  <span>تبدیل پست تلگرام به خبر</span>
-                </div>
+                <div class="conv-header conv-header-en"><span>ترجمه خبر انگلیسی</span></div>
                 <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">کانال تلگرام · فارسی</span>
-                    <p class="conv-text">🎬 جشنواره فیلم فجر: فیلم «شب‌های روشن» با بازیگران جوان ایرانی جایزه بهترین فیلم را از آن خود کرد.</p>
-                    <span class="conv-meta">@cinemapress · ۱۲ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>فیلم «شب‌های روشن» جایزه بهترین فیلم جشنواره فجر را برد</strong></p>
-                    <p>در مراسم اختتامیه چهل و سومین جشنواره فیلم فجر، فیلم «شب‌های روشن» با بازیگران جوان ایرانی به‌عنوان بهترین فیلم انتخاب شد...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
+                  <div class="conv-source conv-animate-in"><span class="conv-label">Reuters · RSS</span><p class="conv-text conv-ltr">Scientists detect a new subatomic particle at CERN that may reshape dark matter theories.</p></div>
+                  <div class="conv-processor"><div class="conv-processor-ring"></div><span>مدل هوش مصنوعی</span></div>
+                  <div class="conv-result conv-animate-in conv-delay"><span class="conv-label">خروجی · فارسی</span><p><strong>کشف ذره جدید در CERN می‌تواند نظریه ماده تاریک را متحول کند</strong></p></div>
                 </div>
               </div>
             </div>
-
-            <!-- Slide 2: Chinese -->
             <div class="conversion-slide" data-slide="2">
               <div class="conv-card">
-                <div class="conv-header conv-header-zh">
-                  <span class="conv-header-icon">中</span>
-                  <span>ترجمه خبر چینی به فارسی</span>
-                </div>
+                <div class="conv-header conv-header-tg"><span>تبدیل پست تلگرام</span></div>
                 <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">خبرگزاری چین · چینی</span>
-                    <p class="conv-text conv-ltr" style="font-size:1.05em">中国成功发射新一代载人飞船，三名航天员顺利进入预定轨道。</p>
-                    <span class="conv-meta conv-ltr">Xinhua · ۱۵ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>چین سفینه سرنشین‌دار جدید را با موفقیت به فضا پرتاب کرد</strong></p>
-                    <p>چین نسل تازه سفینه فضایی سرنشین‌دار خود را پرتاب کرد و سه فضانورد را با موفقیت به مدار تعیین‌شده رساند...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
+                  <div class="conv-source conv-animate-in"><span class="conv-label">کانال تلگرام · فارسی</span><p class="conv-text">🎬 فیلم ایرانی جایزه بهترین کارگردانی جشنواره فجر را برد.</p></div>
+                  <div class="conv-processor"><div class="conv-processor-ring"></div><span>مدل هوش مصنوعی</span></div>
+                  <div class="conv-result conv-animate-in conv-delay"><span class="conv-label">خروجی · فارسی</span><p><strong>فیلم ایرانی جایزه بهترین کارگردانی فجر را از آن خود کرد</strong></p></div>
                 </div>
               </div>
             </div>
-
-            <!-- Slide 3: Turkish -->
             <div class="conversion-slide" data-slide="3">
               <div class="conv-card">
-                <div class="conv-header conv-header-tr">
-                  <span class="conv-header-icon">TR</span>
-                  <span>ترجمه خبر ترکی به فارسی</span>
-                </div>
+                <div class="conv-header conv-header-ar"><span>ترجمه خبر عربی</span></div>
                 <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">Anadolu Ajansı · ترکی</span>
-                    <p class="conv-text conv-ltr">İstanbul Havalimanı, dünyanın en yoğun havalimanı olarak üçüncü yıl üst üste seçildi.</p>
-                    <span class="conv-meta conv-ltr">AA · ۱۰ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>فرودگاه استانبول برای سومین سال پشت‌سرهم پرترددترین فرودگاه جهان شد</strong></p>
-                    <p>فرودگاه استانبول برای سومین سال متوالی به‌عنوان پرترددترین فرودگاه جهان از نظر تعداد مسافر انتخاب شد...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Slide 4: German RSS -->
-            <div class="conversion-slide" data-slide="4">
-              <div class="conv-card">
-                <div class="conv-header conv-header-de">
-                  <span class="conv-header-icon">DE</span>
-                  <span>ترجمه خبر آلمانی به فارسی</span>
-                </div>
-                <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">Tagesschau · آلمانی · RSS</span>
-                    <p class="conv-text conv-ltr">Die EU-Kommission genehmigt ein neues Klimapaket mit verbindlichen Zielen für erneuerbare Energien bis 2035.</p>
-                    <span class="conv-meta conv-ltr">tagesschau.de · ۱۱ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>کمیسیون اروپا بسته جدید اقلیمی با اهداف انرژی تجدیدپذیر تا ۲۰۳۵ را تصویب کرد</strong></p>
-                    <p>کمیسیون اروپا بسته اقلیمی جدیدی با اهداف الزام‌آور برای گسترش انرژی‌های تجدیدپذیر تا سال ۲۰۳۵ تصویب کرد...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Slide 5: French RSS -->
-            <div class="conversion-slide" data-slide="5">
-              <div class="conv-card">
-                <div class="conv-header conv-header-fr">
-                  <span class="conv-header-icon">FR</span>
-                  <span>ترجمه خبر فرانسوی به فارسی</span>
-                </div>
-                <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">Le Monde · فرانسوی · RSS</span>
-                    <p class="conv-text conv-ltr">Le Louvre annonce la réouverture complète de ses galeries après deux ans de travaux de restauration.</p>
-                    <span class="conv-meta conv-ltr">lemonde.fr · ۹ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>موزه لوور پس از دو سال بازسازی، گالری‌های خود را بازگشایی می‌کند</strong></p>
-                    <p>موزه لوور پاریس از بازگشایی کامل گالری‌های خود پس از دو سال کارهای مرمت و نوسازی خبر داد...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Slide 6: Arabic RSS -->
-            <div class="conversion-slide" data-slide="6">
-              <div class="conv-card">
-                <div class="conv-header conv-header-ar">
-                  <span class="conv-header-icon">AR</span>
-                  <span>ترجمه خبر عربی به فارسی</span>
-                </div>
-                <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">الجزیره · عربی · RSS</span>
-                    <p class="conv-text" dir="rtl">قمة عربية تبحث آليات تعزيز التعاون الاقتصادي والاستثمار في قطاعات الطاقة المتجددة.</p>
-                    <span class="conv-meta">aljazeera.net · ۶ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>نشست عربی برای تقویت همکاری اقتصادی در انرژی‌های تجدیدپذیر</strong></p>
-                    <p>رهبران کشورهای عربی در نشستی مشترک، راهکارهای گسترش سرمایه‌گذاری در بخش انرژی‌های پاک را بررسی کردند...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Slide 7: Japanese RSS -->
-            <div class="conversion-slide" data-slide="7">
-              <div class="conv-card">
-                <div class="conv-header conv-header-ja">
-                  <span class="conv-header-icon">日</span>
-                  <span>ترجمه خبر ژاپنی به فارسی</span>
-                </div>
-                <div class="conv-body">
-                  <div class="conv-source conv-animate-in">
-                    <span class="conv-label">NHK · ژاپنی · RSS</span>
-                    <p class="conv-text conv-ltr" style="font-size:1.05em">東京の研究チームが新型の半導体材料を開発し、次世代スマートフォンの消費電力を大幅に削減できると発表した。</p>
-                    <span class="conv-meta conv-ltr">nhk.or.jp · ۱۴ دقیقه پیش</span>
-                  </div>
-                  <div class="conv-processor">
-                    <div class="conv-processor-ring"></div>
-                    <span>پردازش با مدل هوش مصنوعی</span>
-                  </div>
-                  <div class="conv-result conv-animate-in conv-delay">
-                    <span class="conv-label">خبر آماده انتشار · فارسی</span>
-                    <p><strong>تیم تحقیقاتی توکیو مواد نیمه‌رسانای جدید برای کاهش مصرف انرژی گوشی‌های هوشمند معرفی کرد</strong></p>
-                    <p>پژوهشگران توکیو از توسعه ماده نیمه‌رسانای نوینی خبر دادند که می‌تواند مصرف برق گوشی‌های نسل بعد را به‌شدت کاهش دهد...</p>
-                    <span class="pm-badge green">آماده بررسی در اتاق خبر</span>
-                  </div>
+                  <div class="conv-source conv-animate-in"><span class="conv-label">الجزیره · RSS</span><p class="conv-text" dir="rtl">قمة عربية تبحث تعزيز التعاون في قطاعات الطاقة المتجددة.</p></div>
+                  <div class="conv-processor"><div class="conv-processor-ring"></div><span>مدل هوش مصنوعی</span></div>
+                  <div class="conv-result conv-animate-in conv-delay"><span class="conv-label">خروجی · فارسی</span><p><strong>نشست عربی برای تقویت همکاری در انرژی‌های تجدیدپذیر</strong></p></div>
                 </div>
               </div>
             </div>
           </div>
-
           <div class="conversion-progress" id="conversionProgress">
-            <span class="conversion-dot active"></span>
-            <span class="conversion-dot"></span>
-            <span class="conversion-dot"></span>
-            <span class="conversion-dot"></span>
-            <span class="conversion-dot"></span>
-            <span class="conversion-dot"></span>
-            <span class="conversion-dot"></span>
-            <span class="conversion-dot"></span>
+            <span class="conversion-dot active"></span><span class="conversion-dot"></span>
+            <span class="conversion-dot"></span><span class="conversion-dot"></span>
           </div>
-          <div class="conversion-timer"><div class="conversion-timer-fill running" id="convTimerFill"></div></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- International Source Logos -->
-  <section class="section section-source-logos" id="source-logos">
+  <!-- Automation -->
+  <section class="section section-muted" id="automation">
     <div class="container">
-      <div class="section-header">
-        <span class="section-tag">منابع</span>
-        <h2 class="section-title">منابع</h2>
-        <p class="section-desc">
-          رسانه‌های داخلی و بین‌المللی، سازمان‌ها و شرکت‌ها — از کاتالوگ پیش‌تعریف دسکا، با یک کلیک فعال کنید.
-        </p>
+      <div class="section-header center">
+        <span class="section-tag">اتوماسیون</span>
+        <h2 class="section-title">هر مرحله، خودکار و قابل تنظیم</h2>
+        <p class="section-desc">پایش، آماده‌سازی، انتشار سایت، ارسال به استودیو — per منبع یا کل سازمان</p>
       </div>
-      <div id="sourceLogosGrid" class="source-logos-container"></div>
-      <p class="source-logos-note">
-        علاوه بر این‌ها: کانال‌های تلگرام و اکانت‌های X — و امکان افزودن منبع اختصاصی سازمان شما
-      </p>
+      <div class="automation-grid reveal">
+        <div class="auto-card"><div class="auto-icon">📥</div><h4>دریافت فید</h4><p>news.feed.fetch · social.feed.fetch</p></div>
+        <div class="auto-card"><div class="auto-icon">✦</div><h4>آماده‌سازی</h4><p>news.prepare · social.prepare</p></div>
+        <div class="auto-card"><div class="auto-icon">🌐</div><h4>انتشار سایت</h4><p>news.publish</p></div>
+        <div class="auto-card"><div class="auto-icon">↗</div><h4>ارسال به استودیو</h4><p>news.send-social</p></div>
+        <div class="auto-card"><div class="auto-icon">🖼</div><h4>تولید کاور</h4><p>social.cover</p></div>
+        <div class="auto-card"><div class="auto-icon">📤</div><h4>انتشار اجتماعی</h4><p>social.publish</p></div>
+      </div>
     </div>
   </section>
 
   <!-- Workflow -->
   <section class="section section-dark" id="workflow">
     <div class="container">
-      <div class="section-header">
+      <div class="section-header center">
         <span class="section-tag">جریان کار</span>
-        <h2 class="section-title">از منبع تا انتشار در ۴ مرحله</h2>
-        <p class="section-desc">یک خط تولید دیجیتال که تمام فرایند اتاق خبر را خودکار می‌کند</p>
+        <h2 class="section-title">از منبع تا انتشار</h2>
       </div>
-      <div class="workflow-steps">
-        <div class="workflow-step">
-          <div class="step-number">۱</div>
-          <div class="step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-          </div>
-          <h3>دریافت از منابع</h3>
-          <p>پایش خودکار فیدهای RSS چندزبانه، کانال تلگرام، اکانت X و وب‌سایت — از فارسی تا انگلیسی، آلمانی، چینی و فرانسوی</p>
-        </div>
-        <div class="workflow-connector">
-          <svg viewBox="0 0 60 24"><path d="M0 12h50M42 4l8 8-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-        </div>
-        <div class="workflow-step">
-          <div class="step-number">۲</div>
-          <div class="step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93M12 2a4 4 0 0 0-4 4c0 1.95 1.4 3.58 3.25 3.93M12 2v2m0 6v10m-4-4h8"/></svg>
-          </div>
-          <h3>آماده‌سازی با AI</h3>
-          <p>تبدیل توییت به خبر کامل، ترجمه منابع خارجی و بازنویسی حرفه‌ای خبرهای فارسی</p>
-        </div>
-        <div class="workflow-connector">
-          <svg viewBox="0 0 60 24"><path d="M0 12h50M42 4l8 8-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-        </div>
-        <div class="workflow-step">
-          <div class="step-number">۳</div>
-          <div class="step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </div>
-          <h3>بازبینی و ویرایش</h3>
-          <p>اتاق خبر با بروزرسانی لحظه‌ای — ویرایش تیتر، متن و تصویر قبل از انتشار</p>
-        </div>
-        <div class="workflow-connector">
-          <svg viewBox="0 0 60 24"><path d="M0 12h50M42 4l8 8-8 8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-        </div>
-        <div class="workflow-step">
-          <div class="step-number">۴</div>
-          <div class="step-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          </div>
-          <h3>انتشار چندکاناله</h3>
-          <p>انتشار در WordPress، ایران‌سامانه یا نستوه + شبکه‌های اجتماعی</p>
-        </div>
+      <div class="workflow-timeline reveal" id="workflowTimeline">
+        <div class="wf-step"><div class="wf-num">۱</div><h4>پایش منبع</h4><p>RSS، وب‌سایت، تلگرام، X — چندزبانه</p></div>
+        <div class="wf-step"><div class="wf-num">۲</div><h4>آماده‌سازی AI</h4><p>ترجمه، خلاصه، بازنویسی، تبدیل توییت</p></div>
+        <div class="wf-step"><div class="wf-num">۳</div><h4>بازبینی اتاق خبر</h4><p>ویرایش تیتر، متن و تصویر</p></div>
+        <div class="wf-step"><div class="wf-num">۴</div><h4>انتشار چندکاناله</h4><p>سایت + شبکه‌های اجتماعی</p></div>
       </div>
     </div>
   </section>
@@ -648,10 +497,9 @@
   <!-- Integrations -->
   <section class="section" id="integrations">
     <div class="container">
-      <div class="section-header">
+      <div class="section-header center">
         <span class="section-tag">اتصالات</span>
         <h2 class="section-title">به ابزارهایی که استفاده می‌کنید متصل شوید</h2>
-        <p class="section-desc">پشتیبانی بومی از سامانه‌های ایرانی و شبکه‌های اجتماعی بین‌المللی</p>
       </div>
       <div class="integrations-marquee" id="integrationsMarquee">
         <div class="marquee-track" id="marqueeTrack">
@@ -662,50 +510,80 @@
           <div class="integration-card"><div class="integration-logo ig">◎</div><span>اینستاگرام</span></div>
           <div class="integration-card"><div class="integration-logo li">in</div><span>لینکدین</span></div>
           <div class="integration-card"><div class="integration-logo fb">f</div><span>فیسبوک</span></div>
-          <div class="integration-card"><div class="integration-logo x">𝕏</div><span>X (توییتر)</span></div>
+          <div class="integration-card"><div class="integration-logo x">𝕏</div><span>X</span></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Why Deska -->
-  <section class="section">
+  <!-- Sources (limited) -->
+  <section class="section section-sources" id="sources">
     <div class="container">
-      <div class="section-header">
-        <span class="section-tag">چرا دسکا؟</span>
+      <div class="section-header center">
+        <span class="section-tag">منابع</span>
+        <h2 class="section-title">کاتالوگ منابع پیش‌تعریف</h2>
+        <p class="section-desc">منابع از پیش تعریف‌شده ما مربوط به رسانه‌های مختلف جهان و ایران است — خبرگزاری‌ها، سایت‌ها، کانال‌های تلگرام، اکانت‌های X و سازمان‌ها؛ به‌علاوه منابع اختصاصی سازمان شما.</p>
+      </div>
+
+      <div class="sources-world-flags reveal" id="sourcesWorldFlags" aria-label="رسانه‌های جهان در کاتالوگ">
+        <div class="sources-flags-row" id="sourcesFlagCycle" aria-live="polite">
+          <div class="sources-flag-item is-active" data-country="انگلستان">
+            <img src="images/flags/gb.svg" alt="انگلستان" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="آمریکا">
+            <img src="images/flags/us.svg" alt="آمریکا" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="آلمان">
+            <img src="images/flags/de.svg" alt="آلمان" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="فرانسه">
+            <img src="images/flags/fr.svg" alt="فرانسه" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="ژاپن">
+            <img src="images/flags/jp.svg" alt="ژاپن" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="چین">
+            <img src="images/flags/cn.svg" alt="چین" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="عربستان">
+            <img src="images/flags/sa.svg" alt="عربستان" width="40" height="27">
+          </div>
+          <div class="sources-flag-item" data-country="ترکیه">
+            <img src="images/flags/tr.svg" alt="ترکیه" width="40" height="27">
+          </div>
+        </div>
+        <p class="sources-flag-label" id="sourcesFlagLabel">انگلستان</p>
+      </div>
+
+      <div class="source-categories reveal">
+        <span class="source-cat">رسانه داخلی</span>
+        <span class="source-cat">بین‌المللی</span>
+        <span class="source-cat">تلگرام</span>
+        <span class="source-cat">X</span>
+        <span class="source-cat">سازمان‌ها</span>
+        <span class="source-cat">منبع اختصاصی</span>
+      </div>
+      <div class="source-chips-marquee reveal">
+        <div class="source-chips-track" id="sourceChipsTrack"></div>
+      </div>
+      <p class="source-note reveal">نمونه‌ای از منابع کاتالوگ — در سامانه همه منابع را فعال و مدیریت کنید.</p>
+    </div>
+  </section>
+
+  <!-- Platform -->
+  <section class="section section-muted" id="platform">
+    <div class="container">
+      <div class="section-header center">
+        <span class="section-tag">سازمان و دسترسی</span>
         <h2 class="section-title">ساخته‌شده برای رسانه‌های ایران</h2>
       </div>
-      <div class="why-grid">
-        <div class="why-item">
-          <div class="why-icon-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-          <h4>فارسی‌محور</h4>
-          <p>رابط RTL، تقویم شمسی و اعداد فارسی</p>
-        </div>
-        <div class="why-item">
-          <div class="why-icon-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-          <h4>امنیت بالا</h4>
-          <p>توکن‌های رمزنگاری‌شده و محافظت SSRF</p>
-        </div>
-        <div class="why-item">
-          <div class="why-icon-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></div>
-          <h4>SaaS یا On-premise</h4>
-          <p>انعطاف در نحوه استقرار</p>
-        </div>
-        <div class="why-item">
-          <div class="why-icon-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></div>
-          <h4>مصرف شفاف</h4>
-          <p>مدل توکنی با گزارش per-organization</p>
-        </div>
-        <div class="why-item">
-          <div class="why-icon-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-          <h4>Worker ابری</h4>
-          <p>دریافت تلگرام و X بدون محدودیت سرور</p>
-        </div>
-        <div class="why-item">
-          <div class="why-icon-svg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
-          <h4>کاتالوگ آماده</h4>
-          <p>منابع پیش‌تعریف بدون راه‌اندازی دستی</p>
-        </div>
+      <div class="platform-grid reveal">
+        <div class="platform-card"><div class="platform-card-icon">🏢</div><h4>چندسازمانی</h4><p>هر رسانه داده و تنظیمات مستقل</p></div>
+        <div class="platform-card"><div class="platform-card-icon">👥</div><h4>نقش و دسترسی</h4><p>مالک، مدیر، کارشناس — دسترسی per منو</p></div>
+        <div class="platform-card"><div class="platform-card-icon">🔒</div><h4>امنیت</h4><p>توکن رمزنگاری‌شده، محافظت SSRF</p></div>
+        <div class="platform-card"><div class="platform-card-icon">📊</div><h4>مصرف شفاف</h4><p>گزارش توکن per سازمان</p></div>
+        <div class="platform-card"><div class="platform-card-icon">☁</div><h4>Worker ابری</h4><p>دریافت تلگرام و X بدون محدودیت سرور</p></div>
+        <div class="platform-card"><div class="platform-card-icon">🌐</div><h4>فارسی‌محور</h4><p>RTL، تقویم شمسی، اعداد فارسی</p></div>
       </div>
     </div>
   </section>
@@ -713,39 +591,25 @@
   <!-- CTA -->
   <section class="section-cta">
     <div class="container">
-      <div class="cta-box">
+      <div class="cta-box reveal">
         <h2>آماده تحول در اتاق خبر خود هستید؟</h2>
-        <p>همین الان وارد سامانه شوید و فرایند دریافت، آماده‌سازی و انتشار خبر را متحول کنید.</p>
-        <div class="cta-actions">
-          <a href="https://app.deska.ir" class="btn btn-white btn-lg">
-            ورود به سامانه
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-        </div>
-        <p class="cta-url">app.deska.ir</p>
+        <p>همین الان وارد سامانه شوید.</p>
+        <a href="https://app.deska.ir" class="btn btn-white btn-lg">ورود به app.deska.ir</a>
       </div>
     </div>
   </section>
 
-  <!-- Footer -->
   <footer class="footer">
     <div class="container footer-inner">
-      <div class="footer-brand">
-        <span class="logo-icon small">
-          <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M8 10h16M8 16h12M8 22h8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
-        </span>
-        <span>دسکا</span>
-      </div>
+      <div class="footer-brand"><span class="logo-icon small"><svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M8 10h16M8 16h12M8 22h8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></span><span>دسکا</span></div>
       <p class="footer-tagline">اتاق خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران</p>
       <div class="footer-links">
         <a href="https://app.deska.ir">سامانه</a>
-        <a href="#features">ویژگی‌ها</a>
-        <a href="#workflow">نحوه کار</a>
+        <a href="#modules">ماژول‌ها</a>
+        <a href="#ai">هوش مصنوعی</a>
         <a href="#integrations">اتصالات</a>
-        <a href="#sources">منابع جهانی</a>
-        <a href="#source-logos">منابع</a>
       </div>
-      <p class="footer-copy">© ۱۴۰۵ دسکا — تمامی حقوق محفوظ است.</p>
+      <p class="footer-copy">© ۱۴۰۵ دسکا</p>
     </div>
   </footer>
 

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TENANT_ROLES, normalizeDigits } from '@deska/shared';
+import { TENANT_ROLES, NEWSROOM_ALL_SERVICES, normalizeDigits, normalizeNewsroomServiceIds } from '@deska/shared';
 import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -213,12 +213,14 @@ export class TenantService {
     });
     if (membership) throw new ConflictException('این کاربر قبلاً عضو سازمان است');
 
+    const access = await this.resolveMemberAccess(tenantId, dto.permissions, dto.newsroomServiceIds);
     await this.prisma.tenantMember.create({
       data: {
         tenantId,
         userId: platformUser.id,
         role: TENANT_ROLES.MEMBER,
-        permissions: dto.permissions,
+        permissions: access.permissions,
+        newsroomServiceIds: access.newsroomServiceIds,
         status: 'active',
         jobTitle: dto.jobTitle?.trim() || null,
       },
@@ -231,7 +233,7 @@ export class TenantService {
         action: 'organization.member_added',
         entityType: 'TenantMember',
         entityId: platformUser.id,
-        changes: { permissions: dto.permissions },
+        changes: { permissions: access.permissions, newsroomServiceIds: access.newsroomServiceIds },
       },
     });
 
@@ -510,15 +512,7 @@ export class TenantService {
       orderBy: { joinedAt: 'asc' },
     });
 
-    return members.map((member) => ({
-      userId: member.userId,
-      role: member.role,
-      permissions: member.permissions,
-      status: member.status,
-      jobTitle: member.jobTitle,
-      joinedAt: member.joinedAt,
-      user: member.user,
-    }));
+    return members.map((member) => this.serializeMember(member));
   }
 
   async updateMember(
@@ -552,10 +546,16 @@ export class TenantService {
       throw new ForbiddenException('دسترسی‌های مالک سازمان قابل تغییر نیست');
     }
 
+    const permissions = dto.permissions !== undefined ? [...new Set(dto.permissions)] : member.permissions;
+    const newsroomServiceIds = dto.newsroomServiceIds !== undefined || dto.permissions !== undefined
+      ? await this.resolveNewsroomServiceIds(tenantId, permissions, dto.newsroomServiceIds ?? member.newsroomServiceIds)
+      : member.newsroomServiceIds;
+
     await this.prisma.tenantMember.update({
       where: { tenantId_userId: { tenantId, userId } },
       data: {
-        ...(dto.permissions !== undefined ? { permissions: dto.permissions } : {}),
+        ...(dto.permissions !== undefined ? { permissions } : {}),
+        ...(dto.newsroomServiceIds !== undefined || dto.permissions !== undefined ? { newsroomServiceIds } : {}),
         ...(dto.jobTitle !== undefined ? { jobTitle: dto.jobTitle || null } : {}),
       },
     });
@@ -614,14 +614,57 @@ export class TenantService {
       throw new NotFoundException('عضو یافت نشد');
     }
 
+    return this.serializeMember(member);
+  }
+
+  private serializeMember(member: {
+    userId: string;
+    role: string;
+    permissions: string[];
+    newsroomServiceIds: string[];
+    status: string;
+    jobTitle: string | null;
+    joinedAt: Date;
+    user: { id: string; email: string; name: string; avatarUrl: string | null; isActive: boolean };
+  }) {
     return {
       userId: member.userId,
       role: member.role,
       permissions: member.permissions,
+      newsroomServiceIds: member.newsroomServiceIds,
       status: member.status,
       jobTitle: member.jobTitle,
       joinedAt: member.joinedAt,
       user: member.user,
+    };
+  }
+
+  private async resolveNewsroomServiceIds(
+    tenantId: string,
+    permissions: string[],
+    requested: string[] | undefined,
+  ) {
+    const normalized = normalizeNewsroomServiceIds(permissions, requested);
+    if (!normalized.length || normalized.includes(NEWSROOM_ALL_SERVICES)) return normalized;
+    const allowed = await this.prisma.destinationCategory.findMany({
+      where: { tenantId, id: { in: normalized }, status: { in: ['approved', 'pending'] } },
+      select: { id: true },
+    });
+    const valid = new Set(allowed.map((row) => row.id));
+    const next = normalized.filter((id) => valid.has(id));
+    if (!next.length) throw new BadRequestException('دسترسی سرویس اتاق خبر نامعتبر است');
+    return next;
+  }
+
+  private async resolveMemberAccess(
+    tenantId: string,
+    permissions: string[],
+    requestedServiceIds?: string[],
+  ) {
+    const nextPermissions = [...new Set(permissions)];
+    return {
+      permissions: nextPermissions,
+      newsroomServiceIds: await this.resolveNewsroomServiceIds(tenantId, nextPermissions, requestedServiceIds),
     };
   }
 

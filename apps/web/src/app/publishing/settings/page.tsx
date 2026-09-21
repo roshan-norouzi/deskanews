@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { useApi } from '@/hooks/use-api';
+import { useTenant } from '@/lib/tenant-context';
 import { ApiError, apiFetch } from '@/lib/utils';
 import {
   DESTINATION_PLATFORM_ORDER,
@@ -55,28 +56,41 @@ const DESTINATION_CATEGORY_STATUS_META: Record<DestinationCategoryRow['status'],
   stale: { label: 'منقضی', className: 'border-slate-200 bg-slate-100 text-slate-600' },
 };
 const SETTINGS_DRAFT_KEY = 'deska_publishing_settings_draft';
-const SETTINGS_DRAFT_VERSION = 1;
+const SETTINGS_DRAFT_VERSION = 2;
 const MAX_COVER_TEMPLATES = 20;
 const SECRET_SETTING_KEYS = new Set(['gapgpt_api_key', 'wp_app_password', 'is_password', 'ns_password', 'telegram_bot_token', 'social_instagram_access_token', 'social_linkedin_access_token', 'social_facebook_page_access_token']);
-function readSettingsDraft(): Settings {
+
+function sanitizeDraft(values: Settings): Settings {
+  return Object.fromEntries(
+    Object.entries(values).filter(([key]) => !SECRET_SETTING_KEYS.has(key) && !key.endsWith('_configured')),
+  );
+}
+
+function readAllSettingsDrafts(): Record<string, Settings> {
   if (typeof window === 'undefined') return {};
   try {
     const parsed = JSON.parse(window.sessionStorage.getItem(SETTINGS_DRAFT_KEY) || '{}');
-    return parsed?.version === SETTINGS_DRAFT_VERSION && parsed.values && typeof parsed.values === 'object' && !Array.isArray(parsed.values)
-      ? parsed.values as Settings
-      : {};
+    if (parsed?.version !== SETTINGS_DRAFT_VERSION || !parsed.drafts || typeof parsed.drafts !== 'object' || Array.isArray(parsed.drafts)) {
+      return {};
+    }
+    return parsed.drafts as Record<string, Settings>;
   } catch {
     return {};
   }
 }
 
-function writeSettingsDraft(values: Settings) {
-  if (typeof window === 'undefined') return;
+function readSettingsDraft(tenantId: string | null): Settings {
+  if (!tenantId) return {};
+  const values = readAllSettingsDrafts()[tenantId];
+  return values && typeof values === 'object' && !Array.isArray(values) ? values : {};
+}
+
+function writeSettingsDraft(tenantId: string | null, values: Settings) {
+  if (typeof window === 'undefined' || !tenantId) return;
   try {
-    const draft = Object.fromEntries(
-      Object.entries(values).filter(([key]) => !SECRET_SETTING_KEYS.has(key) && !key.endsWith('_configured')),
-    );
-    window.sessionStorage.setItem(SETTINGS_DRAFT_KEY, JSON.stringify({ version: SETTINGS_DRAFT_VERSION, values: draft }));
+    const drafts = readAllSettingsDrafts();
+    drafts[tenantId] = sanitizeDraft(values);
+    window.sessionStorage.setItem(SETTINGS_DRAFT_KEY, JSON.stringify({ version: SETTINGS_DRAFT_VERSION, drafts }));
   } catch {
     // Session storage can be disabled or full; the in-memory form still works.
   }
@@ -177,8 +191,9 @@ function FontLibrary({ value, onChange }: { value: CoverFont[]; onChange: (fonts
 }
 
 export default function PublishingSettingsPage() {
-  const { data } = useApi<Settings>('/publishing/settings', { cache: 'no-store' });
-  const { data: socialArticles } = useApi<CoverDemoArticle[]>('/publishing/social/articles');
+  const { activeTenantId } = useTenant();
+  const { data } = useApi<Settings>(activeTenantId ? '/publishing/settings' : null, { cache: 'no-store' });
+  const { data: socialArticles } = useApi<CoverDemoArticle[]>(activeTenantId ? '/publishing/social/articles' : null);
   const [values, setValues] = useState<Settings>({});
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -191,6 +206,7 @@ export default function PublishingSettingsPage() {
   });
   const hasLocalEdits = useRef(false);
   const hasSavedInSession = useRef(false);
+  const loadedTenantId = useRef<string | null>(null);
   const [selectedCoverTemplateId, setSelectedCoverTemplateId] = useState('');
   const [destinationCategoryRows, setDestinationCategoryRows] = useState<DestinationCategoryRow[]>([]);
   const [categoryDraft, setCategoryDraft] = useState<DestinationCategoryDraft>(EMPTY_CATEGORY_DRAFT);
@@ -219,13 +235,31 @@ export default function PublishingSettingsPage() {
   );
 
   const loadDestinationCategories = useCallback(async () => {
+    if (!activeTenantId) {
+      setDestinationCategoryRows([]);
+      return;
+    }
     try {
       const rows = await apiFetch<DestinationCategoryRow[]>('/publishing/destination/categories');
       setDestinationCategoryRows(Array.isArray(rows) ? rows : []);
     } catch {
       setDestinationCategoryRows([]);
     }
-  }, []);
+  }, [activeTenantId]);
+
+  useEffect(() => {
+    if (loadedTenantId.current === activeTenantId) return;
+    loadedTenantId.current = activeTenantId;
+    hasLocalEdits.current = false;
+    hasSavedInSession.current = false;
+    setValues({});
+    setDestinationCategoryRows([]);
+    setCategoryDraft(EMPTY_CATEGORY_DRAFT);
+    setEditingCategoryId(null);
+    setEditingCategoryDraft(EMPTY_CATEGORY_DRAFT);
+    setMessage('');
+    setError('');
+  }, [activeTenantId]);
 
   useEffect(() => {
     if (activeTab === 'news' && subTab === 'destination') {
@@ -236,10 +270,10 @@ export default function PublishingSettingsPage() {
   useEffect(() => {
     // The first GET may finish after a save. Once this form has received a
     // confirmed PUT response, never let an older GET overwrite it.
-    if (data && !hasLocalEdits.current && !hasSavedInSession.current) {
-      setValues({ ...data, ...readSettingsDraft() });
+    if (data && loadedTenantId.current === activeTenantId && !hasLocalEdits.current && !hasSavedInSession.current) {
+      setValues({ ...data, ...readSettingsDraft(activeTenantId) });
     }
-  }, [data]);
+  }, [data, activeTenantId]);
   useEffect(() => {
     if (!coverTemplateLibrary.templates.some((item) => item.id === selectedCoverTemplateId)) {
       setSelectedCoverTemplateId(coverTemplateLibrary.defaultTemplateId || coverTemplateLibrary.templates[0]?.id || '');
@@ -251,7 +285,7 @@ export default function PublishingSettingsPage() {
       const next = { ...current, [key]: value };
       // Keep only fields the user has actually edited. This prevents an old
       // draft for one tab from masking newer server values in other tabs.
-      writeSettingsDraft({ ...readSettingsDraft(), [key]: value });
+      writeSettingsDraft(activeTenantId, { ...readSettingsDraft(activeTenantId), [key]: value });
       return next;
     });
   };
@@ -280,6 +314,40 @@ export default function PublishingSettingsPage() {
     setSelectedCoverTemplateId(id);
     setError('');
     if (copyCurrent) setMessage(`قالب «${selectedCoverTemplate?.name}» تکثیر شد؛ نسخه جدید را ویرایش و سپس ذخیره کنید.`);
+  }
+
+  async function createCoverTemplateFromSample(file?: File) {
+    if (!file) return;
+    if (coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES) {
+      setError(`حداکثر ${MAX_COVER_TEMPLATES} قالب تصویری می‌توانید داشته باشید.`);
+      return;
+    }
+    setBusy('cover-from-sample');
+    setError('');
+    setMessage('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const result = await apiFetch<{ name: string; template: Record<string, unknown>; usedAi: boolean }>('/publishing/settings/cover-templates/from-sample', {
+        method: 'POST',
+        body: form,
+      });
+      const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `template-${Date.now()}`;
+      const existingNames = new Set(coverTemplateLibrary.templates.map((item) => item.name.trim().toLocaleLowerCase('fa')));
+      let name = result.name || 'قالب از تصویر نمونه';
+      let suffix = 2;
+      while (existingNames.has(name.toLocaleLowerCase('fa'))) name = `${result.name || 'قالب از تصویر نمونه'} (${suffix++})`;
+      const template = parseTemplate(JSON.stringify(result.template || {}));
+      setCoverTemplateLibrary({ ...coverTemplateLibrary, templates: [...coverTemplateLibrary.templates, { id, name, template }] });
+      setSelectedCoverTemplateId(id);
+      setMessage(result.usedAi
+        ? 'قالب از تصویر نمونه ساخته شد؛ لایه‌ها را بررسی و در صورت نیاز اصلاح کنید، سپس ذخیره کنید.'
+        : 'قالب پایه از تصویر نمونه ساخته شد. لایه‌ها را مطابق تصویر اصلاح و سپس ذخیره کنید.');
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'ساخت قالب از تصویر نمونه انجام نشد');
+    } finally {
+      setBusy(null);
+    }
   }
 
   function updateSelectedCoverTemplate(patch: Partial<(typeof coverTemplateLibrary.templates)[number]>) {
@@ -487,9 +555,9 @@ export default function PublishingSettingsPage() {
         }
         return merged;
       });
-      const draft = readSettingsDraft();
+      const draft = readSettingsDraft(activeTenantId);
       for (const key of keys) delete draft[key];
-      writeSettingsDraft(draft);
+      writeSettingsDraft(activeTenantId, draft);
     }, 'تنظیمات این بخش با موفقیت ذخیره شد.');
   }
 
@@ -548,8 +616,18 @@ export default function PublishingSettingsPage() {
             <div className="grid gap-3 rounded-2xl border border-violet-100 bg-violet-50/50 p-4 lg:grid-cols-[minmax(180px,1fr)_minmax(220px,1fr)_auto]">
               <label className="grid gap-1 text-xs font-medium text-slate-600">قالب در حال ویرایش<select className="rounded-xl border bg-white px-3 py-2.5 text-sm" value={selectedCoverTemplate?.id || ''} onChange={(event) => setSelectedCoverTemplateId(event.target.value)}>{coverTemplateLibrary.templates.map((item) => <option key={item.id} value={item.id}>{item.name}{item.id === coverTemplateLibrary.defaultTemplateId ? ' (پیش‌فرض)' : ''}</option>)}</select></label>
               <label className="grid gap-1 text-xs font-medium text-slate-600">نام قالب<input className="rounded-xl border bg-white px-3 py-2.5 text-sm" maxLength={80} value={selectedCoverTemplate?.name || ''} onChange={(event) => updateSelectedCoverTemplate({ name: event.target.value })} /></label>
-              <div className="flex flex-wrap items-end gap-2"><Button type="button" size="sm" disabled={coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onClick={() => addCoverTemplate(false)}><Plus className="h-4 w-4" /> قالب جدید</Button><Button type="button" size="sm" variant="outline" disabled={!selectedCoverTemplate || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onClick={() => addCoverTemplate(true)}><Copy className="h-4 w-4" /> تکثیر قالب انتخاب‌شده</Button><Button type="button" size="sm" variant="outline" disabled={!selectedCoverTemplate || selectedCoverTemplate.id === coverTemplateLibrary.defaultTemplateId} onClick={() => selectedCoverTemplate && setCoverTemplateLibrary({ ...coverTemplateLibrary, defaultTemplateId: selectedCoverTemplate.id })}><Star className="h-4 w-4" /> پیش‌فرض</Button><Button type="button" size="sm" variant="outline" className="text-red-600" disabled={coverTemplateLibrary.templates.length <= 1} onClick={removeSelectedCoverTemplate}><Trash2 className="h-4 w-4" /> حذف</Button></div>
+              <div className="flex flex-wrap items-end gap-2">
+                <Button type="button" size="sm" disabled={coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onClick={() => addCoverTemplate(false)}><Plus className="h-4 w-4" /> قالب جدید</Button>
+                <label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-50 ${busy === 'cover-from-sample' || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES ? 'pointer-events-none opacity-60' : ''}`}>
+                  <Upload className="h-4 w-4" /> ساخت از تصویر نمونه
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif" className="hidden" disabled={busy === 'cover-from-sample' || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onChange={(event) => { const file = event.target.files?.[0]; if (file) void createCoverTemplateFromSample(file); event.currentTarget.value = ''; }} />
+                </label>
+                <Button type="button" size="sm" variant="outline" disabled={!selectedCoverTemplate || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onClick={() => addCoverTemplate(true)}><Copy className="h-4 w-4" /> تکثیر قالب انتخاب‌شده</Button>
+                <Button type="button" size="sm" variant="outline" disabled={!selectedCoverTemplate || selectedCoverTemplate.id === coverTemplateLibrary.defaultTemplateId} onClick={() => selectedCoverTemplate && setCoverTemplateLibrary({ ...coverTemplateLibrary, defaultTemplateId: selectedCoverTemplate.id })}><Star className="h-4 w-4" /> پیش‌فرض</Button>
+                <Button type="button" size="sm" variant="outline" className="text-red-600" disabled={coverTemplateLibrary.templates.length <= 1} onClick={removeSelectedCoverTemplate}><Trash2 className="h-4 w-4" /> حذف</Button>
+              </div>
             </div>
+            <p className="text-xs leading-5 text-slate-500">یک کاور نمونه آپلود کنید تا لایه‌های تیتر، لید، منبع، پوشش و تصویر شاخص مطابق آن ساخته شوند؛ سپس موقعیت لایه‌ها را دستی اصلاح کنید.</p>
             {selectedCoverTemplate && <CoverTemplateBuilder key={selectedCoverTemplate.id} value={JSON.stringify(selectedCoverTemplate.template)} onChange={(templateValue) => updateSelectedCoverTemplate({ template: parseTemplate(templateValue) })} fontLibrary={parseFontLibrary(values.social_font_library)} demoArticle={socialArticles?.find((article) => article.authorImageUrl || article.featuredImageUrl) || socialArticles?.[0]} />}
           </div>}
           {subTab === 'networks' && <div className="mt-6 space-y-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4"><h3 className="font-bold text-slate-900">اتصال شبکه‌های اجتماعی</h3><p className="mt-1 text-sm leading-6 text-slate-600">توکن‌ها فقط در سرور و به‌صورت رمزنگاری‌شده نگهداری می‌شوند. برای حفظ اتصال قبلی، فیلد رمز را خالی بگذارید.</p></div><div className="grid gap-4 md:grid-cols-2"><Field label="توکن ربات تلگرام" hint={values.telegram_bot_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن BotFather را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.telegram_bot_token_configured === 'true' ? 'توکن ثبت شده است' : '123456:ABC...'} value={values.telegram_bot_token || ''} onChange={(e) => set('telegram_bot_token', e.target.value)} /></Field><Field label="شناسه کانال یا گفت‌وگوی تلگرام" hint="ربات باید در کانال دسترسی ارسال داشته باشد."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="@channel یا -100..." value={values.telegram_chat_id || ''} onChange={(e) => set('telegram_chat_id', e.target.value)} /></Field><Field label="آدرس Worker واسط تلگرام" hint="اختیاری؛ برای دورزدن محدودیت دسترسی مستقیم سرور به تلگرام استفاده می‌شود."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://telegram-bridge.example.workers.dev/" value={values.telegram_bridge_url || ''} onChange={(e) => set('telegram_bridge_url', e.target.value)} /></Field></div><div className="flex justify-end"><Button variant="outline" isLoading={busy === 'test-telegram'} onClick={() => void testSocial('telegram')}><TestTube2 className="h-4 w-4" /> تست اتصال تلگرام</Button></div><div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4"><h3 className="font-bold text-slate-900">اینستاگرام</h3><p className="mt-1 text-xs leading-5 text-slate-600">نیازمند حساب Professional، شناسه Instagram Business و توکن Graph API است. آدرس عمومی تصویر برای انتشار لازم است.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Access Token اینستاگرام" hint={values.social_instagram_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_instagram_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Access token'} value={values.social_instagram_access_token || ''} onChange={(e) => set('social_instagram_access_token', e.target.value)} /></Field><Field label="شناسه حساب Instagram Business"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="1784..." value={values.social_instagram_account_id || ''} onChange={(e) => set('social_instagram_account_id', e.target.value)} /></Field><Field label="نسخه Graph API"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="v23.0" value={values.social_instagram_api_version || ''} onChange={(e) => set('social_instagram_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-instagram'} onClick={() => void testSocial('instagram')}><TestTube2 className="h-4 w-4" /> تست اتصال اینستاگرام</Button></div></div><div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><h3 className="font-bold text-slate-900">لینکدین</h3><p className="mt-1 text-xs leading-5 text-slate-600">شناسه نویسنده باید URN شخص یا سازمانی باشد که توکن به آن دسترسی انتشار دارد.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Access Token لینکدین" hint={values.social_linkedin_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_linkedin_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Access token'} value={values.social_linkedin_access_token || ''} onChange={(e) => set('social_linkedin_access_token', e.target.value)} /></Field><Field label="URN نویسنده یا سازمان"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="urn:li:person:..." value={values.social_linkedin_author_urn || ''} onChange={(e) => set('social_linkedin_author_urn', e.target.value)} /></Field><Field label="نسخه API لینکدین"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="202501" value={values.social_linkedin_api_version || ''} onChange={(e) => set('social_linkedin_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-linkedin'} onClick={() => void testSocial('linkedin')}><TestTube2 className="h-4 w-4" /> تست اتصال لینکدین</Button></div></div><div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><h3 className="font-bold text-slate-900">فیسبوک</h3><p className="mt-1 text-xs leading-5 text-slate-600">از Page Access Token و شناسه صفحه‌ای استفاده کنید که مجوز انتشار تصویر دارد.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Page Access Token فیسبوک" hint={values.social_facebook_page_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_facebook_page_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Page access token'} value={values.social_facebook_page_access_token || ''} onChange={(e) => set('social_facebook_page_access_token', e.target.value)} /></Field><Field label="شناسه صفحه فیسبوک"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="123456789" value={values.social_facebook_page_id || ''} onChange={(e) => set('social_facebook_page_id', e.target.value)} /></Field><Field label="نسخه Graph API"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="v23.0" value={values.social_facebook_api_version || ''} onChange={(e) => set('social_facebook_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-facebook'} onClick={() => void testSocial('facebook')}><TestTube2 className="h-4 w-4" /> تست اتصال فیسبوک</Button></div></div><Field label="آدرس عمومی فایل‌های رسانه‌ای" hint="برای اینستاگرام لازم است APIهای Meta بتوانند تصویر را از اینترنت دریافت کنند؛ در محیط محلی باید دامنه عمومی یا تونل امن تنظیم شود."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://public.example.com" value={values.social_public_media_base_url || ''} onChange={(e) => set('social_public_media_base_url', e.target.value)} /></Field></div>}

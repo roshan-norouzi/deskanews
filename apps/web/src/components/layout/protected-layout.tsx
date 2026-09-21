@@ -97,7 +97,7 @@ export function ProtectedLayout({
       <Suspense fallback={null}>
         <PlatformNavigation />
       </Suspense>
-      {children}
+      <div key={activeTenantId ?? 'none'}>{children}</div>
     </AppShell>
   );
 }

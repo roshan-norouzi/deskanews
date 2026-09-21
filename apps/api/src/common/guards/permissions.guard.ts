@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/metadata.decorator';
+import { memberHasPermission } from '@deska/shared';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -42,6 +43,6 @@ export class PermissionsGuard implements CanActivate {
   }
 
   private hasPermission(permissions: string[], required: string): boolean {
-    return permissions.includes(required);
+    return memberHasPermission(permissions, required);
   }
 }

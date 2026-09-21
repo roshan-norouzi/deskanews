@@ -10,6 +10,7 @@ export interface AuthUser {
 export interface TenantContext {
   tenantId: string;
   memberRole: string;
+  newsroomServiceIds: string[];
 }
 
 export const User = createParamDecorator(

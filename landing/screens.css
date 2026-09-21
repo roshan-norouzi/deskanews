@@ -352,7 +352,68 @@
   color: #64748b;
 }
 
+.pm-lang {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; color: #64748b; white-space: nowrap;
+}
+
+.pm-lang-flag {
+  width: 18px; height: 12px; object-fit: cover;
+  border-radius: 2px; flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+.pm-lang-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 600; color: #475569;
+}
+
+.pm-lang-flow {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--brand, #4f46e5);
+  font-weight: 600;
+  font-size: 10px;
+}
+
 .pm-tag.tg { background: #e0f2fe; color: #0369a1; }
+
+.platform-mock--module .pm-sidebar {
+  width: 148px;
+  padding: 14px 10px;
+}
+
+.platform-mock--module .pm-nav-item {
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
+.platform-mock--module .pm-main {
+  padding: 16px 18px;
+}
+
+.platform-mock--module .pm-stats {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.platform-mock--module .pm-stat-value {
+  font-size: 22px;
+}
+
+.platform-mock--module .pm-table-row {
+  grid-template-columns: 1.4fr 0.9fr 0.6fr 0.9fr;
+  font-size: 11px;
+  padding: 8px 12px;
+}
+
+.platform-mock--module .pm-social-layout {
+  flex-direction: column;
+}
+
+.platform-mock--module .pm-cover {
+  width: 100%;
+  height: 120px;
+}
+
 .pm-tag.x { background: #f1f5f9; color: #0f172a; }
 
 .pm-status-on { color: #16a34a; font-weight: 600; }
@@ -388,7 +449,9 @@
 }
 
 .platform-mock--hero .pm-btn-publish {
-  display: none;
+  display: flex;
+  padding: 6px 12px;
+  font-size: 10px;
 }
 
 @media (max-width: 768px) {

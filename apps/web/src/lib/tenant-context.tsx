@@ -19,6 +19,8 @@ export interface TenantInfo {
   plan: string;
   locale?: string;
   memberRole?: string;
+  permissions?: string[];
+  newsroomServiceIds?: string[];
 }
 
 export interface TenantDetail extends TenantInfo {
@@ -87,6 +89,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
               plan: t.plan,
               locale: t.locale,
               memberRole: t.memberRole,
+              permissions: t.permissions,
+              newsroomServiceIds: t.newsroomServiceIds,
             }));
             setTenants(mapped);
 

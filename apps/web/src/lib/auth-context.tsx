@@ -12,6 +12,7 @@ import {
 import { PLATFORM_ROLES } from '@deska/shared';
 import {
   apiFetch,
+  clearPublishingSettingsDraft,
   clearTenantId,
   clearTokens,
   withBasePath,
@@ -45,6 +46,8 @@ export interface TenantMembership {
   plan: string;
   locale: string;
   memberRole: string;
+  permissions?: string[];
+  newsroomServiceIds?: string[];
   joinedAt: string;
 }
 
@@ -104,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     clearTokens();
     clearTenantId();
+    clearPublishingSettingsDraft();
     setUser(null);
     try {
       await fetch(withBasePath('/api/auth/logout'), {

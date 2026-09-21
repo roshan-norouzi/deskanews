@@ -36,7 +36,7 @@ export function FeedSourceCard({
       className={cn(
         'flex h-full flex-col rounded-2xl border p-4 transition-all duration-200',
         enabled
-          ? 'border-slate-200 bg-white shadow-sm ring-1 ring-slate-100'
+          ? 'border-emerald-200 bg-emerald-50/80 shadow-sm ring-1 ring-emerald-100/80'
           : 'border-slate-100 bg-slate-50/70',
         className,
       )}
@@ -72,7 +72,7 @@ export function FeedSourceCard({
         {footer}
       </div>
       {actions ? (
-        <div className="mt-3 flex items-center justify-end gap-0.5 border-t border-slate-100 pt-2">
+        <div className={cn('mt-3 flex items-center justify-end gap-0.5 border-t pt-2', enabled ? 'border-emerald-100/80' : 'border-slate-100')}>
           {actions}
         </div>
       ) : null}
