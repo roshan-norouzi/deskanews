@@ -39,7 +39,7 @@ function createService() {
     resolveFeedProfilePhoto: async () => '',
   };
 
-  const service = new PlatformFeedService(prisma, sourceReader, {}, {}, {}, {});
+  const service = new PlatformFeedService(prisma, sourceReader, { rememberSourceLanguages: async () => [] }, {}, {}, {});
   return { service, platformFeeds, newsFeeds };
 }
 

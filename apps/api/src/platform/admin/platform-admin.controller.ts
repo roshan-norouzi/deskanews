@@ -175,7 +175,7 @@ export class PlatformAdminController {
   }
 
   @Post('feeds/import')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
   importPlatformFeeds(@User() actor: AuthUser, @UploadedFile() file: { buffer: Buffer; originalname?: string }) {
     this.assertSuperAdmin(actor);
     if (!file?.buffer?.length) throw new BadRequestException('فایل Excel انتخاب نشده است');

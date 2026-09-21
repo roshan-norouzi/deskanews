@@ -29,6 +29,12 @@ import {
 
 const PLATFORM_ARTICLE_MAX_AGE_DAYS = 10;
 
+export type PlatformFeedWriteOptions = {
+  skipNetworkDiscovery?: boolean;
+  skipProfilePhoto?: boolean;
+  skipTenantSubscriptions?: boolean;
+};
+
 function mapCatalogFeed(feed: {
   id: string;
   name: string;
@@ -310,7 +316,7 @@ export class PlatformFeedService implements OnModuleInit {
     ]).map((code) => ({ code, label: sourceLanguageLabel(code) }));
   }
 
-  async create(data: CreatePlatformFeedDto) {
+  async create(data: CreatePlatformFeedDto, options: PlatformFeedWriteOptions = {}) {
     const name = data.name.trim();
     const url = normalizeFeedUrl(data.url);
     const sourceType = normalizeSourceType(data.sourceType);
@@ -318,12 +324,12 @@ export class PlatformFeedService implements OnModuleInit {
     if (duplicate) throw new ConflictException('این منبع پیش‌فرض قبلاً ثبت شده است');
 
     let resolvedFeedUrl = '';
-    if (sourceType === 'website') {
+    if (!options.skipNetworkDiscovery && sourceType === 'website') {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     }
 
     const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage);
-    const profilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
+    const profilePhoto = !options.skipProfilePhoto && (sourceType === 'telegram' || sourceType === 'twitter')
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : '';
     const feed = await this.prisma.platformFeed.create({
@@ -341,14 +347,16 @@ export class PlatformFeedService implements OnModuleInit {
         enabled: data.enabled ?? true,
       },
     });
-    await this.ensureSubscriptionsForAllTenants(feed.id);
+    if (!options.skipTenantSubscriptions) {
+      await this.ensureSubscriptionsForAllTenants(feed.id);
+    }
     if (sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
     }
     return mapCatalogFeed(feed);
   }
 
-  async update(id: string, data: UpdatePlatformFeedDto) {
+  async update(id: string, data: UpdatePlatformFeedDto, options: PlatformFeedWriteOptions = {}) {
     const feed = await this.findFeed(id);
     const name = String(data.name ?? feed.name).trim();
     const url = normalizeFeedUrl(String(data.url ?? feed.url));
@@ -356,8 +364,10 @@ export class PlatformFeedService implements OnModuleInit {
     const duplicate = await this.prisma.platformFeed.findFirst({ where: { url, NOT: { id } } });
     if (duplicate) throw new ConflictException('این آدرس قبلاً ثبت شده است');
 
+    const urlChanged = data.url !== undefined && url !== feed.url;
+    const typeChanged = data.sourceType !== undefined && sourceType !== feed.sourceType;
     let resolvedFeedUrl = feed.resolvedFeedUrl;
-    if (sourceType === 'website' && (data.url || data.sourceType)) {
+    if (!options.skipNetworkDiscovery && sourceType === 'website' && (urlChanged || typeChanged)) {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     } else if (sourceType === 'rss') {
       resolvedFeedUrl = '';
@@ -1173,7 +1183,9 @@ export class PlatformFeedService implements OnModuleInit {
     }
   }
 
-  private async ensureSubscriptionsForAllTenants(platformFeedId: string) {
+  async ensureTenantSubscriptionsForFeeds(platformFeedIds: readonly string[]) {
+    const uniqueIds = [...new Set(platformFeedIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!uniqueIds.length) return;
     const tenants = await this.prisma.tenant.findMany({
       where: { isActive: true, status: 'active' },
       select: { id: true },
@@ -1181,12 +1193,18 @@ export class PlatformFeedService implements OnModuleInit {
     if (!tenants.length) return;
     await this.prisma.tenantPlatformFeed.createMany({
       skipDuplicates: true,
-      data: tenants.map((tenant) => ({
-        tenantId: tenant.id,
-        platformFeedId,
-        enabled: false,
-      })),
+      data: uniqueIds.flatMap((platformFeedId) =>
+        tenants.map((tenant) => ({
+          tenantId: tenant.id,
+          platformFeedId,
+          enabled: false,
+        })),
+      ),
     });
+  }
+
+  private async ensureSubscriptionsForAllTenants(platformFeedId: string) {
+    await this.ensureTenantSubscriptionsForFeeds([platformFeedId]);
   }
 
   async ensureSubscriptions(tenantId: string) {

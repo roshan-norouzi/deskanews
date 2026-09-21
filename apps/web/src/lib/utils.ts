@@ -169,9 +169,13 @@ export async function apiFetch<T = unknown>(
       response.status >= 500 &&
       (rawText === 'Internal Server Error' ||
         rawText.includes('ECONNREFUSED') ||
+        rawText.includes('ECONNRESET') ||
+        rawText.includes('Gateway Timeout') ||
         !rawText.trim());
 
-    const message = isProxyFailure
+    const message = response.status === 413
+      ? 'حجم فایل از حد مجاز بیشتر است؛ فایل Excel را کوچک‌تر کنید یا با پشتیبانی تماس بگیرید.'
+      : isProxyFailure
       ? 'ارتباط Web با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.'
       : (errorData as { message?: string | string[] })?.message
         ? Array.isArray((errorData as { message: string[] }).message)

@@ -76,8 +76,14 @@ export class FeedBulkService {
     const parsedRows = parseWorkbookRows(buffer, PLATFORM_BULK_COLUMNS);
     const errors: BulkImportRowError[] = [];
     const idsKept = new Set<string>();
+    const createdFeedIds: string[] = [];
     let created = 0;
     let updated = 0;
+    const bulkWriteOptions = {
+      skipNetworkDiscovery: true,
+      skipProfilePhoto: true,
+      skipTenantSubscriptions: true,
+    } as const;
 
     for (const row of parsedRows) {
       const id = normalizeOptionalId(row.values.id);
@@ -130,7 +136,7 @@ export class FeedBulkService {
             catalogGroup: catalogGroup as FeedCatalogGroup,
             logoUrl,
             enabled,
-          });
+          }, bulkWriteOptions);
           idsKept.add(id);
           updated += 1;
         } else {
@@ -142,8 +148,9 @@ export class FeedBulkService {
             catalogGroup: catalogGroup as FeedCatalogGroup,
             logoUrl,
             enabled,
-          });
+          }, bulkWriteOptions);
           idsKept.add(feed.id);
+          createdFeedIds.push(feed.id);
           created += 1;
         }
       } catch (error) {
@@ -154,6 +161,8 @@ export class FeedBulkService {
         if (id) idsKept.add(id);
       }
     }
+
+    await this.platformFeeds.ensureTenantSubscriptionsForFeeds(createdFeedIds);
 
     const existing = await this.prisma.platformFeed.findMany({ select: { id: true } });
     let deleted = 0;

@@ -10,9 +10,14 @@ const nextConfig: NextConfig = {
   ...(process.env.DOCKER_BUILD === 'true' ? { output: 'standalone' as const } : {}),
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   transpilePackages: ['@deska/shared'],
+  serverActions: {
+    bodySizeLimit: '15mb',
+  },
   experimental: {
     optimizePackageImports: ['lucide-react'],
-  },
+    // Next.js may truncate proxied multipart bodies without this (Excel bulk import).
+    proxyClientMaxBodySize: '15mb',
+  } as NextConfig['experimental'],
   async headers() {
     const production = process.env.NODE_ENV === 'production';
     const contentSecurityPolicy = [

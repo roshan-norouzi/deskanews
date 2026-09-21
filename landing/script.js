@@ -2,6 +2,9 @@
   'use strict';
 
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var FA = '۰۱۲۳۴۵۶۷۸۹';
+  function faNum(n) { return String(n).replace(/\d/g, function (d) { return FA[d]; }); }
+
   var header = document.getElementById('header');
   var navToggle = document.getElementById('navToggle');
   var mobileNav = document.getElementById('mobileNav');
@@ -87,7 +90,7 @@
   }
 
   var reveals = document.querySelectorAll('.reveal');
-  if ('IntersectionObserver' in window && !reduced) {
+  if ('IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) {
@@ -99,6 +102,78 @@
     reveals.forEach(function (el) { io.observe(el); });
   } else {
     reveals.forEach(function (el) { el.classList.add('visible'); });
+  }
+
+  var statNums = document.querySelectorAll('.stat-num[data-count]');
+  if (statNums.length && 'IntersectionObserver' in window) {
+    var statIo = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var el = entry.target;
+        var target = parseInt(el.getAttribute('data-count'), 10);
+        if (reduced) {
+          el.textContent = faNum(target);
+          statIo.unobserve(el);
+          return;
+        }
+        var start = performance.now();
+        function tick(now) {
+          var p = Math.min((now - start) / 1200, 1);
+          var val = Math.round(target * (1 - Math.pow(1 - p, 3)));
+          el.textContent = faNum(val);
+          if (p < 1) requestAnimationFrame(tick);
+          else statIo.unobserve(el);
+        }
+        requestAnimationFrame(tick);
+      });
+    }, { threshold: 0.4 });
+    statNums.forEach(function (el) { statIo.observe(el); });
+  }
+
+  var flowIn = document.getElementById('flowIn');
+  var flowOut = document.getElementById('flowOut');
+  if (flowIn && flowOut && !reduced) {
+    var rawItems = [
+      'فید پراکنده',
+      'کانال تلگرام',
+      'لینک ناقص',
+      'متن خام خارجی',
+      'پیام بدون تیتر',
+      'خبر تکراری'
+    ];
+    var cleanItems = [
+      'کارت آماده سردبیر',
+      'تیتر و لید منظم',
+      'منتشر در سایت مقصد',
+      'کپشن شبکه اجتماعی',
+      'قالب تصویری فوتویر',
+      'خبر تأیید‌شده'
+    ];
+    var pairIdx = 0;
+
+    function spawnFlow() {
+      var raw = document.createElement('div');
+      raw.className = 'flow-item raw';
+      raw.textContent = rawItems[pairIdx % rawItems.length];
+      raw.style.top = (20 + (pairIdx % 4) * 36) + 'px';
+      raw.style.animationDelay = '0s';
+      flowIn.appendChild(raw);
+
+      setTimeout(function () {
+        var clean = document.createElement('div');
+        clean.className = 'flow-item clean';
+        clean.textContent = cleanItems[pairIdx % cleanItems.length];
+        clean.style.top = (20 + (pairIdx % 4) * 36) + 'px';
+        flowOut.appendChild(clean);
+        setTimeout(function () { if (clean.parentNode) clean.parentNode.removeChild(clean); }, 3500);
+      }, 2200);
+
+      setTimeout(function () { if (raw.parentNode) raw.parentNode.removeChild(raw); }, 4500);
+      pairIdx++;
+    }
+
+    spawnFlow();
+    setInterval(spawnFlow, 1800);
   }
 
   if (form) {
