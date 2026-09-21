@@ -89,7 +89,6 @@ const DEFAULTS: PublishingSettings = {
   social_auto_publish_instagram: 'false',
   social_auto_publish_linkedin: 'false',
   social_auto_publish_facebook: 'false',
-  telegram_bridge_url: '',
   social_caption_template: '{title}\n\n{lead}\n\nنویسنده: {author}\nدسته‌بندی: {category}\nزمان مطالعه: {reading_time} دقیقه\n\n{summary}\n\n{link}',
   social_image_template: DEFAULT_COVER_TEMPLATE,
   social_font_library: JSON.stringify([{ id: 'vazirmatn', name: 'Vazirmatn' }]),
@@ -124,7 +123,6 @@ const DEFAULT_WHEN_EMPTY = new Set<PublishingSettingKey>([
   'social_auto_publish_instagram',
   'social_auto_publish_linkedin',
   'social_auto_publish_facebook',
-  'telegram_bridge_url',
   'social_caption_template',
   'social_image_template',
   'social_font_library',
@@ -1064,7 +1062,6 @@ export class PublishingSettingsService implements OnModuleInit {
     if (has('destination_platform') && !['wordpress', 'iransamaneh', 'nastooh'].includes(String(next.destination_platform || 'wordpress'))) {
       throw new BadRequestException('پلتفرم سایت مقصد معتبر نیست');
     }
-    if (has('telegram_bridge_url') && next.telegram_bridge_url) next.telegram_bridge_url = normalizeSecureServiceUrl(next.telegram_bridge_url, 'آدرس Worker تلگرام');
     if (has('social_public_media_base_url')) next.social_public_media_base_url = normalizeSecureServiceUrl(next.social_public_media_base_url ?? '', 'آدرس عمومی رسانه‌های اجتماعی');
     if (has('wp_login_path')) next.wp_login_path = normalizeLoginPath(next.wp_login_path ?? 'wp-admin');
     if (has('news_poll_interval_minutes')) next.news_poll_interval_minutes = boundedInteger(next.news_poll_interval_minutes?.trim() || '240', 'فاصله پایش', 5, 1440);

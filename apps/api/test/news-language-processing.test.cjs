@@ -423,9 +423,9 @@ test('automatic social publishing records delivery and does not resend to the sa
     getRaw: async () => ({
       telegram_bot_token: 'token',
       telegram_chat_id: '@channel',
-      telegram_bridge_url: 'https://bridge.example',
       social_caption_template: '{title}\n\n{summary}',
     }),
+    getResolvedSourceFetchBridge: async () => ({ url: 'https://bridge.example', secret: '' }),
   };
   const outbound = {
     proxyImage: async () => ({ buffer: TEST_PNG, contentType: 'image/png' }),
@@ -560,7 +560,10 @@ test('automatic publisher prefers a generated cover over the source image', asyn
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
-  const settings = { getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }) };
+  const settings = {
+    getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel' }),
+    getResolvedSourceFetchBridge: async () => ({ url: 'https://bridge.example', secret: '' }),
+  };
   const outbound = {
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => { bridgeCalls += 1; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
@@ -591,7 +594,10 @@ test('automatic publisher falls back to the featured image when generated media 
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
-  const settings = { getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }) };
+  const settings = {
+    getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel' }),
+    getResolvedSourceFetchBridge: async () => ({ url: 'https://bridge.example', secret: '' }),
+  };
   const outbound = {
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async (_url, options) => { bridgeCalls += 1; bridgePhoto = JSON.parse(options.body).photo_base64; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
@@ -623,7 +629,10 @@ test('explicit featured-image fallback bypasses a stale generated cover', async 
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
-  const settings = { getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel', telegram_bridge_url: 'https://bridge.example' }) };
+  const settings = {
+    getRaw: async () => ({ telegram_bot_token: 'token', telegram_chat_id: '@channel' }),
+    getResolvedSourceFetchBridge: async () => ({ url: 'https://bridge.example', secret: '' }),
+  };
   const outbound = {
     proxyImage: async () => { featuredImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => ({ ok: true, status: 200, json: () => ({ ok: true }) }),

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PublishingSettingsService } from './publishing-settings.service';
+import { PublishingSettingsService, SOURCE_FETCH_BRIDGE_MISSING_MESSAGE } from './publishing-settings.service';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
@@ -301,17 +301,37 @@ export class SocialNetworkPublisherService {
     return { ok: true, network: network as SocialNetwork, message: 'اتصال و دسترسی شبکه با موفقیت تأیید شد.' };
   }
 
+  private async resolvePlatformBridge(): Promise<{ url: string; secret: string }> {
+    return this.settings.getResolvedSourceFetchBridge();
+  }
+
+  private platformBridgeHeaders(secret: string): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (secret) headers['X-Bridge-Secret'] = secret;
+    return headers;
+  }
+
+  private normalizeBridgeUrl(url: string): string {
+    return String(url || '').trim().replace(/\/+$/u, '');
+  }
+
   private async publishTelegram(settings: PublishingSettings, caption: string, image: ImagePayload) {
     if (!settings.telegram_bot_token || !settings.telegram_chat_id) throw new BadRequestException('تنظیمات تلگرام کامل نیست');
-    if (settings.telegram_bridge_url) {
-      const response = await this.telegramBridgeRequest(settings.telegram_bridge_url, {
+    const bridge = await this.resolvePlatformBridge();
+    if (bridge.url) {
+      const response = await this.telegramBridgeRequest(this.normalizeBridgeUrl(bridge.url), bridge.secret, {
         token: settings.telegram_bot_token,
         chat_id: settings.telegram_chat_id,
         caption: telegramHtml(caption.slice(0, 1024)),
         parse_mode: 'HTML',
         photo_base64: image.buffer.toString('base64'),
       });
-      if (!response.ok) throw new BadRequestException('Worker تلگرام انتشار مطلب را تأیید نکرد');
+      if (!response.ok) {
+        throw new BadRequestException(response.error || 'Worker تلگرام انتشار مطلب را تأیید نکرد');
+      }
       return;
     }
     const form = new FormData();
@@ -327,8 +347,16 @@ export class SocialNetworkPublisherService {
 
   private async testTelegram(settings: PublishingSettings) {
     if (!settings.telegram_bot_token || !settings.telegram_chat_id) throw new BadRequestException('تنظیمات تلگرام کامل نیست');
-    if (settings.telegram_bridge_url) {
-      await this.telegramBridgeProbe(settings.telegram_bridge_url);
+    const bridge = await this.resolvePlatformBridge();
+    if (bridge.url) {
+      const response = await this.telegramBridgeRequest(this.normalizeBridgeUrl(bridge.url), bridge.secret, {
+        action: 'telegram_test',
+        token: settings.telegram_bot_token,
+        chat_id: settings.telegram_chat_id,
+      });
+      if (!response.ok) {
+        throw new BadRequestException(response.error || 'Worker تلگرام اتصال ربات را تأیید نکرد');
+      }
       return;
     }
     const base = `https://api.telegram.org/bot${settings.telegram_bot_token}`;
@@ -348,16 +376,20 @@ export class SocialNetworkPublisherService {
     } catch (error) {
       const timedOut = error instanceof Error && error.name === 'TimeoutError';
       throw new BadRequestException(timedOut
-        ? 'تلگرام در مهلت مقرر پاسخ نداد؛ اتصال خروجی HTTPS و DNS سرور را بررسی کنید.'
-        : 'ارتباط با تلگرام برقرار نشد؛ دسترسی خروجی HTTPS و DNS سرور را بررسی کنید.');
+        ? 'تلگرام در مهلت مقرر پاسخ نداد. Worker Deska را در تنظیمات مدیر کل (پلتفرم → Worker دریافت منبع) ثبت کنید یا دسترسی خروجی HTTPS سرور را بررسی کنید.'
+        : `${SOURCE_FETCH_BRIDGE_MISSING_MESSAGE.replace('دریافت منبع', 'دریافت منبع و انتشار تلگرام')} در غیر این صورت دسترسی مستقیم سرور به api.telegram.org لازم است.`);
     }
   }
 
-  private async telegramBridgeRequest(url: string, payload: Record<string, unknown>): Promise<{ ok?: boolean; error?: string }> {
+  private async telegramBridgeRequest(
+    url: string,
+    secret: string,
+    payload: Record<string, unknown>,
+  ): Promise<{ ok?: boolean; error?: string }> {
     try {
-      const response = await this.outbound.safeRequest(url, {
+      const response = await this.outbound.safeRequest(`${url}/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: this.platformBridgeHeaders(secret),
         body: JSON.stringify(payload),
         timeoutMs: 30_000,
         acceptedTypes: ['application/json'],
@@ -365,37 +397,18 @@ export class SocialNetworkPublisherService {
       });
       let body: { ok?: boolean; error?: string; detail?: string; description?: string } = {};
       try { body = response.json<typeof body>(); } catch { /* Preserve the HTTP status below. */ }
-      if (!response.ok) return { ok: false, error: body.error || body.description || body.detail || `Worker تلگرام با خطای ${response.status} پاسخ داد` };
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: body.description || body.error || body.detail || `Worker Deska با خطای ${response.status} پاسخ داد`,
+        };
+      }
       return body;
     } catch (error) {
       const timedOut = error instanceof Error && error.name === 'TimeoutError';
       throw new BadRequestException(timedOut
-        ? 'Worker تلگرام در مهلت مقرر پاسخ نداد؛ وضعیت Worker و دسترسی HTTPS را بررسی کنید.'
-        : 'ارتباط با Worker تلگرام برقرار نشد؛ آدرس Worker و دسترسی HTTPS را بررسی کنید.');
-    }
-  }
-
-  private async telegramBridgeProbe(url: string): Promise<void> {
-    try {
-      const response = await this.outbound.safeRequest(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: '{}',
-        timeoutMs: 15_000,
-        acceptedTypes: ['application/json'],
-        allowLocalhostInDevelopment: true,
-      });
-      // The current Worker requires token/chat_id/text or photo_base64. Its
-      // expected 400 response to an empty probe proves the relay is reachable
-      // without sending an unsolicited Telegram message.
-      if (![400, 405].includes(response.status) && !response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    } catch (error) {
-      const timedOut = error instanceof Error && error.name === 'TimeoutError';
-      throw new BadRequestException(timedOut
-        ? 'Worker تلگرام در مهلت مقرر پاسخ نداد؛ وضعیت Worker و دسترسی HTTPS را بررسی کنید.'
-        : 'ارتباط با Worker تلگرام برقرار نشد؛ آدرس Worker و دسترسی HTTPS را بررسی کنید.');
+        ? 'Worker Deska در مهلت مقرر پاسخ نداد؛ وضعیت Worker و آدرس ثبت‌شده در تنظیمات مدیر کل را بررسی کنید.'
+        : 'ارتباط با Worker Deska برقرار نشد؛ آدرس Worker را در پلتفرم → Worker دریافت منبع بررسی کنید.');
     }
   }
 

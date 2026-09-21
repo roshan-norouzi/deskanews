@@ -1,6 +1,6 @@
 ﻿# Deska Worker
 
-Cloudflare Worker واحد برای **دریافت** صفحات تلگرام، X/Twitter، و رسانه‌های بین‌المللی که از ایران در دسترس نیستند.
+Cloudflare Worker واحد برای **دریافت** صفحات تلگرام، X/Twitter، و رسانه‌های بین‌المللی که از ایران در دسترس نیستند، و **relaying** تست/انتشار تلگرام برای API سرور.
 
 > Workerهای قدیمی (`source-fetch`, `telegram-bridge`, …) را از داشبورد Cloudflare حذف کنید و فقط **`deska`** نگه دارید.
 

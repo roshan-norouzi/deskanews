@@ -113,7 +113,7 @@ export function PlatformSourceFetchSettingsPanel() {
           <div>
             <h2 className="text-lg font-bold text-slate-900">اتصال Cloudflare Worker «deska»</h2>
             <p className="mt-1 text-sm text-slate-500">
-              پس از <code dir="ltr">pnpm worker:deploy</code> آدرس Worker را اینجا ثبت کنید. این Worker تلگرام و X را دریافت می‌کند و اگر سایت رسانه‌ای از ایران در دسترس نباشد یا RSS نداشته باشد، همان صفحه یا فید را از خارج ایران می‌گیرد.
+              پس از <code dir="ltr">pnpm worker:deploy</code> آدرس Worker را اینجا ثبت کنید. این Worker برای دریافت منابع (تلگرام، X، رسانه‌های بین‌المللی) و همچنین <strong>تست و انتشار تلگرام</strong> از استودیوی اجتماعی استفاده می‌شود؛ سازمان‌ها آدرس جداگانه‌ای وارد نمی‌کنند.
             </p>
           </div>
 

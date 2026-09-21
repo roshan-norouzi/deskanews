@@ -280,6 +280,87 @@ async function fetchXTimelineUpstream(
   return { upstream: lastResponse, body: lastBody, finalUrl: candidates[candidates.length - 1] };
 }
 
+type TelegramApiBody = { ok?: boolean; description?: string; error_code?: number };
+
+async function readTelegramApiBody(response: Response): Promise<TelegramApiBody> {
+  try {
+    return (await response.json()) as TelegramApiBody;
+  } catch {
+    return {};
+  }
+}
+
+async function telegramBotFetch(token: string, method: string, init?: RequestInit): Promise<Response> {
+  return fetch(`https://api.telegram.org/bot${token}/${method}`, init);
+}
+
+function decodeBase64ToBytes(value: string): Uint8Array {
+  const binary = atob(value.replace(/\s+/gu, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function handleTelegramRelay(payload: Record<string, unknown>): Promise<Response | null> {
+  const token = String(payload.token || '').trim();
+  if (!token) return null;
+
+  const chatId = String(payload.chat_id || '').trim();
+  const photoBase64 = String(payload.photo_base64 || '').trim();
+  const caption = String(payload.caption || '').trim();
+  const action = String(payload.action || '').trim().toLowerCase();
+  const wantsTest = action === 'telegram_test' || (!photoBase64 && !caption && Boolean(chatId));
+
+  if (wantsTest) {
+    if (!chatId) return json(400, { ok: false, error: 'missing_chat_id' });
+    const meResponse = await telegramBotFetch(token, 'getMe');
+    const meBody = await readTelegramApiBody(meResponse);
+    if (!meResponse.ok || !meBody.ok) {
+      return json(502, {
+        ok: false,
+        error: 'telegram_get_me_failed',
+        description: meBody.description || `HTTP ${meResponse.status}`,
+      });
+    }
+    const chatResponse = await telegramBotFetch(token, `getChat?chat_id=${encodeURIComponent(chatId)}`);
+    const chatBody = await readTelegramApiBody(chatResponse);
+    if (!chatResponse.ok || !chatBody.ok) {
+      return json(502, {
+        ok: false,
+        error: 'telegram_get_chat_failed',
+        description: chatBody.description || `HTTP ${chatResponse.status}`,
+      });
+    }
+    return json(200, { ok: true, mode: 'telegram_test', worker: 'deska' });
+  }
+
+  if (photoBase64 || caption) {
+    if (!chatId) return json(400, { ok: false, error: 'missing_chat_id' });
+    const form = new FormData();
+    form.set('chat_id', chatId);
+    if (caption) form.set('caption', caption.slice(0, 1024));
+    if (payload.parse_mode) form.set('parse_mode', String(payload.parse_mode));
+    if (photoBase64) {
+      const bytes = decodeBase64ToBytes(photoBase64);
+      form.set('photo', new Blob([bytes], { type: 'image/jpeg' }), 'social.jpg');
+    }
+    const sendResponse = await telegramBotFetch(token, 'sendPhoto', { method: 'POST', body: form });
+    const sendBody = await readTelegramApiBody(sendResponse);
+    if (!sendResponse.ok || !sendBody.ok) {
+      return json(502, {
+        ok: false,
+        error: 'telegram_send_photo_failed',
+        description: sendBody.description || `HTTP ${sendResponse.status}`,
+      });
+    }
+    return json(200, { ok: true, mode: 'telegram_send_photo', worker: 'deska' });
+  }
+
+  return json(400, { ok: false, error: 'invalid_telegram_payload' });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') {
@@ -315,6 +396,9 @@ export default {
     if (String(payload.action || '').trim().toLowerCase() === 'probe') {
       return json(200, { ok: true, mode: 'probe', worker: 'deska' });
     }
+
+    const telegramResponse = await handleTelegramRelay(payload);
+    if (telegramResponse) return telegramResponse;
 
     const targetRaw = String(payload.url || '').trim();
     if (!targetRaw) return json(400, { ok: false, error: 'missing_url' });

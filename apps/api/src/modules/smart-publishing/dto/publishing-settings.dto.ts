@@ -59,7 +59,6 @@ export const PUBLISHING_SETTING_KEYS = [
   'ns_post_status',
   'telegram_bot_token',
   'telegram_chat_id',
-  'telegram_bridge_url',
   'social_instagram_access_token',
   'social_instagram_account_id',
   'social_instagram_api_version',
@@ -136,7 +135,6 @@ export class UpdatePublishingSettingsDto {
   @IsOptional() @IsIn(['publish', 'draft']) ns_post_status?: string;
   @IsOptional() @IsString() @MaxLength(500) telegram_bot_token?: string;
   @IsOptional() @IsString() @MaxLength(200) telegram_chat_id?: string;
-  @IsOptional() @IsString() @MaxLength(500) telegram_bridge_url?: string;
   @IsOptional() @IsString() @MaxLength(1000) social_instagram_access_token?: string;
   @IsOptional() @IsString() @MaxLength(200) social_instagram_account_id?: string;
   @IsOptional() @IsString() @MaxLength(30) social_instagram_api_version?: string;
