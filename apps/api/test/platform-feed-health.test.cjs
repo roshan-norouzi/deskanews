@@ -7,6 +7,7 @@ const {
   PLATFORM_FEED_HEALTH_DOWN_MS,
   evaluatePlatformFeedHealth,
   normalizeCatalogHealthIntervalHours,
+  orderCatalogHealthCheckFeeds,
   parseCatalogHealthEnabled,
 } = require('../dist/modules/smart-publishing/platform-feed-health');
 
@@ -56,6 +57,37 @@ test('parseCatalogHealthEnabled reads boolean-like values', () => {
   assert.equal(parseCatalogHealthEnabled('false'), false);
   assert.equal(parseCatalogHealthEnabled('true'), true);
   assert.equal(parseCatalogHealthEnabled(undefined), true);
+});
+
+test('orderCatalogHealthCheckFeeds checks untested sources before retests', () => {
+  const ordered = orderCatalogHealthCheckFeeds([
+    {
+      id: 'old',
+      name: 'ب',
+      catalogGroup: 'media-domestic',
+      healthCheckedAt: new Date('2026-09-20T10:00:00Z'),
+      healthStatus: 'healthy',
+    },
+    {
+      id: 'new',
+      name: 'الف',
+      catalogGroup: 'media-domestic',
+      healthCheckedAt: null,
+      healthStatus: 'unknown',
+    },
+    {
+      id: 'older',
+      name: 'ج',
+      catalogGroup: 'media-domestic',
+      healthCheckedAt: new Date('2026-09-19T10:00:00Z'),
+      healthStatus: 'degraded',
+    },
+  ]);
+
+  assert.deepEqual(
+    ordered.map((feed) => feed.id),
+    ['new', 'older', 'old'],
+  );
 });
 
 test('catalog health concurrency constant is positive', () => {

@@ -21,6 +21,7 @@ import { DestinationCategoryService } from './destination-category.service';
 import {
   evaluatePlatformFeedHealth,
   normalizeCatalogHealthIntervalHours,
+  orderCatalogHealthCheckFeeds,
   parseCatalogHealthEnabled,
   PLATFORM_FEED_HEALTH_ITEM_TARGET,
   CATALOG_HEALTH_CHECK_CONCURRENCY,
@@ -468,10 +469,9 @@ export class PlatformFeedService implements OnModuleInit {
       };
     }
 
-    const feeds = await this.prisma.platformFeed.findMany({
+    const feeds = orderCatalogHealthCheckFeeds(await this.prisma.platformFeed.findMany({
       where: { enabled: true },
-      orderBy: [{ catalogGroup: 'asc' }, { name: 'asc' }],
-    });
+    }));
 
     this.catalogHealthRun = {
       running: true,
@@ -511,10 +511,9 @@ export class PlatformFeedService implements OnModuleInit {
   }
 
   async runCatalogHealthChecks() {
-    const feeds = await this.prisma.platformFeed.findMany({
+    const feeds = orderCatalogHealthCheckFeeds(await this.prisma.platformFeed.findMany({
       where: { enabled: true },
-      orderBy: [{ catalogGroup: 'asc' }, { name: 'asc' }],
-    });
+    }));
     const summary = await this.executeCatalogHealthChecks(feeds);
     await this.settings.markCatalogHealthLastRun(new Date());
     return {

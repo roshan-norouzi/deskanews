@@ -57,3 +57,29 @@ export function parseCatalogHealthEnabled(value: unknown): boolean {
   if (!normalized) return true;
   return normalized !== 'false' && normalized !== '0';
 }
+
+export function isCatalogFeedPendingHealthCheck(feed: {
+  healthCheckedAt?: Date | null;
+  healthStatus?: string | null;
+}): boolean {
+  if (feed.healthCheckedAt == null) return true;
+  return String(feed.healthStatus || 'unknown') === 'unknown';
+}
+
+/** Untested feeds first, then oldest health checks, then stable name order. */
+export function orderCatalogHealthCheckFeeds<
+  T extends { healthCheckedAt?: Date | null; healthStatus?: string | null; name: string; catalogGroup?: string | null },
+>(feeds: readonly T[]): T[] {
+  return [...feeds].sort((a, b) => {
+    const aPending = isCatalogFeedPendingHealthCheck(a);
+    const bPending = isCatalogFeedPendingHealthCheck(b);
+    if (aPending !== bPending) return aPending ? -1 : 1;
+    if (a.healthCheckedAt && b.healthCheckedAt) {
+      const diff = a.healthCheckedAt.getTime() - b.healthCheckedAt.getTime();
+      if (diff !== 0) return diff;
+    }
+    const groupCmp = String(a.catalogGroup || '').localeCompare(String(b.catalogGroup || ''), 'fa');
+    if (groupCmp !== 0) return groupCmp;
+    return a.name.localeCompare(b.name, 'fa');
+  });
+}

@@ -111,12 +111,6 @@ export function PlatformFeedCatalogTable({
                         <FeedHealthDot status={healthStatus} title={healthTitle} />
                         <span>{feed.name}</span>
                       </div>
-                      <div className="mt-1 truncate text-xs text-slate-500" dir="ltr">{feed.url}</div>
-                      {feed.resolvedFeedUrl && (
-                        <div className="mt-1 truncate text-xs text-emerald-700" dir="ltr">
-                          فید: {feed.resolvedFeedUrl}
-                        </div>
-                      )}
                       {feed.healthCheckedAt && (
                         <div className="mt-1 text-xs text-slate-500">
                           آخرین تست سلامت: {new Date(feed.healthCheckedAt).toLocaleString('fa-IR')}
