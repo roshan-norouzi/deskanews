@@ -8,7 +8,7 @@ import { ApiError, apiFetch } from '@/lib/utils';
 
 type Settings = Record<string, string>;
 
-const SETTING_KEYS = ['source_fetch_bridge_url', 'source_fetch_bridge_secret'] as const;
+const SETTING_KEYS = ['source_fetch_bridge_url', 'source_fetch_bridge_secret', 'source_fetch_news_via_bridge'] as const;
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -79,7 +79,7 @@ export function PlatformSourceFetchSettingsPanel() {
         }
         return merged;
       });
-    }, 'تنظیمات Worker Deska برای همه سازمان‌ها ذخیره شد.');
+    }, 'تنظیم دریافت منبع برای همه سازمان‌ها ذخیره شد.');
   }
 
   async function testSettings() {
@@ -90,8 +90,8 @@ export function PlatformSourceFetchSettingsPanel() {
         skipTenant: true,
         body: editableSettings(body),
       });
-      if (!result.ok) throw new ApiError(result.message || 'تست Worker ناموفق بود', 400);
-    }, 'اتصال Worker Deska با موفقیت تأیید شد.');
+      if (!result.ok) throw new ApiError(result.message || 'تست سرویس دریافت ناموفق بود', 400);
+    }, 'اتصال سرویس دریافت با موفقیت تأیید شد.');
   }
 
   return (
@@ -111,14 +111,14 @@ export function PlatformSourceFetchSettingsPanel() {
       ) : (
         <Card className="space-y-6 p-5 sm:p-6">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">اتصال Cloudflare Worker «deska»</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              پس از <code dir="ltr">pnpm worker:deploy</code> آدرس Worker را اینجا ثبت کنید. این Worker برای دریافت منابع (تلگرام، X، رسانه‌های بین‌المللی) و همچنین <strong>تست و انتشار تلگرام</strong> از استودیوی اجتماعی استفاده می‌شود؛ سازمان‌ها آدرس جداگانه‌ای وارد نمی‌کنند.
+            <h2 className="text-lg font-bold text-slate-900">دریافت منبع</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              تلگرام و توییتر همیشه از آدرس زیر گرفته می‌شوند. منابع خبری (RSS و وب‌سایت) به‌طور پیش‌فرض مستقیم از سرور دریافت می‌شوند. اگر سایتی از شبکهٔ سرور باز نشد، گزینهٔ پایین را روشن کنید تا همان آدرس برای خبرها هم استفاده شود.
             </p>
           </div>
 
           <div className="grid gap-4">
-            <Field label="آدرس Worker Deska" hint="مثال: https://deska.account.workers.dev — بدون اسلش پایانی">
+            <Field label="آدرس سرویس دریافت" hint="مثال: https://deska.account.workers.dev — بدون اسلش پایانی. برای تلگرام، توییتر و در صورت نیاز منابع خبری.">
               <input
                 dir="ltr"
                 className="rounded-xl border px-3 py-2.5"
@@ -128,10 +128,10 @@ export function PlatformSourceFetchSettingsPanel() {
               />
             </Field>
             <Field
-              label="رمز مشترک Worker (BRIDGE_SECRET)"
+              label="رمز سرویس دریافت"
               hint={values.source_fetch_bridge_secret_configured === 'true'
                 ? 'رمز قبلی ثبت شده است؛ برای حفظ آن، این فیلد را خالی بگذارید.'
-                : 'در صورت تنظیم BRIDGE_SECRET روی Worker، همان مقدار را اینجا وارد کنید.'}
+                : 'اگر روی سرویس رمز گذاشته‌اید، همان را اینجا وارد کنید.'}
             >
               <div className="relative">
                 <KeyRound className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -146,12 +146,26 @@ export function PlatformSourceFetchSettingsPanel() {
                 />
               </div>
             </Field>
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600"
+                checked={values.source_fetch_news_via_bridge === 'true'}
+                onChange={(event) => set('source_fetch_news_via_bridge', event.target.checked ? 'true' : 'false')}
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">منابع خبری هم از این سرویس</span>
+                <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
+                  خاموش: RSS و وب‌سایت مستقیم از سرور. روشن: همان سرویس تلگرام و توییتر برای خبرهای فیلترشده هم استفاده شود. اگر آزمایش منبع خطای «فقط تلگرام و توییتر» داد، این گزینه را خاموش بگذارید.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-5">
             <Button variant="outline" isLoading={busy === 'test'} onClick={() => void testSettings()}>
               <TestTube2 className="h-4 w-4" />
-              تست اتصال Worker
+              تست اتصال
             </Button>
             <Button isLoading={busy === 'save'} onClick={() => void saveSettings()}>
               <Save className="h-4 w-4" />

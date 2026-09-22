@@ -20,6 +20,11 @@ export function isSocialFetchHost(hostname: string): boolean {
   return SOCIAL_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
+/** Public news/RSS hosts (e.g. euronews.com) — blocked only for private/metadata IPs. */
+export function isPublicFetchHostAllowed(hostname: string): boolean {
+  return isSocialFetchHost(hostname) || !isBlockedFetchHost(hostname);
+}
+
 export function isBlockedFetchHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.+$/u, '').replace(/^\[|\]$/gu, '');
   if (!host) return true;
@@ -63,7 +68,7 @@ export function isBlockedFetchHost(hostname: string): boolean {
 }
 
 function hostAllowed(hostname: string): boolean {
-  return isSocialFetchHost(hostname) || !isBlockedFetchHost(hostname);
+  return isPublicFetchHostAllowed(hostname);
 }
 
 function json(status: number, body: Record<string, unknown>): Response {

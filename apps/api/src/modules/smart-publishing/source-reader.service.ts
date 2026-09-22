@@ -258,28 +258,17 @@ function hostRequiresSourceBridge(hostname: string): boolean {
   return SOURCE_BRIDGE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
-/** Hosts on .ir are usually reachable directly from Iran; other news CDNs often are not. */
-function isDomesticSourceHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/u, '');
-  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
-  if (isIP(host)) return false;
-  return host.endsWith('.ir');
-}
-
-function shouldPreferSourceBridgeFirst(hostname: string, bridgeConfigured: boolean): boolean {
-  if (!bridgeConfigured) return false;
-  if (hostRequiresSourceBridge(hostname)) return true;
-  return !isDomesticSourceHost(hostname);
-}
-
-function isRetryableDirectFetchError(error: unknown): boolean {
+/** Worker answered; the publisher or an outdated Worker rejected the URL. Do not hide that behind a direct fetch. */
+function isWorkerApplicationError(error: unknown): boolean {
   const message = httpErrorMessage(error);
-  return /HTTP (401|403|407|408|429|451|500|502|503|504)|نوع محتوای دریافتی|مهلت|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|certificate|SSL|TLS|fetch failed|socket|EPROTO|blocked|مسدود|ارتباط|اتصال امن/u.test(message);
+  return /host_not_allowed|upstream_http_|upstream_fetch_failed|نوع محتوای|پاسخ خالی|حجم محتوای|نامعتبر|تلگرام|توییتر|X\/Twitter/u.test(message);
 }
 
-function isDirectConnectionBlockedError(error: unknown): boolean {
+/** The API could not reach the Worker itself (Cloudflare down or network). */
+function isWorkerTransportFailure(error: unknown): boolean {
+  if (isWorkerApplicationError(error)) return false;
   const message = httpErrorMessage(error);
-  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPROTO|certificate|SSL|TLS|socket hang up|fetch failed/u.test(message);
+  return /ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPROTO|fetch failed|socket|اتصال امن|مهلت|timeout/u.test(message);
 }
 
 function bodyMatchesAcceptedTypes(body: string, acceptedTypes: string[]): boolean {
@@ -301,7 +290,6 @@ function contentTypeIsAccepted(contentType: string, acceptedTypes: string[]): bo
 @Injectable()
 export class SourceReaderService {
   private readonly logger = new Logger(SourceReaderService.name);
-  private readonly bridgePreferredHosts = new Set<string>();
 
   constructor(@Optional() private readonly publishingSettings?: PublishingSettingsService) {}
 
@@ -1624,6 +1612,11 @@ export class SourceReaderService {
           'محدودیت موقت دریافت از X/Twitter؛ چند دقیقه بعد دوباره تلاش کنید یا Worker دریافت منبع را در پلتفرم بررسی کنید',
         );
       }
+      if (code === 'host_not_allowed') {
+        throw new BadRequestException(
+          'سرویس دریافت فقط تلگرام و توییتر را می‌پذیرد. در پلتفرم → تنظیمات پلتفرم → دریافت منبع، گزینه «منابع خبری هم از این سرویس» را خاموش کنید تا خبرها مستقیم از سرور گرفته شوند.',
+        );
+      }
       const detail = code || `Worker منبع با خطای HTTP ${response.status} پاسخ داد`;
       throw new BadRequestException(`دریافت منبع از طریق Worker ناموفق بود: ${detail}`);
     }
@@ -1675,14 +1668,24 @@ export class SourceReaderService {
     throw new BadRequestException('دریافت منبع انجام نشد');
   }
 
-  private rememberBridgeHost(hostname: string) {
-    const host = hostname.toLowerCase();
-    this.bridgePreferredHosts.add(host);
-    if (this.bridgePreferredHosts.size <= 300) return;
-    const first = this.bridgePreferredHosts.values().next().value;
-    if (first) this.bridgePreferredHosts.delete(first);
+  private async resolveSourceFetch(): Promise<{ url: string; secret: string; newsViaBridge: boolean }> {
+    const settings = this.publishingSettings as {
+      getSourceFetchPolicy?: () => Promise<{ url: string; secret: string; newsViaBridge: boolean }>;
+      getResolvedSourceFetchBridge?: () => Promise<{ url: string; secret: string }>;
+    } | undefined;
+    if (settings?.getSourceFetchPolicy) return settings.getSourceFetchPolicy();
+    if (settings?.getResolvedSourceFetchBridge) {
+      const bridge = await settings.getResolvedSourceFetchBridge();
+      return { ...bridge, newsViaBridge: true };
+    }
+    return { url: '', secret: '', newsViaBridge: false };
   }
 
+  /**
+   * Telegram and X always use the platform fetch service.
+   * News RSS and websites use it only when that option is enabled in platform settings.
+   * Otherwise the server fetches them directly.
+   */
   private async safeFetchText(initialUrl: string, maxBytes: number, acceptedTypes: string[]): Promise<string> {
     let hostname = '';
     try {
@@ -1691,46 +1694,39 @@ export class SourceReaderService {
       throw new BadRequestException('آدرس منبع معتبر نیست');
     }
 
-    const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
-    const bridgeConfigured = Boolean(bridgeUrl);
-    const mustUseBridge = hostRequiresSourceBridge(hostname);
-    const preferBridge = this.bridgePreferredHosts.has(hostname.toLowerCase());
-    const bridgeFirst = shouldPreferSourceBridgeFirst(hostname, bridgeConfigured) || preferBridge;
-
-    if (mustUseBridge) {
-      if (bridgeConfigured) {
-        return this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
-      }
-      this.logger.warn(`Source fetch bridge is not configured for ${hostname}; trying direct fetch`);
-    } else if (bridgeFirst) {
+    const route = await this.resolveSourceFetch();
+    const social = hostRequiresSourceBridge(hostname);
+    const useBridge = Boolean(route.url) && (social || route.newsViaBridge);
+    if (useBridge) {
       try {
         return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
       } catch (bridgeError) {
-        this.logger.warn(
-          `Worker fetch failed for ${hostname}; trying direct fetch: ${httpErrorMessage(bridgeError)}`,
-        );
+        if (isWorkerTransportFailure(bridgeError) && !social) {
+          this.logger.warn(`Fetch service unreachable for ${hostname}; trying a direct fetch`);
+          try {
+            return await this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
+          } catch (directError) {
+            this.logger.warn(`Direct fetch also failed for ${hostname}: ${httpErrorMessage(directError)}`);
+          }
+        }
+        throw bridgeError instanceof BadRequestException
+          ? bridgeError
+          : new BadRequestException(httpErrorMessage(bridgeError));
       }
+    }
+
+    if (hostRequiresSourceBridge(hostname)) {
+      throw new BadRequestException(SOURCE_FETCH_BRIDGE_MISSING_MESSAGE);
     }
 
     try {
       return await this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
     } catch (directError) {
-      if (!mustUseBridge && bridgeConfigured && isRetryableDirectFetchError(directError)) {
-        this.logger.warn(`Direct fetch failed for ${hostname}; retrying through Worker`);
-        this.rememberBridgeHost(hostname);
-        try {
-          return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
-        } catch (bridgeError) {
-          this.logger.warn(`Worker fetch also failed for ${hostname}: ${httpErrorMessage(bridgeError)}`);
-          throw bridgeError instanceof BadRequestException
-            ? bridgeError
-            : new BadRequestException(httpErrorMessage(bridgeError));
-        }
-      }
-      if (!bridgeConfigured && isDirectConnectionBlockedError(directError) && !isDomesticSourceHost(hostname)) {
-        throw new BadRequestException(
-          `${httpErrorMessage(directError)} ${SOURCE_FETCH_BRIDGE_MISSING_MESSAGE}`,
-        );
+      if (isWorkerTransportFailure(directError)) {
+        const hint = route.url
+          ? 'اگر این سایت از شبکهٔ سرور باز نمی‌شود، در پلتفرم → تنظیمات پلتفرم → دریافت منبع گزینه «منابع خبری هم از این سرویس» را روشن کنید.'
+          : SOURCE_FETCH_BRIDGE_MISSING_MESSAGE;
+        throw new BadRequestException(`${httpErrorMessage(directError)} ${hint}`);
       }
       throw directError;
     }

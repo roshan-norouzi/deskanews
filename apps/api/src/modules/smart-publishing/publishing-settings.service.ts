@@ -45,7 +45,7 @@ const SECRET_KEYS = new Set<PublishingSettingKey>([
 
 const AI_SETTING_KEY_SET = new Set<PublishingSettingKey>(AI_SETTING_KEYS);
 
-export const SOURCE_FETCH_SETTING_KEYS = ['source_fetch_bridge_url', 'source_fetch_bridge_secret'] as const;
+export const SOURCE_FETCH_SETTING_KEYS = ['source_fetch_bridge_url', 'source_fetch_bridge_secret', 'source_fetch_news_via_bridge'] as const;
 export type SourceFetchSettingKey = (typeof SOURCE_FETCH_SETTING_KEYS)[number];
 export type SourceFetchSettings = Partial<Record<SourceFetchSettingKey, string>>;
 
@@ -783,14 +783,20 @@ export class PublishingSettingsService implements OnModuleInit {
     return {
       source_fetch_bridge_url: stored.source_fetch_bridge_url || '',
       source_fetch_bridge_secret: stored.source_fetch_bridge_secret || '',
+      source_fetch_news_via_bridge: stored.source_fetch_news_via_bridge === 'true' ? 'true' : 'false',
     };
   }
 
   async getResolvedSourceFetchBridge(): Promise<{ url: string; secret: string }> {
+    const policy = await this.getSourceFetchPolicy();
+    return { url: policy.url, secret: policy.secret };
+  }
+
+  async getSourceFetchPolicy(): Promise<{ url: string; secret: string; newsViaBridge: boolean }> {
     const raw = await this.getGlobalSourceFetchRaw();
     const url = String(raw.source_fetch_bridge_url || '').trim().replace(/\/+$/u, '');
     const secret = String(raw.source_fetch_bridge_secret || '').trim();
-    return { url, secret };
+    return { url, secret, newsViaBridge: raw.source_fetch_news_via_bridge === 'true' };
   }
 
   async getGlobalSourceFetchPublic(): Promise<Record<string, string>> {
@@ -814,7 +820,7 @@ export class PublishingSettingsService implements OnModuleInit {
       if (typeof input[key as keyof UpdatePlatformSourceFetchSettingsDto] !== 'string') continue;
       const value = String(input[key as keyof UpdatePlatformSourceFetchSettingsDto] ?? '').trim();
       if (SOURCE_FETCH_SECRET_KEYS.has(key) && !value) continue;
-      next[key] = value;
+      next[key] = key === 'source_fetch_news_via_bridge' ? (value === 'true' ? 'true' : 'false') : value;
     }
 
     if (typeof input.source_fetch_bridge_url === 'string') {

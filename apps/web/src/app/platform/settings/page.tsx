@@ -27,7 +27,7 @@ const TAB_DEFINITIONS: Array<{
   },
   {
     id: 'source-fetch',
-    label: 'Worker دریافت منبع',
+    label: 'دریافت منبع',
     icon: Cloud,
     description: 'Worker Deska برای تلگرام، X، و رسانه‌های بین‌المللی مسدود یا بدون RSS.',
   },

@@ -348,6 +348,87 @@ test('SourceReader retries geo-blocked international RSS through Worker', async 
   assert.equal(entries[0].canonicalUrl, 'https://www.bbc.com/news/1');
 });
 
+test('SourceReader keeps news direct and social sources on the fetch service', async () => {
+  const seen = [];
+  const service = new SourceReaderService({
+    getSourceFetchPolicy: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+      newsViaBridge: false,
+    }),
+  });
+  service.safeFetchTextDirect = async (url) => {
+    seen.push(`direct:${url}`);
+    return `<?xml version="1.0"?><rss version="2.0"><channel><item><title>خبر داخلی</title><link>https://www.isna.ir/news/1</link><description>خلاصه</description></item></channel></rss>`;
+  };
+  service.safeFetchTextViaBridge = async (url) => {
+    seen.push(`bridge:${url}`);
+    return '<div class="tgme_widget_message"><div class="tgme_widget_message_text">تلگرام</div><a class="tgme_widget_message_date" href="https://t.me/channel/1"><time datetime="2026-09-14T10:00:00+00:00"></time></a></div>';
+  };
+
+  const domestic = await service.readFeed('https://www.isna.ir/rss');
+  const telegram = await service.readSource('telegram', 'https://t.me/channel');
+  assert.match(domestic[0].title, /خبر داخلی/);
+  assert.equal(telegram.length, 1);
+  assert.match(seen[0], /^direct:/u);
+  assert.match(seen[1], /^bridge:/u);
+});
+
+test('SourceReader fetches every source type through Worker when it is configured', async () => {
+  const seen = [];
+  const service = new SourceReaderService({
+    getResolvedSourceFetchBridge: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+    }),
+  });
+  service.safeFetchTextViaBridge = async (url) => {
+    seen.push(url);
+    if (url.includes('isna.ir')) {
+      return `<?xml version="1.0"?><rss version="2.0"><channel><item><title>خبر داخلی</title><link>https://www.isna.ir/news/1</link><description>خلاصه</description></item></channel></rss>`;
+    }
+    if (url.includes('t.me')) {
+      return '<div class="tgme_widget_message"><div class="tgme_widget_message_text">تلگرام</div><a class="tgme_widget_message_date" href="https://t.me/channel/1"><time datetime="2026-09-14T10:00:00+00:00"></time></a></div>';
+    }
+    return '<div class="timeline-Tweet" data-tweet-id="1"><p class="timeline-Tweet-text">توییت</p><a href="https://x.com/news/status/1">post</a><time datetime="2026-09-14T11:00:00Z"></time></div>';
+  };
+  service.safeFetchTextDirect = async () => {
+    throw new Error('direct fetch must not run when Worker is configured');
+  };
+
+  const domestic = await service.readFeed('https://www.isna.ir/rss');
+  const telegram = await service.readSource('telegram', 'https://t.me/channel');
+  const twitter = await service.readSource('twitter', 'https://x.com/news');
+  assert.match(domestic[0].title, /خبر داخلی/);
+  assert.equal(telegram.length, 1);
+  assert.equal(twitter.length, 1);
+  assert.equal(seen.length, 3);
+});
+
+test('SourceReader surfaces Worker host_not_allowed without a direct fallback', async () => {
+  const service = new SourceReaderService({
+    getResolvedSourceFetchBridge: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+    }),
+  });
+  service.safeFetchTextViaBridge = async () => {
+    throw new BadRequestException('دریافت منبع از طریق Worker ناموفق بود: host_not_allowed');
+  };
+  service.safeFetchTextDirect = async () => {
+    throw new Error('direct fetch must not run after Worker rejected the host');
+  };
+
+  await assert.rejects(
+    () => service.readFeed('https://www.euronews.com/rss?format=xml'),
+    (error) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.match(error.getResponse().message, /host_not_allowed|Worker Deska/u);
+      return true;
+    },
+  );
+});
+
 test('SourceReader uses Worker first for international RSS when bridge is configured', async () => {
   const order = [];
   const service = new SourceReaderService({
