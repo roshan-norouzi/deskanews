@@ -240,15 +240,46 @@ function headerValue(headers: IncomingHttpHeaders, name: string): string {
   return Array.isArray(value) ? value[0] || '' : value || '';
 }
 
+function httpErrorMessage(error: unknown): string {
+  if (error instanceof BadRequestException) {
+    const response = error.getResponse();
+    if (typeof response === 'string') return response;
+    if (response && typeof response === 'object' && 'message' in response) {
+      const message = (response as { message?: string | string[] }).message;
+      return Array.isArray(message) ? message.join(' ') : String(message || '');
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 const SOURCE_BRIDGE_HOSTS = ['t.me', 'telegram.me', 'x.com', 'twitter.com', 'syndication.twitter.com'];
 function hostRequiresSourceBridge(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.+$/u, '');
   return SOURCE_BRIDGE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
+/** Hosts on .ir are usually reachable directly from Iran; other news CDNs often are not. */
+function isDomesticSourceHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/u, '');
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (isIP(host)) return false;
+  return host.endsWith('.ir');
+}
+
+function shouldPreferSourceBridgeFirst(hostname: string, bridgeConfigured: boolean): boolean {
+  if (!bridgeConfigured) return false;
+  if (hostRequiresSourceBridge(hostname)) return true;
+  return !isDomesticSourceHost(hostname);
+}
+
 function isRetryableDirectFetchError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /HTTP (401|403|407|408|429|451|500|502|503|504)|نوع محتوای دریافتی|مهلت|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|certificate|SSL|TLS|fetch failed|socket|EPROTO|blocked|مسدود|ارتباط/iu.test(message);
+  const message = httpErrorMessage(error);
+  return /HTTP (401|403|407|408|429|451|500|502|503|504)|نوع محتوای دریافتی|مهلت|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|certificate|SSL|TLS|fetch failed|socket|EPROTO|blocked|مسدود|ارتباط|اتصال امن/u.test(message);
+}
+
+function isDirectConnectionBlockedError(error: unknown): boolean {
+  const message = httpErrorMessage(error);
+  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPROTO|certificate|SSL|TLS|socket hang up|fetch failed/u.test(message);
 }
 
 function bodyMatchesAcceptedTypes(body: string, acceptedTypes: string[]): boolean {
@@ -1329,7 +1360,8 @@ export class SourceReaderService {
     const addresses = await lookup(hostname, { all: true, verbatim: true });
     return addresses
       .filter((item): item is ResolvedAddress => item.family === 4 || item.family === 6)
-      .map((item) => ({ address: item.address, family: item.family }));
+      .map((item) => ({ address: item.address, family: item.family }))
+      .sort((left, right) => left.family - right.family);
   }
 
   private async assertPublicUrl(value: string, allowLocalhostInDevelopment = false): Promise<ValidatedTarget> {
@@ -1415,8 +1447,8 @@ export class SourceReaderService {
     timeoutMs = 30_000,
   ): Promise<IncomingMessage> {
     let lastError: unknown;
-    const signal = AbortSignal.timeout(timeoutMs);
     for (const address of target.addresses) {
+      const signal = AbortSignal.timeout(timeoutMs);
       try {
         // The socket connects to this exact validated IP. For HTTPS, SNI and
         // certificate validation still use the original hostname.
@@ -1659,36 +1691,46 @@ export class SourceReaderService {
       throw new BadRequestException('آدرس منبع معتبر نیست');
     }
 
+    const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
+    const bridgeConfigured = Boolean(bridgeUrl);
     const mustUseBridge = hostRequiresSourceBridge(hostname);
     const preferBridge = this.bridgePreferredHosts.has(hostname.toLowerCase());
+    const bridgeFirst = shouldPreferSourceBridgeFirst(hostname, bridgeConfigured) || preferBridge;
 
     if (mustUseBridge) {
-      const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
-      if (bridgeUrl) {
+      if (bridgeConfigured) {
         return this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
       }
       this.logger.warn(`Source fetch bridge is not configured for ${hostname}; trying direct fetch`);
-    } else if (preferBridge) {
-      const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
-      if (bridgeUrl) {
-        return this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
+    } else if (bridgeFirst) {
+      try {
+        return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
+      } catch (bridgeError) {
+        this.logger.warn(
+          `Worker fetch failed for ${hostname}; trying direct fetch: ${httpErrorMessage(bridgeError)}`,
+        );
       }
     }
 
     try {
       return await this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
     } catch (directError) {
-      if (!mustUseBridge && isRetryableDirectFetchError(directError)) {
-        const { url: bridgeUrl } = await this.resolveSourceFetchBridge();
-        if (bridgeUrl) {
-          this.logger.warn(`Direct fetch failed for ${hostname}; retrying through Worker`);
-          this.rememberBridgeHost(hostname);
-          try {
-            return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
-          } catch (bridgeError) {
-            this.logger.warn(`Worker fetch also failed for ${hostname}: ${bridgeError instanceof Error ? bridgeError.message : 'unknown error'}`);
-          }
+      if (!mustUseBridge && bridgeConfigured && isRetryableDirectFetchError(directError)) {
+        this.logger.warn(`Direct fetch failed for ${hostname}; retrying through Worker`);
+        this.rememberBridgeHost(hostname);
+        try {
+          return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
+        } catch (bridgeError) {
+          this.logger.warn(`Worker fetch also failed for ${hostname}: ${httpErrorMessage(bridgeError)}`);
+          throw bridgeError instanceof BadRequestException
+            ? bridgeError
+            : new BadRequestException(httpErrorMessage(bridgeError));
         }
+      }
+      if (!bridgeConfigured && isDirectConnectionBlockedError(directError) && !isDomesticSourceHost(hostname)) {
+        throw new BadRequestException(
+          `${httpErrorMessage(directError)} ${SOURCE_FETCH_BRIDGE_MISSING_MESSAGE}`,
+        );
       }
       throw directError;
     }

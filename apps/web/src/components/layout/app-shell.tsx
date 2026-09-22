@@ -124,10 +124,12 @@ export function AppShell({ children, title }: AppShellProps) {
                 const Icon = item.icon;
                 const isActive =
                   item.href === '/settings'
-                    ? pathname === '/settings' || pathname.startsWith('/settings/')
-                    : item.href === '/platform'
-                      ? pathname === '/platform'
-                      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    ? pathname === '/settings'
+                    : item.href === '/settings/account'
+                      ? pathname === '/settings/account' || pathname.startsWith('/settings/account/')
+                      : item.href === '/platform'
+                        ? pathname === '/platform'
+                        : pathname === item.href || pathname.startsWith(`${item.href}/`);
                 return (
                   <Link
                     key={item.href}

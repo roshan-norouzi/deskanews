@@ -2,24 +2,22 @@
 
 import { Suspense, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Building2, User, Users } from 'lucide-react';
+import { Building2, Users } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
-import { AccountSettingsPanel } from '@/components/settings/account-settings-panel';
 import { OrganizationSettingsPanel } from '@/components/settings/organization-settings-panel';
 import { UsersSettingsPanel } from '@/components/settings/users-settings-panel';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
 import { cn } from '@/lib/utils';
 
-type SettingsTab = 'account' | 'organization' | 'users';
+type SettingsTab = 'organization' | 'users';
 
 const TAB_DEFINITIONS: Array<{
   id: SettingsTab;
   label: string;
-  icon: typeof User;
+  icon: typeof Building2;
   ownerOnly?: boolean;
 }> = [
-  { id: 'account', label: 'حساب کاربری', icon: User },
   { id: 'organization', label: 'سازمان', icon: Building2, ownerOnly: true },
   { id: 'users', label: 'کاربران', icon: Users, ownerOnly: true },
 ];
@@ -40,28 +38,53 @@ function SettingsPageContent() {
     [isOwner],
   );
 
-  const requestedTab = (searchParams.get('tab') as SettingsTab | null) ?? 'account';
+  const requestedTab = searchParams.get('tab') as SettingsTab | 'account' | null;
 
   useEffect(() => {
     if (searchParams.get('tab') === 'platform') {
       router.replace('/platform');
+      return;
     }
-  }, [searchParams, router]);
+    if (searchParams.get('tab') === 'account') {
+      router.replace('/settings/account');
+      return;
+    }
+    if (availableTabs.length === 0) {
+      router.replace('/settings/account');
+    }
+  }, [searchParams, router, availableTabs.length]);
 
-  const activeTab = availableTabs.some((tab) => tab.id === requestedTab) ? requestedTab : 'account';
+  const defaultTab: SettingsTab = 'organization';
+  const activeTab = availableTabs.some((tab) => tab.id === requestedTab)
+    ? (requestedTab as SettingsTab)
+    : defaultTab;
   const tenantRequired = activeTab === 'organization' || activeTab === 'users';
 
   useEffect(() => {
+    if (availableTabs.length === 0) return;
+    if (requestedTab === 'account') return;
     if (requestedTab === activeTab) return;
-    router.replace(`/settings?tab=${activeTab}`);
-  }, [activeTab, requestedTab, router]);
+    if (!availableTabs.some((tab) => tab.id === requestedTab)) {
+      router.replace(`/settings?tab=${activeTab}`);
+    }
+  }, [activeTab, requestedTab, router, availableTabs]);
 
   function selectTab(tab: SettingsTab) {
     router.replace(`/settings?tab=${tab}`);
   }
 
+  if (availableTabs.length === 0) {
+    return (
+      <ProtectedLayout title="تنظیمات سازمان" tenantRequired={false}>
+        <div className="flex min-h-[30vh] items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+        </div>
+      </ProtectedLayout>
+    );
+  }
+
   return (
-    <ProtectedLayout title="تنظیمات" tenantRequired={tenantRequired}>
+    <ProtectedLayout title="تنظیمات سازمان" tenantRequired={tenantRequired}>
       <div className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
           {availableTabs.map((tab) => {
@@ -84,7 +107,6 @@ function SettingsPageContent() {
           })}
         </div>
 
-        {activeTab === 'account' && <AccountSettingsPanel />}
         {activeTab === 'organization' && <OrganizationSettingsPanel />}
         {activeTab === 'users' && <UsersSettingsPanel />}
       </div>

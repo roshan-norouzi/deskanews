@@ -6,6 +6,7 @@ import {
   Rss,
   Settings,
   Share2,
+  User,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -59,6 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/publishing/settings', label: 'تنظیمات انتشار', icon: Settings, ownerOnly: true },
       { href: '/publishing/operations', label: 'مرکز عملیات', icon: Activity },
       { href: '/settings', label: 'تنظیمات سازمان', icon: Settings },
+      { href: '/settings/account', label: 'حساب کاربری', icon: User },
     ],
   },
   {
@@ -92,6 +94,9 @@ function isSeparator(entry: NavEntry): entry is NavSeparator {
 }
 
 function menuPermissionForHref(href: string): string | null {
+  if (href === '/settings/account' || href.startsWith('/settings/account/')) {
+    return null;
+  }
   const exact = ORGANIZATION_MENU_PERMISSIONS.find((item) => item.href === href);
   if (exact) return exact.key;
   const nested = ORGANIZATION_MENU_PERMISSIONS.find((item) => href.startsWith(`${item.href}/`));

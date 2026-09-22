@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { Pencil, Power } from 'lucide-react';
+import { ChevronDown, Pencil, Power } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -72,6 +72,8 @@ interface PlatformFeedsSectionProps {
   activeGroup: FeedCatalogGroup;
   onActiveGroupChange: (group: FeedCatalogGroup) => void;
   searchQuery?: string;
+  /** فعال‌های منابع اختصاصی سازمان — به شمارش تب‌ها اضافه می‌شود */
+  tenantActiveCountsByGroup?: Record<FeedCatalogGroup, number>;
 }
 
 function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery: string) {
@@ -81,7 +83,12 @@ function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery
     || String(feed.url || '').toLocaleLowerCase('fa').includes(normalized);
 }
 
-export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQuery = '' }: PlatformFeedsSectionProps) {
+export function PlatformFeedsSection({
+  activeGroup,
+  onActiveGroupChange,
+  searchQuery = '',
+  tenantActiveCountsByGroup,
+}: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
   const { isSuperAdmin } = useAuth();
   const { activeTenant } = useTenant();
@@ -105,10 +112,13 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
   const activeCountsByGroup = useMemo(() => {
     const counts = {} as Record<FeedCatalogGroup, number>;
     for (const group of FEED_CATALOG_GROUP_ORDER) {
-      counts[group] = feedsByGroup[group].filter((feed) => feed.enabled).length;
+      const platformActive = feedsByGroup[group].filter((feed) => feed.enabled).length;
+      const tenantActive = tenantActiveCountsByGroup?.[group] ?? 0;
+      counts[group] = platformActive + tenantActive;
     }
     return counts;
-  }, [feedsByGroup]);
+  }, [feedsByGroup, tenantActiveCountsByGroup]);
+  const [catalogExpanded, setCatalogExpanded] = useState(true);
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
   const editingIdRef = useRef<string | null>(null);
   const [form, setForm] = useState<FeedSettingsForm>({
@@ -203,7 +213,7 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
               <span className={cn(
                 'rounded-full px-2 py-0.5 text-xs font-bold',
                 activeGroup === group ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600',
-              )}>
+              )} title="منابع فعال (پیش‌فرض + اختصاصی)">
                 {formatPersianDigits(count)}
               </span>
             </button>
@@ -212,17 +222,33 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
       </div>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
+        <button
+          type="button"
+          className="flex w-full items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 text-right transition hover:bg-slate-50/80"
+          aria-expanded={catalogExpanded}
+          onClick={() => setCatalogExpanded((open) => !open)}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold text-slate-900">{FEED_CATALOG_GROUPS[activeGroup].label}</h3>
-              <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                {formatPersianDigits(activeCountsByGroup[activeGroup])} فعال
+              </span>
             </div>
+            <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
             {searchQuery.trim() ? (
-              <p className="text-xs text-slate-500">{formatPersianDigits(visibleFeeds.length)} نتیجه از {formatPersianDigits(feedsByGroup[activeGroup].length)} منبع</p>
+              <p className="mt-2 text-xs text-slate-500">
+                {formatPersianDigits(visibleFeeds.length)} نتیجه از {formatPersianDigits(feedsByGroup[activeGroup].length)} منبع پیش‌فرض
+              </p>
             ) : null}
           </div>
-        </div>
+          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-500">
+            {catalogExpanded ? 'جمع کردن' : 'باز کردن'}
+            <ChevronDown className={cn('h-5 w-5 transition-transform', catalogExpanded && 'rotate-180')} />
+          </span>
+        </button>
+        {catalogExpanded ? (
+          <>
         {isLoading ? (
           <div className="grid min-h-40 place-items-center"><span className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
         ) : feedsByGroup[activeGroup].length === 0 ? (
@@ -298,6 +324,12 @@ export function PlatformFeedsSection({ activeGroup, onActiveGroupChange, searchQ
               />
             ))}
           </FeedSourceCardGrid>
+        )}
+          </>
+        ) : (
+          <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+            {formatPersianDigits(feedsByGroup[activeGroup].length)} منبع پیش‌فرض — برای مشاهده و مدیریت، بخش را باز کنید.
+          </div>
         )}
       </Card>
 

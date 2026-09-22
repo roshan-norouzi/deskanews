@@ -145,6 +145,14 @@ export default function FeedsPage() {
     return grouped;
   }, [feeds]);
 
+  const tenantActiveCountsByGroup = useMemo(() => {
+    const counts = {} as Record<FeedCatalogGroup, number>;
+    for (const group of FEED_CATALOG_GROUP_ORDER) {
+      counts[group] = feedsByGroup[group].filter((feed) => feed.enabled).length;
+    }
+    return counts;
+  }, [feedsByGroup]);
+
   const visibleFeeds = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
     return feedsByGroup[activeGroup].filter((feed) => {
@@ -298,7 +306,12 @@ export default function FeedsPage() {
           </div>
         </Card>
 
-        <PlatformFeedsSection activeGroup={activeGroup} onActiveGroupChange={setActiveGroup} searchQuery={query} />
+        <PlatformFeedsSection
+          activeGroup={activeGroup}
+          onActiveGroupChange={setActiveGroup}
+          searchQuery={query}
+          tenantActiveCountsByGroup={tenantActiveCountsByGroup}
+        />
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

@@ -348,6 +348,49 @@ test('SourceReader retries geo-blocked international RSS through Worker', async 
   assert.equal(entries[0].canonicalUrl, 'https://www.bbc.com/news/1');
 });
 
+test('SourceReader uses Worker first for international RSS when bridge is configured', async () => {
+  const order = [];
+  const service = new SourceReaderService({
+    getResolvedSourceFetchBridge: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+    }),
+  });
+  service.safeFetchTextViaBridge = async (url) => {
+    order.push('bridge');
+    assert.match(url, /euronews\.com/u);
+    return `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Euro story</title><link>https://www.euronews.com/news/1</link><description>Summary</description></item></channel></rss>`;
+  };
+  service.safeFetchTextDirect = async () => {
+    order.push('direct');
+    throw new BadRequestException('اتصال امن به منبع برقرار نشد: read ECONNRESET');
+  };
+
+  const entries = await service.readFeed('https://www.euronews.com/rss?format=xml');
+  assert.deepEqual(order, ['bridge']);
+  assert.match(entries[0].title, /Euro story/);
+});
+
+test('SourceReader suggests Worker setup when international direct fetch is blocked', async () => {
+  const service = new SourceReaderService({
+    getResolvedSourceFetchBridge: async () => ({ url: '', secret: '' }),
+  });
+  service.safeFetchTextDirect = async () => {
+    throw new BadRequestException('اتصال امن به منبع برقرار نشد: read ECONNRESET');
+  };
+
+  await assert.rejects(
+    () => service.readFeed('https://www.euronews.com/rss?format=xml'),
+    (error) => {
+      assert.ok(error instanceof BadRequestException);
+      const message = error.getResponse().message;
+      assert.match(message, /ECONNRESET/u);
+      assert.match(message, /Worker Deska/u);
+      return true;
+    },
+  );
+});
+
 test('SourceReader scrapes international websites through Worker when RSS is missing', async () => {
   const service = new SourceReaderService({
     getResolvedSourceFetchBridge: async () => ({
