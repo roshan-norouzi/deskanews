@@ -49,8 +49,9 @@ export default function NewsPage() {
     articleId: string;
     articleTitle: string;
     sourceName: string;
-    draft: NewsPublishDraft | null;
+    draft: NewsPublishDraft;
   } | null>(null);
+  const [translatePendingIds, setTranslatePendingIds] = useState<Record<string, true>>({});
 
   useVisibleInterval(() => { void executeArticles(); }, 30_000);
 
@@ -112,55 +113,54 @@ export default function NewsPage() {
     'تیتر و خلاصهٔ خبر متناسب با زبان آن آماده شد.',
   );
 
+  const openPublishModal = useCallback((article: NewsArticleCardData) => {
+    if (!article.contentFa?.trim()) return;
+    setPublishModal({
+      articleId: article.id,
+      articleTitle: article.titleFa || article.originalTitle,
+      sourceName: article.sourceName,
+      draft: {
+        titleFa: article.titleFa,
+        summaryFa: article.summaryFa,
+        contentFa: article.contentFa,
+      },
+    });
+  }, []);
+
   const translateFull = useCallback(async (id: string, forceRetranslate = false) => {
     const article = articles.find((item) => item.id === id);
     if (!article) return;
 
     if (!forceRetranslate && article.contentFa?.trim()) {
-      setPublishModal({
-        articleId: id,
-        articleTitle: article.titleFa || article.originalTitle,
-        sourceName: article.sourceName,
-        draft: {
-          titleFa: article.titleFa,
-          summaryFa: article.summaryFa,
-          contentFa: article.contentFa,
-        },
-      });
+      openPublishModal(article);
       return;
     }
 
-    setPublishModal({
-      articleId: id,
-      articleTitle: article.titleFa || article.originalTitle,
-      sourceName: article.sourceName,
-      draft: null,
-    });
+    if (forceRetranslate) {
+      setPublishModal(null);
+    }
+
+    setTranslatePendingIds((current) => ({ ...current, [id]: true }));
     setBusy(`translate-${id}`);
     setNotice(null);
     try {
-      const result = await apiFetch<NewsArticleCardData>(`/publishing/news/articles/${id}/translate-full`, { method: 'POST' });
-      setPublishModal({
-        articleId: id,
-        articleTitle: result.titleFa || article.originalTitle,
-        sourceName: article.sourceName,
-        draft: {
-          titleFa: result.titleFa,
-          summaryFa: result.summaryFa,
-          contentFa: result.contentFa || '',
-        },
-      });
+      await apiFetch<NewsArticleCardData>(`/publishing/news/articles/${id}/translate-full`, { method: 'POST' });
+      setNotice({ type: 'success', text: 'متن کامل آماده انتشار شد؛ «آماده برای انتشار» را بزنید.' });
       await articlesApi.refetch();
     } catch (error) {
-      setPublishModal(null);
       setNotice({
         type: 'error',
         text: error instanceof ApiError ? error.message : 'آماده‌سازی برای انتشار انجام نشد؛ دوباره تلاش کنید.',
       });
     } finally {
+      setTranslatePendingIds((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       setBusy(null);
     }
-  }, [articles, articlesApi]);
+  }, [articles, articlesApi, openPublishModal]);
 
   const publishFromModal = useCallback(async (draft: NewsPublishDraft) => {
     if (!publishModal) return;
@@ -394,6 +394,7 @@ export default function NewsPage() {
                 key={article.id}
                 article={article}
                 busyKey={busy}
+                translatePending={Boolean(translatePendingIds[article.id])}
                 categories={approvedCategories}
                 onAssignCategory={assignCategory}
                 onSummarize={summarize}
@@ -412,7 +413,7 @@ export default function NewsPage() {
           busyTranslate={Boolean(publishModal && busy === `translate-${publishModal.articleId}`)}
           busyPublish={Boolean(publishModal && busy === `publish-${publishModal.articleId}`)}
           onClose={() => {
-            if (busy?.startsWith('translate-') || busy?.startsWith('publish-')) return;
+            if (busy?.startsWith('publish-')) return;
             setPublishModal(null);
           }}
           onRetranslate={() => {

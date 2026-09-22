@@ -38,24 +38,20 @@ export function NewsPublishModal({
 
   useEffect(() => {
     if (initialDraft) setDraft(initialDraft);
-  }, [initialDraft]);
+  }, [initialDraft, open]);
 
   const canPublish = Boolean(draft.titleFa.trim() && draft.summaryFa.trim() && draft.contentFa.trim());
+  const showDraft = Boolean(initialDraft?.contentFa?.trim());
 
   return (
     <Modal open={open} onClose={onClose} size="2xl" closeOnBackdrop={!busyTranslate && !busyPublish}>
       <ModalHeader
         title="بررسی متن کامل"
         description={`${sourceName} — ${articleTitle}`}
-        onClose={busyTranslate || busyPublish ? undefined : onClose}
+        onClose={busyPublish ? undefined : onClose}
       />
       <ModalBody className="space-y-4 px-6 py-5">
-        {busyTranslate && !draft.contentFa ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-slate-600">
-            <span className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-            در حال آماده‌سازی متن کامل برای انتشار...
-          </div>
-        ) : (
+        {showDraft ? (
           <>
             <label className="grid gap-1.5 text-sm font-medium text-slate-700">
               تیتر
@@ -82,13 +78,15 @@ export function NewsPublishModal({
               />
             </label>
           </>
+        ) : (
+          <p className="text-sm text-slate-600">متن کامل هنوز آماده نیست؛ از کارت خبر «آماده‌سازی برای انتشار» را بزنید.</p>
         )}
       </ModalBody>
       <ModalFooter className="gap-2">
-        <Button variant="outline" onClick={onClose} disabled={busyTranslate || busyPublish}>
+        <Button variant="outline" onClick={onClose} disabled={busyPublish}>
           انصراف
         </Button>
-        <Button variant="outline" onClick={onRetranslate} isLoading={busyTranslate} disabled={busyPublish}>
+        <Button variant="outline" onClick={onRetranslate} isLoading={busyTranslate} disabled={busyPublish || !showDraft}>
           آماده‌سازی مجدد
         </Button>
         <Button

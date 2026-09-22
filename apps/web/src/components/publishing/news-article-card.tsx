@@ -82,12 +82,14 @@ type CardAction = {
   onClick: () => void;
   variant?: 'primary' | 'outline' | 'ghost' | 'danger';
   loading?: boolean;
+  disabled?: boolean;
   className?: string;
 };
 
 interface NewsArticleCardProps {
   article: NewsArticleCardData;
   busyKey: string | null;
+  translatePending?: boolean;
   categories?: DestinationCategoryOption[];
   onAssignCategory?: (articleId: string, destinationCategoryId: string | null) => void;
   onSummarize: (id: string) => void;
@@ -107,6 +109,7 @@ function isProcessing(status: NewsStatus) {
 export function NewsArticleCard({
   article,
   busyKey,
+  translatePending = false,
   categories = [],
   onAssignCategory,
   onSummarize,
@@ -120,9 +123,16 @@ export function NewsArticleCard({
 
   const canReject = !['rejected', 'publishing', 'published', 'social_processing', 'social_sent'].includes(article.status);
   const canSummarize = ['new', 'ready', 'failed'].includes(article.status);
-  const canPublish = ['ready', 'publish_failed'].includes(article.status);
+  const hasPublishText = Boolean(article.contentFa?.trim());
+  const translateBusy = translatePending || isBusy(busyKey, article.id, 'translate');
+  const publishPrepInProgress = translateBusy
+    || (article.status === 'processing'
+      && Boolean(article.titleFa?.trim() && article.summaryFa?.trim())
+      && !hasPublishText);
+  const canPublish = ['ready', 'publish_failed'].includes(article.status) || publishPrepInProgress;
   const canSendToSocial = ['ready', 'publish_failed', 'social_failed'].includes(article.status);
   const processing = isProcessing(article.status);
+  const blockingProcessing = processing && !publishPrepInProgress;
 
   const title = article.titleFa || article.originalTitle;
   const summary = article.summaryFa
@@ -152,13 +162,19 @@ export function NewsArticleCard({
 
   const translateAction: CardAction | null = canPublish ? {
     key: 'translate',
-    label: article.contentFa?.trim()
-      ? (article.status === 'publish_failed' ? 'ویرایش متن و انتشار' : 'مشاهده متن کامل')
-      : (article.status === 'publish_failed' ? 'آماده‌سازی مجدد' : 'آماده‌سازی برای انتشار'),
-    icon: Languages,
+    label: publishPrepInProgress && !hasPublishText
+      ? 'در حال آماده‌سازی...'
+      : hasPublishText
+        ? 'آماده برای انتشار'
+        : (article.status === 'publish_failed' ? 'آماده‌سازی مجدد' : 'آماده‌سازی برای انتشار'),
+    icon: hasPublishText ? CheckCircle2 : Languages,
     onClick: () => onTranslateFull(article.id),
-    loading: isBusy(busyKey, article.id, 'translate'),
-    variant: ['ready', 'publish_failed'].includes(article.status) ? 'primary' : 'outline',
+    loading: publishPrepInProgress && !hasPublishText,
+    disabled: publishPrepInProgress && !hasPublishText,
+    variant: hasPublishText ? 'primary' : 'primary',
+    className: hasPublishText
+      ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700'
+      : undefined,
   } : null;
 
   const socialAction: CardAction | null = canSendToSocial ? {
@@ -293,7 +309,7 @@ export function NewsArticleCard({
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-            {processing ? (
+            {blockingProcessing ? (
               <p className="flex items-center gap-2 text-sm text-blue-700">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 لطفاً چند لحظه صبر کنید...
@@ -327,6 +343,7 @@ export function NewsArticleCard({
                     variant={action.variant === 'primary' ? 'primary' : action.variant === 'danger' ? 'danger' : action.variant === 'ghost' ? 'ghost' : 'outline'}
                     className={action.className}
                     isLoading={action.loading}
+                    disabled={action.disabled}
                     onClick={action.onClick}
                   >
                     <action.icon className="h-4 w-4" />
