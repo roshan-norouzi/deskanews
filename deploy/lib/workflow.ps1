@@ -91,11 +91,10 @@ function Wait-DeployWorkflow {
   )
 
   $dispatchStarted = $DispatchStarted
-  $runsUri = Get-WorkflowRunsUri -Config $Config
   $baselineRunIds = @{}
   $baselineCaptured = $false
   try {
-    $baselineRuns = Invoke-RestMethod -Method Get -Uri $runsUri -Headers $Headers -TimeoutSec 30 -ErrorAction Stop
+    $baselineRuns = Get-DeployWorkflowRuns -Config $Config -Headers $Headers
     foreach ($existingRun in @($baselineRuns.workflow_runs)) {
       $baselineRunIds[[string]$existingRun.id] = $true
     }
@@ -109,6 +108,7 @@ function Wait-DeployWorkflow {
   $latestRun = $null
   $lastStage = ''
   $lastNoticeAt = [DateTime]::MinValue
+  $lastApiError = ''
   $pollIntervalSeconds = 10
   $deadline = $dispatchStarted.AddMinutes($MaximumWaitMinutes)
   $discoveryCutoff = $dispatchStarted.AddMinutes(-2)
@@ -116,12 +116,18 @@ function Wait-DeployWorkflow {
   while ((Get-Date).ToUniversalTime() -lt $deadline -and -not $run) {
     Start-Sleep -Seconds $pollIntervalSeconds
     try {
-      $runs = Invoke-RestMethod -Method Get -Uri $runsUri -Headers $Headers -TimeoutSec 30 -ErrorAction Stop
+      $runs = Get-DeployWorkflowRuns -Config $Config -Headers $Headers
     } catch {
       $elapsed = (Get-Date).ToUniversalTime() - $dispatchStarted
       $now = Get-Date
+      $apiMessage = $_.Exception.Message
+      if ($_.ErrorDetails.Message) { $apiMessage = $_.ErrorDetails.Message }
       if (($now - $lastNoticeAt).TotalSeconds -ge 60) {
         Write-Warning "[$(Format-Elapsed $elapsed)] GitHub status is temporarily unavailable; retrying."
+        if ($apiMessage -and $apiMessage -ne $lastApiError) {
+          Write-Host "  GitHub API: $apiMessage" -ForegroundColor DarkYellow
+          $lastApiError = $apiMessage
+        }
         $lastNoticeAt = $now
       }
       continue
@@ -136,7 +142,7 @@ function Wait-DeployWorkflow {
     } | Sort-Object { ([DateTime]$_.created_at).ToUniversalTime() } | Select-Object -First 1)
 
     $latestRun = $candidates
-    if ($latestRun -and $latestRun[0].status -eq 'completed') { $run = $latestRun }
+    if ($latestRun -and $latestRun[0].status -eq 'completed') { $run = $latestRun[0] }
     if (-not $latestRun) {
       $elapsed = (Get-Date).ToUniversalTime() - $dispatchStarted
       $now = Get-Date

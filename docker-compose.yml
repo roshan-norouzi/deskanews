@@ -32,6 +32,7 @@ services:
       retries: 5
 
   postgres-replica-bootstrap:
+    profiles: ["read-replica"]
     image: postgres:16-alpine
     restart: "no"
     depends_on:
@@ -54,6 +55,7 @@ services:
         SQL
 
   postgres-replica:
+    profiles: ["read-replica"]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -140,7 +142,6 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-deska-minio-secret}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: "true"
-      DATABASE_REPLICA_URL: postgresql://deska:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres-replica:5432/deska_news
       DESKA_PROCESS_ROLE: api
       DESKA_BACKGROUND_JOBS_ENABLED: "false"
       REDIS_URL: redis://redis:6379
@@ -159,8 +160,6 @@ services:
       - api_uploads:/app/uploads
     depends_on:
       postgres:
-        condition: service_healthy
-      postgres-replica:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -192,7 +191,6 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-deska-minio-secret}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: "true"
-      DATABASE_REPLICA_URL: postgresql://deska:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres-replica:5432/deska_news
       DESKA_PROCESS_ROLE: worker
       DESKA_BACKGROUND_JOBS_ENABLED: "true"
       REDIS_URL: redis://redis:6379
@@ -208,8 +206,6 @@ services:
       - api_uploads:/app/uploads
     depends_on:
       postgres:
-        condition: service_healthy
-      postgres-replica:
         condition: service_healthy
       redis:
         condition: service_healthy

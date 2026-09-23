@@ -14,6 +14,7 @@ function Get-DeployConfig {
     owner = 'roshan-norouzi'
     repository = 'deskanews'
     workflowFile = '.github/workflows/deploy.yml'
+    workflowId = '360876138'
     serverHost = ''
     serverUser = ''
     serverPort = 22

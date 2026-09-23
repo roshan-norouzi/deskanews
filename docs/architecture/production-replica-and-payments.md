@@ -2,7 +2,16 @@
 
 ## Read replica
 
-Compose starts `postgres` as a primary (`wal_level=replica`) and `postgres-replica` from `pg_basebackup`. API and worker set `DATABASE_REPLICA_URL` to `postgres-replica`. Writes stay on `postgres`.
+Compose starts `postgres` as a primary (`wal_level=replica`) and optional `postgres-replica` from `pg_basebackup` when you enable the **`read-replica`** Compose profile. By default production deploy does **not** start the replica or set `DATABASE_REPLICA_URL`, so single-node servers stay simple.
+
+To enable the replica on a host that has the resources and `deploy/postgres/*` files in place:
+
+```bash
+COMPOSE_PROFILES=read-replica
+DATABASE_REPLICA_URL=postgresql://deska:...@postgres-replica:5432/deska_news
+```
+
+Add those to the server `.env` (or export before `docker compose up`). Writes stay on `postgres`.
 
 `REPLICATOR_PASSWORD` defaults to `replicator-secret`. Change it before any shared environment.
 

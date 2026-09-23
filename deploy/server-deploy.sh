@@ -165,7 +165,7 @@ done
 
 available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
 if ! printf '%s' "$available_kb" | grep -Eq '^[0-9]+$' || [ "$available_kb" -lt 786432 ]; then
-  deploy_error 'less than 768 MB of free disk space is available for a safe image update and backup.'
+  deploy_error "less than 768 MB of free disk space is available for a safe image update and backup (available: ${available_kb} KB)."
   exit 1
 fi
 

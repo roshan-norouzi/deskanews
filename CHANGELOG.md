@@ -2,6 +2,11 @@
 
 All notable releases of Deska News follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.30 — 2026-09-23
+
+- Fix deploy status polling (GitHub workflow API id + fallback listing)
+- Production compose: read replica is opt-in (`COMPOSE_PROFILES=read-replica`); API no longer blocks on replica health by default
+
 ## 1.0.29 — 2026-09-23
 
 - Fix invalid `deploy.yml` YAML (heredoc broke `workflow_dispatch`; deploy dispatch works again)

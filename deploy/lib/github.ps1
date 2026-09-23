@@ -53,13 +53,48 @@ function Test-GitHubRepositoryAccess {
   }
 }
 
+function Get-GitHubWorkflowApiRef {
+  param([PSCustomObject]$Config)
+
+  if ($Config.workflowId) {
+    return [string]$Config.workflowId
+  }
+  return [Uri]::EscapeDataString([string]$Config.workflowFile)
+}
+
 function Get-WorkflowRunsUri {
   param(
     [PSCustomObject]$Config,
+    [string]$Event = 'workflow_dispatch',
+    [switch]$RepositoryWide
+  )
+
+  if ($RepositoryWide) {
+    return "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/runs?branch=$($Config.branch)&event=$Event&per_page=30"
+  }
+
+  $workflowRef = Get-GitHubWorkflowApiRef -Config $Config
+  return "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/workflows/$workflowRef/runs?branch=$($Config.branch)&event=$Event&per_page=20"
+}
+
+function Get-DeployWorkflowRuns {
+  param(
+    [PSCustomObject]$Config,
+    [hashtable]$Headers,
     [string]$Event = 'workflow_dispatch'
   )
 
-  return "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/workflows/$($Config.workflowFile)/runs?branch=$($Config.branch)&event=$Event&per_page=20"
+  $uri = Get-WorkflowRunsUri -Config $Config -Event $Event
+  try {
+    return Invoke-RestMethod -Method Get -Uri $uri -Headers $Headers -TimeoutSec 30 -ErrorAction Stop
+  } catch {
+    $wideUri = Get-WorkflowRunsUri -Config $Config -Event $Event -RepositoryWide
+    $wide = Invoke-RestMethod -Method Get -Uri $wideUri -Headers $Headers -TimeoutSec 30 -ErrorAction Stop
+    $filtered = @($wide.workflow_runs | Where-Object {
+      $_.path -eq $Config.workflowFile -or [string]$_.workflow_id -eq [string]$Config.workflowId
+    })
+    return [PSCustomObject]@{ workflow_runs = $filtered }
+  }
 }
 
 function Invoke-GitHubWorkflowDispatch {
@@ -74,7 +109,7 @@ function Invoke-GitHubWorkflowDispatch {
     Write-Warning 'gh workflow run failed; falling back to the GitHub REST API.'
   }
 
-  $uri = "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/workflows/$([Uri]::EscapeDataString($Config.workflowFile))/dispatches"
+  $uri = "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/workflows/$(Get-GitHubWorkflowApiRef -Config $Config)/dispatches"
   try {
     Invoke-RestMethod -Method Post -Uri $uri -Headers $Headers -ContentType 'application/json' -Body (@{ ref = $Config.branch } | ConvertTo-Json) -TimeoutSec 30 | Out-Null
   } catch {
@@ -96,7 +131,6 @@ function Get-LatestWorkflowRun {
     [hashtable]$Headers
   )
 
-  $runsUri = Get-WorkflowRunsUri -Config $Config
-  $runs = Invoke-RestMethod -Method Get -Uri $runsUri -Headers $Headers -TimeoutSec 30 -ErrorAction Stop
+  $runs = Get-DeployWorkflowRuns -Config $Config -Headers $Headers
   return @($runs.workflow_runs | Sort-Object { ([DateTime]$_.created_at).ToUniversalTime() } -Descending | Select-Object -First 1)
 }
