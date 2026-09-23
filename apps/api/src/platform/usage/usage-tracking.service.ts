@@ -3,6 +3,8 @@ import {
   DEFAULT_USAGE_METRICS,
   USAGE_UNIT_LABEL,
   isUsageMetricKey,
+  toGregorianParts,
+  toJalaliParts,
   type UsageMetricKey,
 } from '@deska/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -25,6 +27,10 @@ export type TenantUsageSummary = {
   tenantId: string;
   metrics: TenantUsageMetricView[];
   totalCost: number;
+  availableTokens: number;
+  consumedDay: number;
+  consumedWeek: number;
+  consumedMonth: number;
 };
 
 @Injectable()
@@ -102,9 +108,15 @@ export class UsageTrackingService {
 
   async getTenantUsage(tenantId: string): Promise<TenantUsageSummary> {
     await this.ensureDefaultMetrics();
-    const [definitions, counters] = await Promise.all([
+    const { dayStart, weekStart, monthStart } = usagePeriodStarts();
+    const [definitions, counters, wallet, periodLedger] = await Promise.all([
       this.prisma.usageMetricDefinition.findMany({ orderBy: [{ sortOrder: 'asc' }, { key: 'asc' }] }),
       this.prisma.tenantUsageCounter.findMany({ where: { tenantId } }),
+      this.prisma.tenantWallet?.findUnique?.({ where: { tenantId }, select: { balanceTokens: true, reservedTokens: true } }) ?? Promise.resolve(null),
+      this.prisma.walletLedger?.findMany?.({
+        where: { tenantId, entryType: 'commit', createdAt: { gte: monthStart } },
+        select: { amount: true, createdAt: true },
+      }) ?? Promise.resolve([]),
     ]);
     const counterMap = new Map(counters.map((row) => [row.metricKey, row.quantity]));
     const metrics = definitions
@@ -118,10 +130,17 @@ export class UsageTrackingService {
           totalCost: quantity * unitCost,
         };
       });
+    const consumedDay = periodLedger.filter((row) => row.createdAt >= dayStart).reduce((sum, row) => sum + row.amount, 0);
+    const consumedWeek = periodLedger.filter((row) => row.createdAt >= weekStart).reduce((sum, row) => sum + row.amount, 0);
+    const consumedMonth = periodLedger.reduce((sum, row) => sum + row.amount, 0);
     return {
       tenantId,
       metrics,
       totalCost: metrics.reduce((sum, metric) => sum + metric.totalCost, 0),
+      availableTokens: Math.max(0, (wallet?.balanceTokens ?? 0) - (wallet?.reservedTokens ?? 0)),
+      consumedDay,
+      consumedWeek,
+      consumedMonth,
     };
   }
 
@@ -143,4 +162,26 @@ export class UsageTrackingService {
       sortOrder: defaults?.sortOrder ?? row.sortOrder,
     };
   }
+}
+
+const TEHRAN_OFFSET_MS = 3.5 * 60 * 60 * 1000;
+
+function usagePeriodStarts(now = new Date()) {
+  const tehran = new Date(now.getTime() + TEHRAN_OFFSET_MS);
+  const gy = tehran.getUTCFullYear();
+  const gm = tehran.getUTCMonth() + 1;
+  const gd = tehran.getUTCDate();
+  const jalali = toJalaliParts(gy, gm, gd);
+  const month = toGregorianParts(jalali.jy, jalali.jm, 1);
+  const dayStart = tehranMidnightUtc(gy, gm, gd);
+  const daysFromSaturday = (tehran.getUTCDay() + 1) % 7;
+  return {
+    dayStart,
+    weekStart: new Date(dayStart.getTime() - daysFromSaturday * 24 * 60 * 60 * 1000),
+    monthStart: tehranMidnightUtc(month.gy, month.gm, month.gd),
+  };
+}
+
+function tehranMidnightUtc(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month - 1, day) - TEHRAN_OFFSET_MS);
 }

@@ -52,7 +52,7 @@ jobs:
           fi
 
       - name: Upload SARIF to code scanning
-        if: always() && secrets.STRIX_LLM != '' && secrets.LLM_API_KEY != ''
+        if: always() && env.STRIX_LLM != '' && env.LLM_API_KEY != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: strix_runs
@@ -77,7 +77,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile

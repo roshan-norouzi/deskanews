@@ -127,11 +127,16 @@ function text(value: unknown): string {
   return text(record['#text'] ?? record.__cdata ?? record._ ?? '');
 }
 
-function normalizeUrl(value: string, base: string): string {
+const TRACKING_PARAM = /^(utm_\w+|fbclid|gclid|dclid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga|_gl|ocid|cmpid)$/iu;
+
+export function normalizeUrl(value: string, base: string): string {
   try {
     const url = new URL(value.trim(), base);
     if (!['http:', 'https:'].includes(url.protocol)) return '';
     url.hash = '';
+    for (const key of [...url.searchParams.keys()]) {
+      if (TRACKING_PARAM.test(key)) url.searchParams.delete(key);
+    }
     return url.toString();
   } catch {
     return '';
@@ -235,6 +240,36 @@ function isBlockedAddress(address: string): boolean {
     || (ipv6[0] === 0x3fff && (ipv6[1] & 0xf000) === 0x0000); // documentation
 }
 
+/** Decode with the charset from Content-Type, an XML declaration or a <meta> tag; UTF-8 otherwise. */
+export function decodeBody(bytes: Uint8Array, contentType = ''): string {
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return new TextDecoder('utf-8').decode(bytes);
+  const head = Buffer.from(bytes.subarray(0, 2048)).toString('latin1');
+  const label = /charset\s*=\s*["']?([\w.:-]+)/iu.exec(contentType)?.[1]
+    || /<\?xml[^>]*encoding\s*=\s*["']([\w.:-]+)["']/iu.exec(head)?.[1]
+    || /<meta[^>]+charset\s*=\s*["']?([\w.:-]+)/iu.exec(head)?.[1]
+    || 'utf-8';
+  try {
+    return new TextDecoder(label.toLowerCase()).decode(bytes);
+  } catch {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+}
+
+const HOP_BY_HOP_HEADERS = new Set(['connection', 'keep-alive', 'transfer-encoding', 'content-length', 'content-encoding', 'host', 'upgrade', 'proxy-connection', 'te', 'trailer']);
+
+function browserForwardHeaders(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).filter(([key]) => !HOP_BY_HOP_HEADERS.has(key.toLowerCase()) && !key.startsWith(':')));
+}
+
+function browserResponseHeaders(headers: IncomingHttpHeaders): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined || HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+    result[key] = Array.isArray(value) ? value.join(key.toLowerCase() === 'set-cookie' ? '\n' : ', ') : String(value);
+  }
+  return result;
+}
+
 function headerValue(headers: IncomingHttpHeaders, name: string): string {
   const value = headers[name.toLowerCase()];
   return Array.isArray(value) ? value[0] || '' : value || '';
@@ -332,13 +367,39 @@ export class SourceReaderService {
 
   constructor(@Optional() private readonly publishingSettings?: PublishingSettingsService) {}
 
+  /** Modal probe / feed health test — shorter fetches, no browser rendering. */
+  private previewFetchDepth = 0;
+
+  runPreviewFetch<T>(operation: () => Promise<T>): Promise<T> {
+    this.previewFetchDepth += 1;
+    return operation().finally(() => {
+      this.previewFetchDepth = Math.max(0, this.previewFetchDepth - 1);
+    });
+  }
+
+  private get networkTimeoutMs(): number {
+    return this.previewFetchDepth > 0 ? 15_000 : 30_000;
+  }
+
+  private get bridgeNetworkTimeoutMs(): number {
+    return this.previewFetchDepth > 0 ? 22_000 : 45_000;
+  }
+
   private browserTail: Promise<void> = Promise.resolve();
   private queuedBrowserJobs = 0;
   private readonly parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
     trimValues: true,
-    processEntities: true,
+    // Feeds are untrusted: cap DOCTYPE entity nesting and expansion (billion-laughs).
+    processEntities: {
+      enabled: true,
+      maxEntityCount: 100,
+      maxEntitySize: 2_000,
+      maxExpansionDepth: 3,
+      maxTotalExpansions: 2_000,
+      maxExpandedLength: 200_000,
+    },
   });
 
   async readFeed(feedUrl: string): Promise<FeedEntry[]> {
@@ -496,7 +557,8 @@ export class SourceReaderService {
    */
   async discoverFeedUrl(sourceUrl: string): Promise<string | null> {
     const candidates = await this.collectFeedUrlCandidates(sourceUrl);
-    for (const candidate of candidates) {
+    const limited = this.previewFetchDepth > 0 ? candidates.slice(0, 3) : candidates;
+    for (const candidate of limited) {
       try {
         const entries = await this.readFeed(candidate);
         if (entries.length) return candidate;
@@ -667,6 +729,7 @@ export class SourceReaderService {
     try {
       html = await this.safeFetchText(sourceUrl, MAX_FEED_BYTES, ['text/html', 'application/xhtml+xml']);
     } catch (directError) {
+      if (this.previewFetchDepth > 0) throw directError;
       try {
         const rendered = await this.renderArticlePage(sourceUrl);
         html = rendered.html;
@@ -676,7 +739,7 @@ export class SourceReaderService {
     }
 
     entries = await this.extractWebsiteEntriesFromHtml(sourceUrl, html);
-    if (!entries.length) {
+    if (!entries.length && this.previewFetchDepth <= 0) {
       try {
         const rendered = await this.renderArticlePage(sourceUrl);
         entries = await this.extractWebsiteEntriesFromHtml(rendered.url || sourceUrl, rendered.html);
@@ -712,7 +775,8 @@ export class SourceReaderService {
       let html = '';
       try {
         html = await this.safeFetchText(articleUrl, 2 * 1024 * 1024, ['text/html', 'application/xhtml+xml']);
-      } catch {
+      } catch (directError) {
+        if (this.previewFetchDepth > 0) throw directError;
         const rendered = await this.renderArticlePage(articleUrl);
         html = rendered.html;
       }
@@ -1215,8 +1279,7 @@ export class SourceReaderService {
 
   private async renderArticlePageNow(articleUrl: string, executablePath: string): Promise<{ html: string; url: string }> {
     const initialTarget = await this.assertPublicUrl(articleUrl);
-    const pinnedAddress = initialTarget.addresses[0];
-    if (!pinnedAddress) throw new Error('نشانی عمومی معتبری برای منبع پیدا نشد');
+    if (!initialTarget.addresses.length) throw new Error('نشانی عمومی معتبری برای منبع پیدا نشد');
 
     const { chromium } = await import('playwright-core');
     const browser = await chromium.launch({
@@ -1232,7 +1295,8 @@ export class SourceReaderService {
         '--disable-component-update',
         '--disable-sync',
         '--no-first-run',
-        `--host-resolver-rules=MAP ${initialTarget.url.hostname} ${pinnedAddress.address}`,
+        // Every request is fulfilled by the pinned client; any direct lookup is a leak and must fail.
+        '--host-resolver-rules=MAP * ~NOTFOUND',
       ],
     });
     try {
@@ -1252,8 +1316,8 @@ export class SourceReaderService {
         page.on('dialog', (dialog) => { void dialog.dismiss(); });
         page.on('popup', (popup) => { void popup.close(); });
 
-        const validatedHosts = new Set([initialTarget.url.hostname]);
         let requestCount = 0;
+        let navigatedUrl = initialTarget.url.toString();
         await page.route('**/*', async (route) => {
           const request = route.request();
           if (['image', 'media', 'font', 'stylesheet', 'websocket'].includes(request.resourceType())) {
@@ -1273,11 +1337,17 @@ export class SourceReaderService {
             return;
           }
           try {
-            if (!validatedHosts.has(requestUrl.hostname)) {
-              await this.assertPublicUrl(requestUrl.toString());
-              validatedHosts.add(requestUrl.hostname);
+            // Chromium never opens its own sockets (all DNS is mapped to NOTFOUND); every
+            // request and redirect hop is validated and pinned here instead.
+            const result = await this.browserFetch(requestUrl, request.method(), browserForwardHeaders(request.headers()), request.postDataBuffer());
+            let body = result.body;
+            if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+              navigatedUrl = result.url;
+              if (result.url !== requestUrl.toString() && /html/iu.test(result.headers['content-type'] || '')) {
+                body = Buffer.concat([Buffer.from(`<base href="${result.url.replace(/"/gu, '&quot;')}">`), body]);
+              }
             }
-            await route.continue();
+            await route.fulfill({ status: result.status, headers: result.headers, body });
           } catch {
             await route.abort('blockedbyclient').catch(() => undefined);
           }
@@ -1290,7 +1360,8 @@ export class SourceReaderService {
         while (Date.now() < deadline) {
           try {
             latestHtml = await page.content();
-            latestUrl = page.url() || latestUrl;
+            const pageUrl = page.url();
+            latestUrl = pageUrl && pageUrl !== initialTarget.url.toString() ? pageUrl : navigatedUrl;
             if (Buffer.byteLength(latestHtml, 'utf8') > MAX_BROWSER_RESPONSE_BYTES) {
               throw new Error('حجم صفحه رندرشده بیش از حد مجاز است');
             }
@@ -1309,6 +1380,35 @@ export class SourceReaderService {
     } finally {
       await browser.close().catch(() => undefined);
     }
+  }
+
+  private async browserFetch(
+    initialUrl: URL,
+    initialMethod: string,
+    headers: Record<string, string>,
+    initialBody: Buffer | null,
+  ): Promise<{ status: number; headers: Record<string, string>; body: Buffer; url: string }> {
+    let target = await this.assertPublicUrl(initialUrl.toString());
+    let method = initialMethod;
+    let body = initialBody ?? undefined;
+    for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
+      const response = await this.requestPinned(target, headers, method, body, BROWSER_NAVIGATION_TIMEOUT_MS);
+      const status = response.statusCode || 502;
+      if ([301, 302, 303, 307, 308].includes(status)) {
+        const location = headerValue(response.headers, 'location');
+        response.resume();
+        if (!location || redirect === MAX_REDIRECTS) throw new BadRequestException('تعداد تغییر مسیرها بیش از حد مجاز است');
+        target = await this.assertRedirect(location, target.url);
+        if (status === 303 || ((status === 301 || status === 302) && method !== 'GET' && method !== 'HEAD')) {
+          method = 'GET';
+          body = undefined;
+        }
+        continue;
+      }
+      const payload = await this.readResponse(response, MAX_BROWSER_RESPONSE_BYTES, 'حجم پاسخ مرورگر بیش از حد مجاز است');
+      return { status, headers: browserResponseHeaders(response.headers), body: payload, url: target.url.toString() };
+    }
+    throw new BadRequestException('دریافت آدرس انجام نشد');
   }
 
   /**
@@ -1343,36 +1443,54 @@ export class SourceReaderService {
   }
 
   async proxyImage(imageUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
-    let target = await this.assertPublicUrl(imageUrl);
-    const maxBytes = 15 * 1024 * 1024;
+    const result = await this.fetchPublicResource(imageUrl, {
+      accept: 'image/*',
+      maxBytes: 15 * 1024 * 1024,
+      allowedTypes: ['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp'],
+    });
+    if (result.status < 200 || result.status >= 300) throw new BadRequestException(`تصویر با خطای HTTP ${result.status} پاسخ داد`);
+    if (!result.buffer.length) throw new BadRequestException('پاسخ تصویر خالی است');
+    return { buffer: result.buffer, contentType: result.contentType };
+  }
+
+  /**
+   * GET a public URL with every redirect hop re-validated and the socket pinned
+   * to the validated address. Non-2xx responses are returned without a body.
+   */
+  async fetchPublicResource(url: string, options: {
+    accept: string;
+    maxBytes: number;
+    allowedTypes?: string[];
+    timeoutMs?: number;
+    readBody?: boolean;
+  }): Promise<{ status: number; contentType: string; buffer: Buffer }> {
+    let target = await this.assertPublicUrl(url);
     for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
       const response = await this.requestPinned(target, {
-        Accept: 'image/*',
+        Accept: options.accept,
         'User-Agent': 'DESKA-News/1.0',
-      });
+      }, 'GET', undefined, options.timeoutMs ?? 30_000);
       const status = response.statusCode || 0;
       if ([301, 302, 303, 307, 308].includes(status)) {
         const location = headerValue(response.headers, 'location');
         response.resume();
-        if (!location || redirect === MAX_REDIRECTS) throw new BadRequestException('تعداد تغییر مسیرهای تصویر بیش از حد مجاز است');
+        if (!location || redirect === MAX_REDIRECTS) throw new BadRequestException('تعداد تغییر مسیرها بیش از حد مجاز است');
         target = await this.assertRedirect(location, target.url);
         continue;
       }
-      if (status < 200 || status >= 300) {
-        response.resume();
-        throw new BadRequestException(`تصویر با خطای HTTP ${status} پاسخ داد`);
+      const contentType = headerValue(response.headers, 'content-type').split(';')[0].trim().toLowerCase();
+      if (status < 200 || status >= 300 || options.readBody === false) {
+        response.destroy();
+        return { status, contentType, buffer: Buffer.alloc(0) };
       }
-      const contentType = headerValue(response.headers, 'content-type').split(';')[0].toLowerCase();
-      const allowedImageTypes = new Set(['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp']);
-      if (!allowedImageTypes.has(contentType)) {
-        response.resume();
-        throw new BadRequestException('نوع تصویر قابل قبول نیست');
+      if (options.allowedTypes && !options.allowedTypes.includes(contentType)) {
+        response.destroy();
+        throw new BadRequestException('نوع محتوای پاسخ قابل قبول نیست');
       }
-      const buffer = await this.readResponse(response, maxBytes, 'حجم تصویر بیش از حد مجاز است');
-      if (!buffer.length) throw new BadRequestException('پاسخ تصویر خالی است');
-      return { buffer, contentType };
+      const buffer = await this.readResponse(response, options.maxBytes, 'حجم پاسخ بیش از حد مجاز است');
+      return { status, contentType, buffer };
     }
-    throw new BadRequestException('دریافت تصویر انجام نشد');
+    throw new BadRequestException('دریافت آدرس انجام نشد');
   }
 
   private htmlToText(value: string): string {
@@ -1407,6 +1525,9 @@ export class SourceReaderService {
     try {
       const addresses = await this.resolveAddresses(hostname);
       if (!addresses.length || (!allowLocalhost && addresses.some((item) => isBlockedAddress(item.address)))) {
+        if (addresses.some((item) => item.address.startsWith('10.10.34.'))) {
+          throw new BadRequestException('دامنه در DNS سرور به آدرس داخلی فیلترینگ (10.10.34.x) نگاشت شده است؛ دریافت این منبع را از طریق Worker انجام دهید');
+        }
         throw new BadRequestException('دسترسی به آدرس داخلی مجاز نیست');
       }
       // Canonicalize a trailing DNS dot so Host and TLS SNI use the same name
@@ -1550,7 +1671,7 @@ export class SourceReaderService {
       options.maxResponseBytes ?? 2 * 1024 * 1024,
       'حجم پاسخ سرویس بیش از حد مجاز است',
     );
-    const text = () => new TextDecoder('utf-8').decode(buffer);
+    const text = () => decodeBody(buffer, contentType);
     return {
       ok: status >= 200 && status < 300,
       status,
@@ -1633,7 +1754,7 @@ export class SourceReaderService {
         user_agent: BROWSER_FETCH_USER_AGENT,
       }),
       acceptedTypes: ['application/json'],
-      timeoutMs: 45_000,
+      timeoutMs: this.bridgeNetworkTimeoutMs,
       maxResponseBytes: bridgeHttpResponseLimit(maxBytes),
       allowLocalhostInDevelopment: true,
     });
@@ -1687,7 +1808,7 @@ export class SourceReaderService {
         Accept: `${acceptedTypes.join(', ')}, */*;q=0.1`,
         'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
         'Cache-Control': 'no-cache',
-      });
+      }, 'GET', undefined, this.networkTimeoutMs);
       const status = response.statusCode || 0;
       if ([301, 302, 303, 307, 308].includes(status)) {
         const location = headerValue(response.headers, 'location');
@@ -1702,7 +1823,7 @@ export class SourceReaderService {
       }
       const contentType = headerValue(response.headers, 'content-type').toLowerCase();
       const bytes = await this.readResponse(response, maxBytes, 'حجم محتوای منبع بیش از حد مجاز است');
-      const body = new TextDecoder('utf-8').decode(bytes);
+      const body = decodeBody(bytes, contentType);
       if (!contentTypeIsAccepted(contentType, acceptedTypes) && !bodyMatchesAcceptedTypes(body, acceptedTypes)) {
         throw new BadRequestException('نوع محتوای دریافتی از منبع قابل قبول نیست');
       }

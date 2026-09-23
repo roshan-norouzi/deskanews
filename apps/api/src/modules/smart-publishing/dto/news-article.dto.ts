@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export const NEWS_STATUSES = [
   'new',
@@ -27,4 +27,10 @@ export class PublishNewsArticleDto {
   @IsOptional() @IsString() @MaxLength(500) titleFa?: string;
   @IsOptional() @IsString() @MaxLength(4000) summaryFa?: string;
   @IsOptional() @IsString() @MaxLength(200_000) contentFa?: string;
+  /** Final WordPress body HTML (includes editable attribution). Preferred over contentFa when set. */
+  @IsOptional() @IsString() @MaxLength(200_000) contentHtml?: string;
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(2000)
+  featuredImageUrl?: string | null;
 }

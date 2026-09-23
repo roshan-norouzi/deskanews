@@ -4,6 +4,7 @@ import { HeartPulse, RefreshCw, Trash2 } from 'lucide-react';
 import { sourceLanguageLabel } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SourceHealthBadge } from '@/components/ui/source-health-badge';
 import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
 import { feedSourceMeta } from '@/lib/feed-source-types';
 import { cn } from '@/lib/utils';
@@ -75,7 +76,7 @@ export function PlatformFeedCatalogTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] text-right text-sm">
+      <table className="ds-table min-w-[40rem]">
         <thead className="bg-slate-50 text-xs text-slate-500">
           <tr>
             <th className="px-5 py-3 font-medium">منبع</th>
@@ -107,9 +108,9 @@ export function PlatformFeedCatalogTable({
                       size="sm"
                     />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 font-semibold text-slate-900">
-                        <FeedHealthDot status={healthStatus} title={healthTitle} />
+                      <div className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
                         <span>{feed.name}</span>
+                        <SourceHealthBadge status={healthStatus} title={healthTitle} />
                       </div>
                       {feed.healthCheckedAt && (
                         <div className="mt-1 text-xs text-slate-500">
@@ -155,6 +156,8 @@ export function PlatformFeedCatalogTable({
                     <Button
                       size="sm"
                       variant="ghost"
+                      title="دریافت مطالب"
+                      aria-label="دریافت مطالب"
                       isLoading={busy === `fetch-${feed.id}`}
                       onClick={() => onFetch(feed)}
                     >

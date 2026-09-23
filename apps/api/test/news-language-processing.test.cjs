@@ -11,6 +11,19 @@ const { SocialCoverRendererService } = require('../dist/modules/smart-publishing
 const integrationHealth = { success: async () => ({}), failure: async () => ({}) };
 const workflow = { record: async () => ({}) };
 const usageTracking = { record: async () => {} };
+function memoryLeases() {
+  const rows = new Map();
+  return {
+    createMany: async ({ data }) => { for (const row of data) if (!rows.has(row.key)) rows.set(row.key, { ...row }); return { count: 1 }; },
+    updateMany: async ({ where, data }) => {
+      const row = rows.get(where.key);
+      if (!row || row.expiresAt > where.expiresAt.lte) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    },
+    deleteMany: async ({ where }) => { if (rows.get(where.key)?.holder === where.holder) rows.delete(where.key); return { count: 1 }; },
+  };
+}
 const destinationCategories = {
   categorizeArticlesByCanonicalUrls: async () => {},
   categorizeArticle: async () => ({}),
@@ -145,7 +158,10 @@ test('source health test returns the five latest items without saving them', asy
     publishedAt: publishedAt(index + 9),
   }));
   const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '', sourceLanguage: 'auto' }), update: async () => ({}) } };
-  const sourceReader = { readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; } };
+  const sourceReader = {
+    runPreviewFetch: (operation) => operation(),
+    readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; },
+  };
   const newsroom = new NewsroomService(prisma, { rememberSourceLanguages: async () => [] }, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
@@ -174,6 +190,7 @@ test('source settings are stored independently for each source', async () => {
   await newsroom.updateFeed('tenant-a', feed.id, { includeWords: ['اقتصاد'], pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
 
   assert.deepEqual(created.includeWords, ['فناوری']);
+  assert.equal(created.settingsMode, 'custom');
   assert.equal(created.pollIntervalMinutes, 15);
   assert.equal(created.autoPrepare, false);
   assert.equal(created.autoPublish, true);
@@ -421,6 +438,7 @@ test('automatic social publishing records delivery and does not resend to the sa
     feed: { name: 'رسانه' },
   };
   const prisma = {
+    schedulerLease: memoryLeases(),
     socialArticle: {
       findFirst: async () => article,
       update: async ({ data }) => Object.assign(article, data),
@@ -462,6 +480,7 @@ test('automatic social publishing records delivery and does not resend to the sa
 test('social automation durably queues a cover with the selected default template', async () => {
   const queuedJobs = [];
   const prisma = {
+    schedulerLease: memoryLeases(),
     socialArticle: {
       findMany: async () => [{ id: 'social-cover-a' }],
     },
@@ -487,6 +506,7 @@ test('social automation durably queues a cover with the selected default templat
 test('social automation queues featured-image publishing after cover generation fails', async () => {
   const queuedJobs = [];
   const prisma = {
+    schedulerLease: memoryLeases(),
     socialArticle: {
       findFirst: async () => ({
         id: 'social-fallback-a',
@@ -529,7 +549,7 @@ test('server cover renderer stores the selected visual template result on the ar
     shortUrl: null, leadText: 'لید کوتاه', author: 'نویسنده', category: 'خبر', readingTime: 2,
     summaryText: 'خلاصه مطلب', featuredImageUrl: null, authorImageUrl: null, feed: { name: 'رسانه نمونه' },
   };
-  const prisma = { socialArticle: {
+  const prisma = { schedulerLease: memoryLeases(), socialArticle: {
     findFirst: async () => article,
     update: async ({ data }) => { updateData = data; return { ...article, ...data }; },
   } };
@@ -563,7 +583,7 @@ test('automatic publisher prefers a generated cover over the source image', asyn
     title: 'تیتر', link: 'https://source.example/story', author: 'نویسنده', category: 'خبر',
     readingTime: 1, leadText: 'لید', summaryText: 'خلاصه', shortUrl: null, feed: { name: 'رسانه' },
   };
-  const prisma = { socialArticle: {
+  const prisma = { schedulerLease: memoryLeases(), socialArticle: {
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
@@ -597,7 +617,7 @@ test('automatic publisher falls back to the featured image when generated media 
     title: 'تیتر', link: 'https://source.example/story', author: 'نویسنده', category: 'خبر',
     readingTime: 1, leadText: 'لید', summaryText: 'خلاصه', shortUrl: null, feed: { name: 'رسانه' },
   };
-  const prisma = { socialArticle: {
+  const prisma = { schedulerLease: memoryLeases(), socialArticle: {
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };
@@ -632,7 +652,7 @@ test('explicit featured-image fallback bypasses a stale generated cover', async 
     title: 'تیتر', link: 'https://source.example/story', author: 'نویسنده', category: 'خبر',
     readingTime: 1, leadText: 'لید', summaryText: 'خلاصه', shortUrl: null, feed: { name: 'رسانه' },
   };
-  const prisma = { socialArticle: {
+  const prisma = { schedulerLease: memoryLeases(), socialArticle: {
     findFirst: async () => article,
     update: async ({ data }) => Object.assign(article, data),
   } };

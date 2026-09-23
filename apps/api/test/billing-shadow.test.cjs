@@ -66,6 +66,67 @@ test('enforcement refuses a priced job when the wallet cannot cover it', async (
   delete process.env.BILLING_ENFORCE;
 });
 
+test('an infrastructure failure never lets an enforced job run without a reserve', async () => {
+  process.env.BILLING_ENFORCE = 'true';
+  const billing = new BillingService({ $transaction: async () => { throw new Error('connection reset'); } });
+  await assert.rejects(
+    () => billing.shadowReserve({ id: 'job-1', tenantId: 'tenant-a', type: 'news.prepare' }),
+    /رزرو توکن انجام نشد/,
+  );
+  process.env.BILLING_ENFORCE = 'false';
+  assert.equal(await billing.shadowReserve({ id: 'job-1', tenantId: 'tenant-a', type: 'news.prepare' }), null);
+  delete process.env.BILLING_ENFORCE;
+});
+
+test('wallet rows are locked before the balance is checked', async () => {
+  process.env.BILLING_ENFORCE = 'false';
+  const prisma = memoryPrisma();
+  const order = [];
+  const base = prisma.$transaction;
+  prisma.$transaction = (fn) => base((tx) => {
+    tx.$queryRaw = async (strings) => { order.push(strings.join('?').includes('FOR UPDATE') ? 'lock' : 'query'); return []; };
+    tx.tenantWallet.findUnique = async ({ where }) => prisma.wallets.get(where.tenantId);
+    const originalFindMany = tx.walletLedger.findMany;
+    tx.walletLedger.findMany = async (args) => { order.push('read-ledger'); return originalFindMany(args); };
+    return fn(tx);
+  });
+  const billing = new BillingService(prisma);
+  await billing.shadowReserve({ id: 'job-1', tenantId: 'tenant-a', type: 'news.prepare' });
+  assert.equal(order[0], 'lock');
+  assert.ok(order.indexOf('lock') < order.indexOf('read-ledger'));
+  delete process.env.BILLING_ENFORCE;
+});
+
+test('confirming a payment twice credits the wallet once', async () => {
+  const payment = { id: 'pay-1', tenantId: 'tenant-a', tokenAmount: 500, status: 'pending' };
+  const credits = [];
+  const tx = {
+    paymentIntent: {
+      findUnique: async () => ({ ...payment }),
+      updateMany: async ({ where }) => {
+        if (payment.status === where.status.not) return { count: 0 };
+        payment.status = 'paid';
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async () => ({ ...payment }),
+    },
+    tenantWallet: {
+      upsert: async () => ({}),
+      findUnique: async () => ({}),
+      update: async ({ data }) => { credits.push(data.balanceTokens.increment); return {}; },
+    },
+    walletLedger: {
+      findUnique: async () => null,
+      create: async () => ({}),
+    },
+  };
+  const billing = new BillingService({ $transaction: async (fn) => fn(tx) });
+  const [first, second] = await Promise.all([billing.confirmPayment('pay-1'), billing.confirmPayment('pay-1')]);
+  assert.equal(first.status, 'paid');
+  assert.equal(second.status, 'paid');
+  assert.deepEqual(credits, [500]);
+});
+
 test('commit settles the hold and a later reserve can open again', async () => {
   process.env.BILLING_ENFORCE = 'false';
   const prisma = memoryPrisma();

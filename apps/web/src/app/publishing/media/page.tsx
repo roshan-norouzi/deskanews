@@ -3,13 +3,15 @@
 import Link from 'next/link';
 import { ArrowLeft, ImageIcon } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 
 export default function PublishingMediaPage() {
   return (
-    <ProtectedLayout title="فایل‌ها">
-      <main className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout>
+      <PageContainer width="narrow">
         <PageHeader
           title="فایل‌ها"
           description="تصاویر و فایل‌های تولیدشده برای انتشار در سایت و شبکه‌های اجتماعی."
@@ -24,22 +26,18 @@ export default function PublishingMediaPage() {
             تصاویر کاور و فایل‌های تولیدشده در استودیوی اجتماعی و اتاق خبر اینجا نمایش داده می‌شوند.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link
-              href="/publishing/social"
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700"
-            >
-              رفتن به استودیوی اجتماعی
-              <ArrowLeft className="h-4 w-4" />
+            <Link href="/publishing/social">
+              <Button>
+                رفتن به استودیوی اجتماعی
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
             </Link>
-            <Link
-              href="/publishing/news"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              رفتن به اتاق خبر
+            <Link href="/publishing/news">
+              <Button variant="outline">رفتن به اتاق خبر</Button>
             </Link>
           </div>
         </Card>
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

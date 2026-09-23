@@ -34,6 +34,7 @@ export class TenantService {
     if (isSuperAdmin) {
       return this.prisma.tenant.findMany({
         orderBy: { createdAt: 'desc' },
+        take: 1000,
         include: {
           primaryOwner: { select: { id: true, name: true, email: true } },
           _count: { select: { members: true } },

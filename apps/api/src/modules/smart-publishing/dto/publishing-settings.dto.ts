@@ -61,6 +61,7 @@ export const PUBLISHING_SETTING_KEYS = [
   'telegram_chat_id',
   'social_instagram_access_token',
   'social_instagram_account_id',
+  'social_instagram_username',
   'social_instagram_api_version',
   'social_linkedin_access_token',
   'social_linkedin_author_urn',
@@ -137,6 +138,7 @@ export class UpdatePublishingSettingsDto {
   @IsOptional() @IsString() @MaxLength(200) telegram_chat_id?: string;
   @IsOptional() @IsString() @MaxLength(1000) social_instagram_access_token?: string;
   @IsOptional() @IsString() @MaxLength(200) social_instagram_account_id?: string;
+  @IsOptional() @IsString() @MaxLength(120) social_instagram_username?: string;
   @IsOptional() @IsString() @MaxLength(30) social_instagram_api_version?: string;
   @IsOptional() @IsString() @MaxLength(1000) social_linkedin_access_token?: string;
   @IsOptional() @IsString() @MaxLength(300) social_linkedin_author_urn?: string;

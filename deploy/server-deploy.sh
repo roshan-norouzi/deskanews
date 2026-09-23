@@ -18,23 +18,6 @@ deploy_error() {
   printf 'DESKA_DEPLOY_ERROR: %s\n' "$*" >&2
 }
 
-fix_stale_postgres_support_mounts() {
-  local path nested
-  for path in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
-    nested="${path}/$(basename "$path")"
-    if [ -f "$nested" ]; then
-      printf 'DESKA_DEPLOY_STAGE: relocating nested upload at %s\n' "$nested"
-      mv "$nested" "${path}.deska-fix"
-      rm -rf -- "$path"
-      mv "${path}.deska-fix" "$path"
-    elif [ -d "$path" ] && [ ! -f "$path" ]; then
-      printf 'DESKA_DEPLOY_STAGE: removing mistaken directory at %s\n' "$path"
-      rm -rf -- "$path"
-    fi
-  done
-  mkdir -p deploy/postgres
-}
-
 run_deployment_stage() {
   local label="$1"
   local maximum_seconds="$2"
@@ -155,7 +138,6 @@ for incoming_file in "$incoming_compose" "$incoming_script" "$incoming_checksum"
     exit 1
   fi
 done
-fix_stale_postgres_support_mounts
 
 available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
 if ! printf '%s' "$available_kb" | grep -Eq '^[0-9]+$' || [ "$available_kb" -lt 786432 ]; then
@@ -256,14 +238,14 @@ if [ -f "$backup_dir/uploads.tar.gz" ]; then
   timeout --foreground --kill-after=20s 120s tar -tzf "$backup_dir/uploads.tar.gz" >/dev/null
 fi
 
-# Retain the ten most recent deployment backups. Every deletion is constrained
+# Retain the five most recent deployment backups. Every deletion is constrained
 # to the verified backup root under DEPLOY_PATH.
 while IFS= read -r old_backup; do
   case "$old_backup" in
     "$backup_root"/*) rm -rf -- "$old_backup" ;;
     *) deploy_error "refusing to remove unexpected backup path: ${old_backup}"; exit 1 ;;
   esac
-done < <(ls -1dt -- "$backup_root"/* 2>/dev/null | tail -n +11 || true)
+done < <(ls -1dt -- "$backup_root"/* 2>/dev/null | tail -n +6 || true)
 
 run_deployment_stage 'Pull versioned images' 600 docker compose --env-file "$candidate_env" -f "$incoming_compose" pull api web redis minio
 run_deployment_stage 'Verify API image' 30 docker image inspect --format '{{.Id}}' "${IMAGE_PREFIX}/api:${VERSION}"
@@ -325,8 +307,26 @@ for attempt in $(seq 1 45); do
   sleep 2
 done
 
-if [ -f .deska-installed-version ]; then cp -p .deska-installed-version .deska-previous-version; fi
+previous_version=''
+if [ -f .deska-installed-version ]; then
+  previous_version="$(tr -d '[:space:]' < .deska-installed-version)"
+  cp -p .deska-installed-version .deska-previous-version
+fi
 printf '%s' "$VERSION" > .deska-installed-version
 rm -f -- "$incoming_script" "$incoming_checksum"
+
+# Keep only the running and the previous application images (for rollback);
+# otherwise every release adds ~1 GB and the disk-space check eventually fails.
+for image_name in api web; do
+  docker image ls --format '{{.Repository}}:{{.Tag}}' "${IMAGE_PREFIX}/${image_name}" 2>/dev/null |
+    while IFS= read -r image_ref; do
+      case "$image_ref" in
+        *":${VERSION}"|*":<none>") ;;
+        *) if [ -z "$previous_version" ] || [ "$image_ref" != "${IMAGE_PREFIX}/${image_name}:${previous_version}" ]; then
+             docker image rm "$image_ref" >/dev/null 2>&1 || true
+           fi ;;
+      esac
+    done || true
+done
 docker image prune -f >/dev/null || true
 printf 'DESKA_DEPLOY_STAGE: deployment completed successfully; safety backup: %s\n' "$backup_dir"

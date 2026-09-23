@@ -15,6 +15,9 @@ import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { Card } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Button } from '@/components/ui/button';
+import { PageContainer } from '@/components/ui/page-container';
+import { NoticeBanner } from '@/components/ui/notice-banner';
+import { PageLoading } from '@/components/ui/page-loading';
 import { useApi } from '@/hooks/use-api';
 import { formatJalaliDateTime } from '@/lib/date';
 import { OrganizationsDashboardSection } from '@/components/organizations/organizations-dashboard-section';
@@ -45,36 +48,39 @@ function DashboardContent() {
   const { data, isLoading, error, refetch } = useApi<DashboardStats>('/dashboard/stats');
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-24">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-      </div>
-    );
+    return <PageLoading className="py-24" />;
   }
 
   if (error) {
     return (
-      <div className="rounded-card border border-red-200 bg-red-50 px-4 py-3 text-red-700">{error}</div>
+      <NoticeBanner tone="error">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span>بارگذاری داشبورد انجام نشد: {error}</span>
+          <Button variant="outline" size="sm" onClick={() => void refetch()}>تلاش مجدد</Button>
+        </div>
+      </NoticeBanner>
     );
   }
 
   if (!data) return null;
 
   const stats = [
-    { label: 'در پردازش (اتاق خبر)', value: data.publishing.newsroom.processing, icon: Rss, tone: 'bg-blue-50 text-blue-600' },
-    { label: 'ورودی استودیو', value: data.publishing.social.inbox, icon: Send, tone: 'bg-violet-50 text-violet-600' },
-    { label: 'کارهای صف', value: data.publishing.queue.queued + data.publishing.queue.running, icon: Bot, tone: 'bg-cyan-50 text-cyan-600' },
+    { label: 'در پردازش (اتاق خبر)', value: data.publishing.newsroom.processing, icon: Rss, tone: 'bg-primary-50 text-primary-600', href: '/publishing/news' },
+    { label: 'ورودی استودیو', value: data.publishing.social.inbox, icon: Send, tone: 'bg-primary-50 text-primary-700', href: '/publishing/social' },
+    { label: 'کارهای صف', value: data.publishing.queue.queued + data.publishing.queue.running, icon: Bot, tone: 'bg-cyan-50 text-cyan-600', href: '/publishing/operations' },
     {
       label: 'فرایندهای متوقف',
       value: data.publishing.queue.dead,
       icon: Activity,
       tone: data.publishing.queue.dead ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600',
+      href: '/publishing/operations',
     },
     {
       label: 'اتصال ناسالم',
       value: data.publishing.unhealthyIntegrations,
       icon: AlertTriangle,
       tone: data.publishing.unhealthyIntegrations ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600',
+      href: '/publishing/operations',
     },
     {
       label: 'اعلان خوانده‌نشده',
@@ -85,10 +91,10 @@ function DashboardContent() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-8" dir="rtl">
+    <PageContainer className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="lytic-page-title">داشبورد</h2>
+          <h1 className="ds-page-title">داشبورد</h1>
           <p className="mt-1 text-sm text-slate-500">
             آخرین بروزرسانی: {formatJalaliDateTime(data.generatedAt)}
           </p>
@@ -122,7 +128,7 @@ function DashboardContent() {
             ['در حال انجام', data.publishing.newsroom.preparing],
             ['آماده اقدام', data.publishing.newsroom.action],
             ['خطادار', data.publishing.newsroom.failed],
-            ['منتشر / استودیو', data.publishing.newsroom.archive],
+            ['آرشیو', data.publishing.newsroom.archive],
             ['امروز', data.publishing.newsroom.publishedToday],
           ]}
         />
@@ -139,7 +145,7 @@ function DashboardContent() {
           ]}
         />
       </section>
-    </div>
+    </PageContainer>
   );
 }
 

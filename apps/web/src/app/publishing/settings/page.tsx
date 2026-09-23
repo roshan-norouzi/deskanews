@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, CheckCircle2, Clock3, Copy, Globe2, Pencil, Plus, Save, Settings2, Share2, Star, TestTube2, Trash2, Upload } from 'lucide-react';
+import { CheckCircle2, Clock3, Copy, Globe2, Instagram, LogOut, Pencil, Plus, Save, Settings2, Share2, Star, TestTube2, Trash2, Upload } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { CoverTemplateBuilder, parseTemplate, parseTemplateLibrary, type CoverDemoArticle, type CoverFont, type CoverTemplateLibrary } from '@/components/publishing/cover-template-builder';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useConfirm } from '@/components/ui/confirm-provider';
+import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { useApi } from '@/hooks/use-api';
 import { useTenant } from '@/lib/tenant-context';
@@ -191,6 +193,7 @@ function FontLibrary({ value, onChange }: { value: CoverFont[]; onChange: (fonts
 }
 
 export default function PublishingSettingsPage() {
+  const confirm = useConfirm();
   const { activeTenantId } = useTenant();
   const { data } = useApi<Settings>(activeTenantId ? '/publishing/settings' : null, { cache: 'no-store' });
   const { data: socialArticles } = useApi<{ items: CoverDemoArticle[] }>(activeTenantId ? '/publishing/social/articles' : null);
@@ -268,6 +271,27 @@ export default function PublishingSettingsPage() {
   }, [activeTab, subTab, destinationPlatform, loadDestinationCategories]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'social') {
+      setActiveTab('social');
+      const nextSub = params.get('sub') || 'networks';
+      setSubTab(nextSub);
+      setSubTabs((current) => ({ ...current, social: nextSub }));
+    }
+    if (params.get('instagram') === 'connected') {
+      setMessage('حساب اینستاگرام متصل شد.');
+    } else if (params.get('instagram') === 'error') {
+      setError(params.get('reason') || 'ورود اینستاگرام انجام نشد.');
+    }
+    if (params.has('instagram')) {
+      params.delete('instagram');
+      params.delete('reason');
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, '', next);
+    }
+  }, []);
+
+  useEffect(() => {
     // The first GET may finish after a save. Once this form has received a
     // confirmed PUT response, never let an older GET overwrite it.
     if (data && loadedTenantId.current === activeTenantId && !hasLocalEdits.current && !hasSavedInSession.current) {
@@ -316,35 +340,30 @@ export default function PublishingSettingsPage() {
     if (copyCurrent) setMessage(`قالب «${selectedCoverTemplate?.name}» تکثیر شد؛ نسخه جدید را ویرایش و سپس ذخیره کنید.`);
   }
 
-  async function createCoverTemplateFromSample(file?: File) {
-    if (!file) return;
-    if (coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES) {
-      setError(`حداکثر ${MAX_COVER_TEMPLATES} قالب تصویری می‌توانید داشته باشید.`);
-      return;
-    }
-    setBusy('cover-from-sample');
+  async function connectInstagram() {
+    setBusy('instagram-connect');
     setError('');
     setMessage('');
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const result = await apiFetch<{ name: string; template: Record<string, unknown>; usedAi: boolean }>('/publishing/settings/cover-templates/from-sample', {
-        method: 'POST',
-        body: form,
-      });
-      const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `template-${Date.now()}`;
-      const existingNames = new Set(coverTemplateLibrary.templates.map((item) => item.name.trim().toLocaleLowerCase('fa')));
-      let name = result.name || 'قالب از تصویر نمونه';
-      let suffix = 2;
-      while (existingNames.has(name.toLocaleLowerCase('fa'))) name = `${result.name || 'قالب از تصویر نمونه'} (${suffix++})`;
-      const template = parseTemplate(JSON.stringify(result.template || {}));
-      setCoverTemplateLibrary({ ...coverTemplateLibrary, templates: [...coverTemplateLibrary.templates, { id, name, template }] });
-      setSelectedCoverTemplateId(id);
-      setMessage(result.usedAi
-        ? 'قالب از تصویر نمونه ساخته شد؛ لایه‌ها را بررسی و در صورت نیاز اصلاح کنید، سپس ذخیره کنید.'
-        : 'قالب پایه از تصویر نمونه ساخته شد. لایه‌ها را مطابق تصویر اصلاح و سپس ذخیره کنید.');
+      const result = await apiFetch<{ url: string }>('/publishing/settings/instagram/connect', { method: 'POST' });
+      if (!result?.url) throw new Error('آدرس ورود اینستاگرام دریافت نشد');
+      window.location.href = result.url;
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : 'ساخت قالب از تصویر نمونه انجام نشد');
+      setError(reason instanceof ApiError ? reason.message : 'ورود اینستاگرام شروع نشد');
+      setBusy(null);
+    }
+  }
+
+  async function disconnectInstagram() {
+    setBusy('instagram-disconnect');
+    setError('');
+    setMessage('');
+    try {
+      const saved = await apiFetch<Settings>('/publishing/settings/instagram/disconnect', { method: 'POST' });
+      setValues((current) => ({ ...current, ...saved }));
+      setMessage('اتصال اینستاگرام قطع شد.');
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reason.message : 'قطع اتصال اینستاگرام انجام نشد');
     } finally {
       setBusy(null);
     }
@@ -355,9 +374,15 @@ export default function PublishingSettingsPage() {
     setCoverTemplateLibrary({ ...coverTemplateLibrary, templates: coverTemplateLibrary.templates.map((item) => item.id === selectedCoverTemplate.id ? { ...item, ...patch } : item) });
   }
 
-  function removeSelectedCoverTemplate() {
+  async function removeSelectedCoverTemplate() {
     if (!selectedCoverTemplate || coverTemplateLibrary.templates.length <= 1) return;
-    if (!window.confirm(`قالب «${selectedCoverTemplate.name}» حذف شود؟`)) return;
+    const ok = await confirm({
+      title: 'حذف قالب تصویری؟',
+      description: `قالب «${selectedCoverTemplate.name}» برای همیشه از کتابخانه حذف می‌شود.`,
+      confirmLabel: 'حذف قالب',
+      variant: 'danger',
+    });
+    if (!ok) return;
     const templates = coverTemplateLibrary.templates.filter((item) => item.id !== selectedCoverTemplate.id);
     const defaultTemplateId = coverTemplateLibrary.defaultTemplateId === selectedCoverTemplate.id ? templates[0].id : coverTemplateLibrary.defaultTemplateId;
     setCoverTemplateLibrary({ ...coverTemplateLibrary, defaultTemplateId, templates });
@@ -549,7 +574,7 @@ export default function PublishingSettingsPage() {
         ? subTab === 'monitor' ? ['social_poll_interval_minutes', 'social_max_age_days', 'social_auto_poll', 'social_auto_prepare', 'social_auto_generate_image', 'social_auto_image_template_id', 'social_auto_publish_telegram', 'social_auto_publish_instagram', 'social_auto_publish_linkedin', 'social_auto_publish_facebook']
           : subTab === 'caption' ? ['social_caption_template']
           : subTab === 'image' ? ['social_image_templates']
-              : subTab === 'networks' ? ['telegram_bot_token', 'telegram_chat_id', 'social_instagram_access_token', 'social_instagram_account_id', 'social_instagram_api_version', 'social_linkedin_access_token', 'social_linkedin_author_urn', 'social_linkedin_api_version', 'social_facebook_page_access_token', 'social_facebook_page_id', 'social_facebook_api_version', 'social_public_media_base_url']
+              : subTab === 'networks' ? ['telegram_bot_token', 'telegram_chat_id', 'social_linkedin_access_token', 'social_linkedin_author_urn', 'social_linkedin_api_version', 'social_facebook_page_access_token', 'social_facebook_page_id', 'social_facebook_api_version', 'social_public_media_base_url']
                 : ['social_font_library']
         : tab === 'news'
           ? subTab === 'schedule' ? ['news_poll_interval_minutes', 'news_max_age_days', 'news_auto_poll', 'news_auto_prepare', 'news_auto_publish', 'news_auto_send_social']
@@ -581,7 +606,7 @@ export default function PublishingSettingsPage() {
     const keys = network === 'telegram'
       ? ['telegram_bot_token', 'telegram_chat_id']
       : network === 'instagram'
-        ? ['social_instagram_access_token', 'social_instagram_account_id', 'social_instagram_api_version']
+        ? []
         : network === 'linkedin'
           ? ['social_linkedin_access_token', 'social_linkedin_author_urn', 'social_linkedin_api_version']
           : ['social_facebook_page_access_token', 'social_facebook_page_id', 'social_facebook_api_version'];
@@ -589,8 +614,8 @@ export default function PublishingSettingsPage() {
   }
 
   return (
-    <ProtectedLayout title="تنظیمات انتشار" ownerOnly>
-      <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout ownerOnly>
+      <PageContainer>
         <PageHeader
           title="تنظیمات انتشار"
           description="پیش‌فرض‌های پایش خبر، اتصال سایت مقصد، شبکه‌های اجتماعی و قالب‌های استودیو — مخصوص این سازمان."
@@ -600,12 +625,12 @@ export default function PublishingSettingsPage() {
         {error && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {message && <div role="status" className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" />{message}</div>}
 
-        <nav role="tablist" className="grid grid-cols-2 gap-2 rounded-2xl border bg-white p-2 shadow-sm" aria-label="دسته‌بندی تنظیمات">
-          {([['news', 'پایش خبر', Clock3], ['social', 'استودیوی اجتماعی', Share2]] as const).map(([tab, label, Icon]) => <button role="tab" type="button" key={tab} onClick={() => selectTab(tab)} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold transition ${activeTab === tab ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`} aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1}><Icon className="h-4 w-4" />{label}</button>)}
+        <nav role="tablist" className="ds-tabs grid grid-cols-2" aria-label="دسته‌بندی تنظیمات">
+          {([['news', 'پایش خبر', Clock3], ['social', 'استودیوی اجتماعی', Share2]] as const).map(([tab, label, Icon]) => <button role="tab" type="button" key={tab} onClick={() => selectTab(tab)} className={`ds-tab ${activeTab === tab ? 'ds-tab-active' : ''}`} aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1}><Icon className="h-4 w-4" />{label}</button>)}
         </nav>
 
-        {(activeTab === 'social' || activeTab === 'news') && <nav role="tablist" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2" aria-label="زیرمجموعه تنظیمات">
-          {(activeTab === 'social' ? [['monitor', 'پایش فیدها'], ['caption', 'قالب کپشن'], ['image', 'قالب تصویری'], ['networks', 'شبکه‌های اجتماعی'], ['fonts', 'کتابخانه فونت']] : [['schedule', 'پیش‌فرض پایش خبر'], ['destination', 'اتصال سایت مقصد']]).map(([tab, label]) => <button role="tab" type="button" key={tab} onClick={() => selectSubTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-medium transition ${subTab === tab ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100' : 'text-slate-600 hover:bg-white'}`} aria-selected={subTab === tab} tabIndex={subTab === tab ? 0 : -1}>{label}</button>)}
+        {(activeTab === 'social' || activeTab === 'news') && <nav role="tablist" className="ds-tabs" aria-label="زیرمجموعه تنظیمات">
+          {(activeTab === 'social' ? [['monitor', 'پایش منابع'], ['caption', 'قالب کپشن'], ['image', 'قالب تصویری'], ['networks', 'شبکه‌های اجتماعی'], ['fonts', 'کتابخانه فونت']] : [['schedule', 'پیش‌فرض پایش خبر'], ['destination', 'اتصال سایت مقصد']]).map(([tab, label]) => <button role="tab" type="button" key={tab} onClick={() => selectSubTab(tab)} className={`ds-tab ${subTab === tab ? 'ds-tab-active' : ''}`} aria-selected={subTab === tab} tabIndex={subTab === tab ? 0 : -1}>{label}</button>)}
         </nav>}
 
         {activeTab === 'social' && <Card className="p-5 sm:p-6">
@@ -616,7 +641,7 @@ export default function PublishingSettingsPage() {
               <Field label="حداکثر قدمت مطلب اجتماعی (روز)" hint="مطالب قدیمی‌تر هنگام پایش وارد استودیو نمی‌شوند."><input type="number" min="1" max="90" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.social_max_age_days || '10'} onChange={(e) => set('social_max_age_days', e.target.value)} /></Field>
             </div>
             <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-4"><h3 className="font-bold text-slate-900">اتوماسیون استودیوی اجتماعی</h3><p className="mt-1 text-xs leading-5 text-slate-600">هر مرحله مستقل است. در صورت فعال‌بودن تولید خودکار، تصویر قالبی پیش از انتشار ساخته می‌شود؛ در غیر این صورت تصویر شاخص منبع استفاده خواهد شد.</p><div className="mt-4 grid gap-3 md:grid-cols-2">
-              <AutomationToggle title="پایش خودکار فیدها" description="فیدهای فعال طبق فاصله زمانی بالا دریافت شوند." enabled={values.social_auto_poll !== 'false'} onChange={(enabled) => set('social_auto_poll', String(enabled))} />
+              <AutomationToggle title="پایش خودکار منابع" description="منابع فعال طبق فاصله زمانی بالا دریافت شوند." enabled={values.social_auto_poll !== 'false'} onChange={(enabled) => set('social_auto_poll', String(enabled))} />
               <AutomationToggle title="آماده‌سازی خودکار مطالب" description="لید، خلاصه و کپشن مطالب تازه بدون کلیک کاربر آماده شود." enabled={values.social_auto_prepare === 'true'} onChange={(enabled) => set('social_auto_prepare', String(enabled))} />
               <AutomationToggle title="تولید خودکار قالب تصویری" description="پس از آماده‌شدن مطلب، تصویر نهایی با قالب انتخاب‌شده ساخته و برای انتشار خودکار استفاده شود." enabled={values.social_auto_generate_image === 'true'} onChange={(enabled) => set('social_auto_generate_image', String(enabled))} />
               <Field label="قالب پیش‌فرض تولید خودکار" hint="این انتخاب مستقل از قالب پیش‌فرض کتابخانه است و فقط برای فرایند خودکار استفاده می‌شود."><select className="rounded-xl border bg-white px-3 py-2.5" value={values.social_auto_image_template_id || coverTemplateLibrary.defaultTemplateId} disabled={values.social_auto_generate_image !== 'true'} onChange={(event) => set('social_auto_image_template_id', event.target.value)}>{coverTemplateLibrary.templates.map((item) => <option key={item.id} value={item.id}>{item.name}{item.id === coverTemplateLibrary.defaultTemplateId ? ' (پیش‌فرض کتابخانه)' : ''}</option>)}</select></Field>
@@ -634,41 +659,43 @@ export default function PublishingSettingsPage() {
               <label className="grid gap-1 text-xs font-medium text-slate-600">نام قالب<input className="rounded-xl border bg-white px-3 py-2.5 text-sm" maxLength={80} value={selectedCoverTemplate?.name || ''} onChange={(event) => updateSelectedCoverTemplate({ name: event.target.value })} /></label>
               <div className="flex flex-wrap items-end gap-2">
                 <Button type="button" size="sm" disabled={coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onClick={() => addCoverTemplate(false)}><Plus className="h-4 w-4" /> قالب جدید</Button>
-                <label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-50 ${busy === 'cover-from-sample' || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES ? 'pointer-events-none opacity-60' : ''}`}>
-                  <Upload className="h-4 w-4" /> ساخت از تصویر نمونه
-                  <input type="file" accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif" className="hidden" disabled={busy === 'cover-from-sample' || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onChange={(event) => { const file = event.target.files?.[0]; if (file) void createCoverTemplateFromSample(file); event.currentTarget.value = ''; }} />
-                </label>
                 <Button type="button" size="sm" variant="outline" disabled={!selectedCoverTemplate || coverTemplateLibrary.templates.length >= MAX_COVER_TEMPLATES} onClick={() => addCoverTemplate(true)}><Copy className="h-4 w-4" /> تکثیر قالب انتخاب‌شده</Button>
                 <Button type="button" size="sm" variant="outline" disabled={!selectedCoverTemplate || selectedCoverTemplate.id === coverTemplateLibrary.defaultTemplateId} onClick={() => selectedCoverTemplate && setCoverTemplateLibrary({ ...coverTemplateLibrary, defaultTemplateId: selectedCoverTemplate.id })}><Star className="h-4 w-4" /> پیش‌فرض</Button>
-                <Button type="button" size="sm" variant="outline" className="text-red-600" disabled={coverTemplateLibrary.templates.length <= 1} onClick={removeSelectedCoverTemplate}><Trash2 className="h-4 w-4" /> حذف</Button>
+                <Button type="button" size="sm" variant="outline" className="text-red-600" disabled={coverTemplateLibrary.templates.length <= 1} onClick={() => void removeSelectedCoverTemplate()}><Trash2 className="h-4 w-4" /> حذف</Button>
               </div>
             </div>
-            <p className="text-xs leading-5 text-slate-500">یک کاور نمونه آپلود کنید تا لایه‌های تیتر، لید، منبع، پوشش و تصویر شاخص مطابق آن ساخته شوند؛ سپس موقعیت لایه‌ها را دستی اصلاح کنید.</p>
+            <p className="text-xs leading-5 text-slate-500">لایه‌های تیتر، لید، منبع و تصویر شاخص را در قالب تنظیم کنید؛ سپس ذخیره کنید.</p>
             {selectedCoverTemplate && <CoverTemplateBuilder key={selectedCoverTemplate.id} value={JSON.stringify(selectedCoverTemplate.template)} onChange={(templateValue) => updateSelectedCoverTemplate({ template: parseTemplate(templateValue) })} fontLibrary={parseFontLibrary(values.social_font_library)} demoArticle={socialArticles?.items?.find((article) => article.authorImageUrl || article.featuredImageUrl) || socialArticles?.items?.[0]} />}
           </div>}
-          {subTab === 'networks' && <div className="mt-6 space-y-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4"><h3 className="font-bold text-slate-900">اتصال شبکه‌های اجتماعی</h3><p className="mt-1 text-sm leading-6 text-slate-600">توکن‌ها فقط در سرور و به‌صورت رمزنگاری‌شده نگهداری می‌شوند. برای حفظ اتصال قبلی، فیلد رمز را خالی بگذارید. انتشار تلگرام از Worker Deska استفاده می‌کند که فقط مدیر کل در «پلتفرم → Worker دریافت منبع» تنظیم می‌کند.</p></div><div className="grid gap-4 md:grid-cols-2"><Field label="توکن ربات تلگرام" hint={values.telegram_bot_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن BotFather را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.telegram_bot_token_configured === 'true' ? 'توکن ثبت شده است' : '123456:ABC...'} value={values.telegram_bot_token || ''} onChange={(e) => set('telegram_bot_token', e.target.value)} /></Field><Field label="شناسه کانال یا گفت‌وگوی تلگرام" hint="ربات باید در کانال دسترسی ارسال داشته باشد."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="@channel یا -100..." value={values.telegram_chat_id || ''} onChange={(e) => set('telegram_chat_id', e.target.value)} /></Field></div><div className="flex justify-end"><Button variant="outline" isLoading={busy === 'test-telegram'} onClick={() => void testSocial('telegram')}><TestTube2 className="h-4 w-4" /> تست اتصال تلگرام</Button></div><div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4"><h3 className="font-bold text-slate-900">اینستاگرام</h3><p className="mt-1 text-xs leading-5 text-slate-600">نیازمند حساب Professional، شناسه Instagram Business و توکن Graph API است. آدرس عمومی تصویر برای انتشار لازم است.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Access Token اینستاگرام" hint={values.social_instagram_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_instagram_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Access token'} value={values.social_instagram_access_token || ''} onChange={(e) => set('social_instagram_access_token', e.target.value)} /></Field><Field label="شناسه حساب Instagram Business"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="1784..." value={values.social_instagram_account_id || ''} onChange={(e) => set('social_instagram_account_id', e.target.value)} /></Field><Field label="نسخه Graph API"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="v23.0" value={values.social_instagram_api_version || ''} onChange={(e) => set('social_instagram_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-instagram'} onClick={() => void testSocial('instagram')}><TestTube2 className="h-4 w-4" /> تست اتصال اینستاگرام</Button></div></div><div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><h3 className="font-bold text-slate-900">لینکدین</h3><p className="mt-1 text-xs leading-5 text-slate-600">شناسه نویسنده باید URN شخص یا سازمانی باشد که توکن به آن دسترسی انتشار دارد.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Access Token لینکدین" hint={values.social_linkedin_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_linkedin_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Access token'} value={values.social_linkedin_access_token || ''} onChange={(e) => set('social_linkedin_access_token', e.target.value)} /></Field><Field label="URN نویسنده یا سازمان"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="urn:li:person:..." value={values.social_linkedin_author_urn || ''} onChange={(e) => set('social_linkedin_author_urn', e.target.value)} /></Field><Field label="نسخه API لینکدین"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="202501" value={values.social_linkedin_api_version || ''} onChange={(e) => set('social_linkedin_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-linkedin'} onClick={() => void testSocial('linkedin')}><TestTube2 className="h-4 w-4" /> تست اتصال لینکدین</Button></div></div><div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><h3 className="font-bold text-slate-900">فیسبوک</h3><p className="mt-1 text-xs leading-5 text-slate-600">از Page Access Token و شناسه صفحه‌ای استفاده کنید که مجوز انتشار تصویر دارد.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Page Access Token فیسبوک" hint={values.social_facebook_page_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_facebook_page_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Page access token'} value={values.social_facebook_page_access_token || ''} onChange={(e) => set('social_facebook_page_access_token', e.target.value)} /></Field><Field label="شناسه صفحه فیسبوک"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="123456789" value={values.social_facebook_page_id || ''} onChange={(e) => set('social_facebook_page_id', e.target.value)} /></Field><Field label="نسخه Graph API"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="v23.0" value={values.social_facebook_api_version || ''} onChange={(e) => set('social_facebook_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-facebook'} onClick={() => void testSocial('facebook')}><TestTube2 className="h-4 w-4" /> تست اتصال فیسبوک</Button></div></div><Field label="آدرس عمومی فایل‌های رسانه‌ای" hint="برای اینستاگرام لازم است APIهای Meta بتوانند تصویر را از اینترنت دریافت کنند؛ در محیط محلی باید دامنه عمومی یا تونل امن تنظیم شود."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://public.example.com" value={values.social_public_media_base_url || ''} onChange={(e) => set('social_public_media_base_url', e.target.value)} /></Field></div>}
+          {subTab === 'networks' && <div className="mt-6 space-y-6"><div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4"><h3 className="font-bold text-slate-900">اتصال شبکه‌های اجتماعی</h3><p className="mt-1 text-sm leading-6 text-slate-600">توکن‌ها فقط در سرور و به‌صورت رمزنگاری‌شده نگهداری می‌شوند. برای حفظ اتصال قبلی، فیلد رمز را خالی بگذارید. انتشار تلگرام از Worker Deska استفاده می‌کند که فقط مدیر کل در «پلتفرم → Worker دریافت منبع» تنظیم می‌کند.</p></div><div className="grid gap-4 md:grid-cols-2"><Field label="توکن ربات تلگرام" hint={values.telegram_bot_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن BotFather را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.telegram_bot_token_configured === 'true' ? 'توکن ثبت شده است' : '123456:ABC...'} value={values.telegram_bot_token || ''} onChange={(e) => set('telegram_bot_token', e.target.value)} /></Field><Field label="شناسه کانال یا گفت‌وگوی تلگرام" hint="ربات باید در کانال دسترسی ارسال داشته باشد."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="@channel یا -100..." value={values.telegram_chat_id || ''} onChange={(e) => set('telegram_chat_id', e.target.value)} /></Field></div><div className="flex justify-end"><Button variant="outline" isLoading={busy === 'test-telegram'} onClick={() => void testSocial('telegram')}><TestTube2 className="h-4 w-4" /> تست اتصال تلگرام</Button></div><div className="rounded-2xl border border-pink-100 bg-pink-50/50 p-4"><h3 className="font-bold text-slate-900">اینستاگرام</h3><p className="mt-1 text-xs leading-5 text-slate-600">با ورود از طریق فیسبوک، حساب Instagram Professional متصل به صفحه انتخاب و مجوز انتشار گرفته می‌شود. آدرس عمومی فایل‌های رسانه‌ای برای ارسال تصویر لازم است.</p>{values.social_instagram_access_token_configured === 'true' && values.social_instagram_account_id ? <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-pink-200 bg-white px-4 py-3"><div><p className="text-sm font-medium text-slate-900">{values.social_instagram_username ? `@${values.social_instagram_username}` : 'حساب اینستاگرام متصل است'}</p><p className="mt-1 text-xs text-slate-500" dir="ltr">{values.social_instagram_account_id}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" isLoading={busy === 'test-instagram'} onClick={() => void testSocial('instagram')}><TestTube2 className="h-4 w-4" /> تست اتصال</Button><Button variant="outline" className="text-red-600" isLoading={busy === 'instagram-disconnect'} onClick={() => void disconnectInstagram()}><LogOut className="h-4 w-4" /> قطع اتصال</Button></div></div> : <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-slate-600">{values.instagram_oauth_available === 'true' ? 'برای انتشار، با حساب فیسبوک/اینستاگرام وارد شوید.' : 'ورود اینستاگرام روی سرور پیکربندی نشده است؛ مدیر سامانه باید شناسه و رمز اپلیکیشن Meta را تنظیم کند.'}</p><Button type="button" isLoading={busy === 'instagram-connect'} disabled={values.instagram_oauth_available === 'false'} onClick={() => void connectInstagram()}><Instagram className="h-4 w-4" /> ورود با اینستاگرام</Button></div>}</div><div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><h3 className="font-bold text-slate-900">لینکدین</h3><p className="mt-1 text-xs leading-5 text-slate-600">شناسه نویسنده باید URN شخص یا سازمانی باشد که توکن به آن دسترسی انتشار دارد.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Access Token لینکدین" hint={values.social_linkedin_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_linkedin_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Access token'} value={values.social_linkedin_access_token || ''} onChange={(e) => set('social_linkedin_access_token', e.target.value)} /></Field><Field label="URN نویسنده یا سازمان"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="urn:li:person:..." value={values.social_linkedin_author_urn || ''} onChange={(e) => set('social_linkedin_author_urn', e.target.value)} /></Field><Field label="نسخه API لینکدین"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="202501" value={values.social_linkedin_api_version || ''} onChange={(e) => set('social_linkedin_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-linkedin'} onClick={() => void testSocial('linkedin')}><TestTube2 className="h-4 w-4" /> تست اتصال لینکدین</Button></div></div><div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><h3 className="font-bold text-slate-900">فیسبوک</h3><p className="mt-1 text-xs leading-5 text-slate-600">از Page Access Token و شناسه صفحه‌ای استفاده کنید که مجوز انتشار تصویر دارد.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><Field label="Page Access Token فیسبوک" hint={values.social_facebook_page_access_token_configured === 'true' ? 'توکن قبلی ثبت شده است.' : 'توکن را وارد کنید.'}><input type="password" dir="ltr" autoComplete="new-password" className="rounded-xl border px-3 py-2.5" placeholder={values.social_facebook_page_access_token_configured === 'true' ? 'توکن ثبت شده است' : 'Page access token'} value={values.social_facebook_page_access_token || ''} onChange={(e) => set('social_facebook_page_access_token', e.target.value)} /></Field><Field label="شناسه صفحه فیسبوک"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="123456789" value={values.social_facebook_page_id || ''} onChange={(e) => set('social_facebook_page_id', e.target.value)} /></Field><Field label="نسخه Graph API"><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="v23.0" value={values.social_facebook_api_version || ''} onChange={(e) => set('social_facebook_api_version', e.target.value)} /></Field></div><div className="mt-3 flex justify-end"><Button variant="outline" isLoading={busy === 'test-facebook'} onClick={() => void testSocial('facebook')}><TestTube2 className="h-4 w-4" /> تست اتصال فیسبوک</Button></div></div><Field label="آدرس عمومی فایل‌های رسانه‌ای" hint="برای اینستاگرام لازم است APIهای Meta بتوانند تصویر را از اینترنت دریافت کنند؛ در محیط محلی باید دامنه عمومی یا تونل امن تنظیم شود."><input dir="ltr" className="rounded-xl border px-3 py-2.5" placeholder="https://public.example.com" value={values.social_public_media_base_url || ''} onChange={(e) => set('social_public_media_base_url', e.target.value)} /></Field></div>}
           {subTab === 'fonts' && <FontLibrary value={parseFontLibrary(values.social_font_library)} onChange={(fonts) => set('social_font_library', JSON.stringify(fonts))} />}
           <div className="mt-5 flex justify-end"><Button isLoading={busy === 'save'} onClick={() => saveTab('social')}><Save className="h-4 w-4" /> ذخیره</Button></div>
         </Card>}
 
         {activeTab === 'news' && <Card className="p-5 sm:p-6">
-          <div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-700"><Clock3 className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-900">پیش‌فرض پایش و اتوماسیون خبر</h2><p className="mt-1 text-sm text-slate-500">این مقادیر پیش‌فرض سازمان هستند. هر منبع می‌تواند در صفحه «منابع خبری» تنظیم اختصاصی داشته باشد که اولویت دارد.</p></div></div>
+          <div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-700"><Clock3 className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-900">پیش‌فرض پایش و اتوماسیون خبر</h2><p className="mt-1 text-sm text-slate-500">این مقادیر برای همه منابعی که در «منابع خبری» روی پیش‌فرض سازمان هستند اعمال می‌شود.</p></div></div>
           {subTab === 'schedule' && <div className="mt-6 space-y-5">
             <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-sm leading-6 text-amber-900">
-              زمان‌بندی پایش و اتوماسیون را می‌توانید برای هر فید جداگانه در «منابع خبری → تنظیمات منبع» هم تنظیم کنید. اگر فیدی تنظیم اختصاصی داشته باشد، همان اعمال می‌شود.
+              با ذخیره این بخش، منابع اتاق خبر و اشتراک‌های کاتالوگ که «پیش‌فرض سازمان» دارند بلافاصله از مقادیر جدید پیروی می‌کنند. برای تفاوت روی یک منبع، در «منابع خبری» حالت اختصاصی را فعال کنید.
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="فاصله پایش (دقیقه)" hint="مقدار معتبر بین ۵ تا ۱۴۴۰ دقیقه است."><input type="number" min="5" max="1440" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.news_poll_interval_minutes || '240'} onChange={(e) => set('news_poll_interval_minutes', e.target.value)} /></Field>
               <Field label="حداکثر قدمت خبر (روز)" hint="خبرهای قدیمی‌تر هنگام دریافت نادیده گرفته می‌شوند."><input type="number" min="1" max="90" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.news_max_age_days || '10'} onChange={(e) => set('news_max_age_days', e.target.value)} /></Field>
             </div>
             <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><h3 className="font-bold text-slate-900">اتوماسیون اتاق خبر</h3><p className="mt-1 text-xs leading-5 text-slate-600">زبان هر خبر پیش از آماده‌سازی تشخیص داده می‌شود؛ خبر فارسی بازنویسی و خبر خارجی ترجمه خواهد شد.</p><div className="mt-4 grid gap-3 md:grid-cols-2">
-              <AutomationToggle title="پایش خودکار خبرها" description="فیدهای فعال طبق فاصله زمانی بالا بدون دخالت کاربر پایش شوند." enabled={values.news_auto_poll !== 'false'} onChange={(enabled) => set('news_auto_poll', String(enabled))} />
+              <AutomationToggle title="پایش خودکار خبرها" description="منابع فعال طبق فاصله زمانی بالا بدون دخالت کاربر پایش شوند." enabled={values.news_auto_poll !== 'false'} onChange={(enabled) => set('news_auto_poll', String(enabled))} />
               <AutomationToggle title="آماده‌سازی خودکار خبرها" description="تیتر و خلاصه خبرهای تازه با پرامپت متناسب با زبان آماده شود." enabled={values.news_auto_prepare !== 'false'} onChange={(enabled) => set('news_auto_prepare', String(enabled))} />
               <AutomationToggle title="انتشار خودکار در سایت" description="خبر آماده مستقیماً با متن کامل پردازش‌شده به سایت مقصد ارسال شود؛ اتصال سایت باید کامل باشد." enabled={values.news_auto_publish === 'true'} onChange={(enabled) => { set('news_auto_publish', String(enabled)); if (enabled) set('news_auto_send_social', 'false'); }} />
               <AutomationToggle title="ارسال خودکار به استودیوی اجتماعی" description="خبر آماده مستقیماً برای شبکه‌های اجتماعی آماده شود؛ در این حالت به سایت مقصد ارسال نمی‌شود." enabled={values.news_auto_send_social === 'true'} onChange={(enabled) => { set('news_auto_send_social', String(enabled)); if (enabled) set('news_auto_publish', 'false'); }} />
             </div></div>
           </div>}
-          <div className="mt-5 flex justify-end"><Button isLoading={busy === 'save'} onClick={() => saveTab('news')}><Save className="h-4 w-4" /> ذخیره</Button></div>
+          {subTab === 'schedule' && (
+            <div className="mt-5 flex justify-end">
+              <Button isLoading={busy === 'save'} onClick={() => saveTab('news')}>
+                <Save className="h-4 w-4" /> ذخیره پیش‌فرض پایش
+              </Button>
+            </div>
+          )}
         </Card>}
 
         {activeTab === 'news' && subTab === 'destination' && <Card className="p-5 sm:p-6">
@@ -707,7 +734,23 @@ export default function PublishingSettingsPage() {
                   </Button>
                 )}
                 {staleDestinationCategories.length > 0 && (
-                  <Button size="sm" variant="outline" className="text-red-700" isLoading={busy === 'category-delete-stale'} onClick={() => void bulkDeleteStaleDestinationCategories()}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-700"
+                    isLoading={busy === 'category-delete-stale'}
+                    onClick={async () => {
+                      const count = staleDestinationCategories.length;
+                      const ok = await confirm({
+                        title: 'حذف دسته‌های منقضی؟',
+                        description: `${count} دستهٔ پیشنهادی منقضی برای همیشه حذف می‌شود. این کار قابل بازگشت نیست.`,
+                        confirmLabel: 'حذف دسته‌های منقضی',
+                        variant: 'danger',
+                      });
+                      if (!ok) return;
+                      void bulkDeleteStaleDestinationCategories();
+                    }}
+                  >
                     حذف همه منقضی ({staleDestinationCategories.length})
                   </Button>
                 )}
@@ -814,7 +857,7 @@ export default function PublishingSettingsPage() {
                                     {category.status === 'pending' ? (
                                       <>
                                         <button type="button" className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'approved')}>تأیید</button>
-                                        <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>حذف</button>
+                                        <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>رد دسته</button>
                                       </>
                                     ) : category.status === 'stale' ? (
                                       <button type="button" className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" disabled={busy === `category-${category.id}`} onClick={() => void updateDestinationCategoryStatus(category.id, 'rejected')}>حذف</button>
@@ -903,7 +946,7 @@ export default function PublishingSettingsPage() {
             <Button isLoading={busy === 'save'} onClick={() => saveTab('news')}><Save className="h-4 w-4" /> ذخیره</Button>
           </div>
         </Card>}
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

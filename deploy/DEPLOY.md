@@ -1,135 +1,105 @@
-# راهنمای استقرار DESKA News
+# استقرار DESKA News
 
-**منبع واحد:** هر بار که می‌خواهید نسخهٔ production را منتشر کنید، فقط از این پوشه و این دستورها استفاده کنید.
-
-## یک دستور برای انتشار
+## انتشار (تنها کاری که لازم است)
 
 ```bat
 deploy.cmd
 ```
 
-یا:
+(یا دوبار کلیک روی `deploy\deploy.bat`؛ پیام commit دلخواه: `deploy.cmd -Message "توضیح تغییر"`)
+
+| مرحله | کار |
+|---|---|
+| 1/5 GitHub access | بررسی توکن ذخیره‌شده (فقط بار اول پرسیده می‌شود) |
+| 2/5 Local check | `pnpm typecheck` — بدون نیاز به روشن بودن سرور لوکال یا دیتابیس |
+| 3/5 Version and push | commit همه تغییرات، تعیین نسخه، ساخت tag `vX.Y.Z`، push اتمیک |
+| 4/5 GitHub Actions | ساخت ایمیج‌ها از **همان tag** و استقرار روی سرور با backup و rollback خودکار |
+| 5/5 Production check | `https://app.deska.ir` باید دقیقاً همان نسخه را گزارش کند |
+
+## قواعد نسخه (خودکار)
+
+- هر انتشار یک tag گیت `vX.Y.Z` دارد و GitHub Actions از همان tag می‌سازد؛ نسخه روی سرور = `VERSION` = tag.
+- اگر تغییری هست و نسخهٔ فعلی قبلاً منتشر شده، patch یکی بالا می‌رود.
+- اگر `VERSION` را خودتان (یا Agent) بالا برده‌اید و هنوز tag ندارد، همان استفاده می‌شود (دوبار بالا نمی‌رود).
+- هیچ شماره‌ای دوبار برای دو کد متفاوت استفاده نمی‌شود.
+- بدون تغییر، `deploy.cmd` همان نسخه را دوباره مستقر می‌کند.
+
+## اگر خطا داد
+
+**اجرای دوباره همیشه امن است**: از همان جایی که مانده ادامه می‌دهد و نسخه را دوباره بالا نمی‌برد.
+
+- قطعی موقت اینترنت/GitHub خودکار تا حدود ۲ دقیقه retry می‌شود.
+- اگر مشکل روی GitHub Actions یا سرور باشد، علت (آخرین خطوط لاگ و `DESKA_DEPLOY_ERROR`) همان‌جا چاپ می‌شود.
+- اگر مرحلهٔ ۴ روی سرور شکست بخورد، نسخهٔ قبلی خودکار برمی‌گردد و سایت بالا می‌ماند.
+
+| پیام | راه‌حل |
+|---|---|
+| `TypeScript errors found` | خطای واقعی کد؛ چیزی commit/منتشر نشده |
+| `Deploys are made from 'main' only` | `git switch main` |
+| `conflict with newer commits on GitHub` | `git pull --rebase origin main` و دوباره deploy |
+| `token is not allowed to start workflows` | `deploy\deploy.bat token` با توکن دارای scope های `repo` و `workflow` |
+| `Stopped waiting ...` | deploy روی GitHub ادامه دارد: `deploy\deploy.bat status` |
+
+## دستورهای دیگر
 
 ```bat
-deploy\deploy.bat
+deploy\deploy.bat status   :: آخرین اجرای deploy و علت خطا (اگر بود)
+deploy\deploy.bat smoke    :: سلامت https://app.deska.ir
+deploy\deploy.bat token    :: جایگزینی توکن GitHub
 ```
 
-یا در PowerShell (اگر `.\deploy\deploy.ps1` خطای ExecutionPolicy داد):
+گزینه‌ها: `-SkipCheck` (رد کردن typecheck)، `-NoWait` (برگشت بلافاصله بعد از شروع deploy).
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy.ps1 release
-```
+## راه‌اندازی یک‌باره
 
-> **Windows:** مستقیم `.\deploy\deploy.ps1` ممکن است به‌خاطر ExecutionPolicy بلاک شود؛ از **`deploy.cmd`** یا **`deploy\deploy.bat`** استفاده کنید (هر دو خودکار `-ExecutionPolicy Bypass` دارند).
+### توکن GitHub
 
-این دستور به‌ترتیب انجام می‌دهد:
+در اولین اجرا پرسیده می‌شود و با DPAPI ویندوز (فقط برای همین کاربر ویندوز) در
+`%LOCALAPPDATA%\Deska\github-deploy-token.xml` ذخیره می‌شود. ساخت:
+https://github.com/settings/tokens → classic → scope های `repo` و `workflow`.
+(متغیر محیطی `DEPLOY_GITHUB_TOKEN` هم پشتیبانی می‌شود.)
 
-1. **verify** — بررسی لوکال (`pnpm verify`)
-2. **commit + push** — افزایش `VERSION`، commit، push به `main`
-3. **dispatch** — اجرای GitHub Actions (`deploy.yml`)
-4. **smoke** — تست سلامت `https://app.deska.ir` پس از موفقیت workflow
+### GitHub Secrets
 
-> مرحلهٔ «export مناسبت‌های سیستمی» مربوط به ERP قدیمی بود و در Deska News اجرا نمی‌شود.
+`roshan-norouzi/deskanews` → Settings → Secrets and variables → Actions
 
-## زیردستورها
+| Secret | مقدار |
+|---|---|
+| `SERVER_HOST` | `94.101.184.39` |
+| `SERVER_USER` | `root` |
+| `SERVER_PORT` | `2435` (پورت SSH؛ نه 22 و نه 32168 پنل) |
+| `SERVER_SSH_KEY` | کلید خصوصی SSH |
+| `DEPLOY_PATH` | `/www/wwwroot/deska.ir/app` |
+| `SERVER_SSH_KNOWN_HOSTS` | اختیاری (توصیه‌شده): خروجی `ssh-keyscan -p 2435 94.101.184.39` یا fingerprint کلید سرور |
 
-| دستور | کاربرد |
-|--------|--------|
-| `.\deploy\deploy.ps1 help` | راهنما |
-| `.\deploy\deploy.ps1 verify` | فقط بررسی لوکال |
-| `.\deploy\deploy.ps1 release` | انتشار کامل |
-| `.\deploy\deploy.ps1 push` | فقط push شاخه |
-| `.\deploy\deploy.ps1 dispatch` | فقط اجرای workflow |
-| `.\deploy\deploy.ps1 status` | وضعیت آخرین deploy |
-| `.\deploy\deploy.ps1 smoke` | تست production |
+### سرور
 
-## گزینه‌های رایج
+- `.env` در `DEPLOY_PATH` (نمونه: `production.env.example`؛ نصب اولیه: `bootstrap-server.sh`).
+- Docker project: `deska-news`. Redis و MinIO از GHCR کشیده می‌شوند (سرور به Docker Hub دسترسی ندارد).
 
-```bat
-deploy\deploy.bat -NoWait
-deploy\deploy.bat -SkipSystemExport
-deploy\deploy.bat -NoVersionBump
-deploy\deploy.bat -SkipVerify
-```
+## داده‌های سرور در deploy
 
-معادل PowerShell:
+| مورد | رفتار |
+|---|---|
+| `.env` سرور | فقط `APP_VERSION`، `IMAGE_PREFIX`، `COMPOSE_PROJECT_NAME` و آدرس ایمیج Redis/MinIO به‌روز می‌شوند |
+| PostgreSQL | volume حفظ می‌شود؛ فقط migrationهای جدید اجرا می‌شوند |
+| کاربران و تنظیمات | حفظ؛ seed فقط در اولین نصب |
+| فایل‌های آپلود | volume حفظ می‌شود |
+| بکاپ | قبل از هر deploy در `backups/deployments/` (پنج مورد آخر) |
+| ایمیج‌های قدیمی | فقط نسخهٔ جاری و قبلی (برای rollback) نگه داشته می‌شوند |
 
-```powershell
-.\deploy\deploy.ps1 release -NoWait
-.\deploy\deploy.ps1 release -SkipSystemExport
-.\deploy\deploy.ps1 release -NoVersionBump
-.\deploy\deploy.ps1 release -SkipVerify
-```
-
-- **`-NoWait`**: بعد از dispatch برگردد؛ پیگیری از لینک GitHub Actions
-- **`-SkipSystemExport`**: (اختیاری) برای سازگاری با نسخه‌های قدیمی؛ در Deska News معمولاً لازم نیست
-- **`-NoVersionBump`**: بدون افزایش `VERSION`
-- **`-SkipVerify`**: بدون `pnpm verify` (فقط وقتی عجله دارید)
-
-## مراحل دستی (اگر بخواهید گام‌به‌گام)
-
-```powershell
-pnpm verify
-# در صورت نیاز: VERSION و CHANGELOG.md را به‌روز کنید
-.\deploy\deploy.ps1 release -SkipVerify
-# یا جداگانه:
-.\deploy\deploy.ps1 push
-.\deploy\deploy.ps1 dispatch
-.\deploy\deploy.ps1 status
-.\deploy\deploy.ps1 smoke
-```
-
-## پیکربندی یک‌باره
-
-### ۱. فایل لوکال (غیرحساس)
-
-```powershell
-Copy-Item deploy\config.example.json deploy\config.local.json
-```
-
-مقادیر SSH، مسیر deploy و URL عمومی را در `config.local.json` تنظیم کنید. این فایل commit نمی‌شود.
-
-### ۲. GitHub Secrets
-
-جزئیات در [`GITHUB-SECRETS.md`](./GITHUB-SECRETS.md). حداقل:
-
-- `SERVER_HOST`, `SERVER_USER`, `SERVER_PORT`, `SERVER_SSH_KEY`
-- `DEPLOY_PATH` = `/www/wwwroot/deska.ir/app`
-- `SERVER_SSH_KNOWN_HOSTS` (توصیه‌شده)
-
-### ۳. توکن GitHub برای dispatch از لوکال
-
-یکی از این‌ها:
-
-```powershell
-$env:DEPLOY_GITHUB_TOKEN = 'ghp_...'   # PAT با دسترسی Actions روی repo
-gh auth login
-```
-
-اگر هیچ‌کدام نباشد، هنگام `dispatch` یا `release` یک‌بار از شما پرسیده می‌شود (ورودی مخفی).
-
-### ۴. `.env` سرور
-
-نمونه: [`production.env.example`](./production.env.example)  
-مسیر روی سرور: `/www/wwwroot/deska.ir/app/.env`
-
-## ساختار پوشه deploy
+## فایل‌ها
 
 ```
-deploy/
-  deploy.ps1          ← نقطه ورود (زیردستورها)
-  deploy.bat          ← میانبر Windows برای release
-  DEPLOY.md           ← این راهنما
-  lib/                ← منطق داخلی (نیازی به اجرای مستقیم نیست)
-  server-deploy.sh    ← اسکریپت روی سرور (از GitHub Actions)
-  GITHUB-SECRETS.md
-  config.example.json
-  production.env.example
+deploy.cmd                 میانبر ریشه → deploy\deploy.bat
+deploy/deploy.bat          اجرای ویندوز (ExecutionPolicy Bypass)
+deploy/deploy.ps1          نقطهٔ ورود
+deploy/lib/                منطق داخلی (common, config, github, release)
+deploy/server-deploy.sh    اجرا روی سرور: backup → pull → migrate → switch → verify → rollback
+deploy/prepare-known-hosts.sh
+deploy/bootstrap-server.sh نصب اولیهٔ .env
+deploy/postgres/           فقط برای پروفایل read-replica
+.github/workflows/deploy.yml
 ```
 
-## نکات مهم
-
-- فایل `.env` لوکال **هرگز** commit نمی‌شود.
-- Token و کلید SSH را در چت یا ریپو ذخیره نکنید.
-- پس از bump نسخه، یک بند در `CHANGELOG.md` برای همان نسخه اضافه کنید.
-- جزئیات فنی workflow و rollback: [`README.md`](./README.md)
+توکن و کلید SSH را هرگز در چت یا ریپو قرار ندهید.

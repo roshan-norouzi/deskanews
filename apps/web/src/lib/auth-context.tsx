@@ -15,6 +15,7 @@ import {
   clearPublishingSettingsDraft,
   clearTenantId,
   clearTokens,
+  SESSION_EXPIRED_EVENT,
   withBasePath,
   type ApiFetchOptions,
 } from './utils';
@@ -90,6 +91,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     void init();
   }, [refresh]);
+
+  useEffect(() => {
+    const expire = () => {
+      clearPublishingSettingsDraft();
+      setUser(null);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, expire);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expire);
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     await apiFetch<LoginResponse>('/auth/login', {

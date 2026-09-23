@@ -49,7 +49,7 @@ export class RedisCache {
     }
   }
 
-  private redis(): Redis | null {
+  redis(): Redis | null {
     if (!this.enabled()) return null;
     if (!this.client) {
       this.client = new Redis(this.url(), { maxRetriesPerRequest: 1, enableOfflineQueue: false });

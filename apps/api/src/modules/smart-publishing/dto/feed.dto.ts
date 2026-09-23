@@ -47,6 +47,10 @@ export class CreateFeedDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsIn(['default', 'custom'])
+  settingsMode?: 'default' | 'custom';
 }
 
 export class UpdateFeedDto {
@@ -88,6 +92,10 @@ export class UpdateFeedDto {
   @IsOptional()
   @IsIn(FEED_PURPOSES)
   purpose?: FeedPurpose;
+
+  @IsOptional()
+  @IsIn(['default', 'custom'])
+  settingsMode?: 'default' | 'custom';
 }
 
 export class UpdateTenantPlatformFeedDto {
@@ -95,10 +103,10 @@ export class UpdateTenantPlatformFeedDto {
   @IsBoolean()
   enabled?: boolean;
 
-  @IsOptional() @IsBoolean() autoPoll?: boolean;
-  @IsOptional() @IsBoolean() autoPrepare?: boolean;
-  @IsOptional() @IsBoolean() autoPublish?: boolean;
-  @IsOptional() @IsBoolean() autoSendSocial?: boolean;
+  @IsOptional() @IsBoolean() autoPoll?: boolean | null;
+  @IsOptional() @IsBoolean() autoPrepare?: boolean | null;
+  @IsOptional() @IsBoolean() autoPublish?: boolean | null;
+  @IsOptional() @IsBoolean() autoSendSocial?: boolean | null;
 
   @IsOptional()
   @IsIn(['default', 'custom'])

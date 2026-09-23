@@ -41,8 +41,8 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const result = await this.authService.login(dto);
-    this.setAuthCookies(response, result.accessToken, result.refreshToken);
+    const { accessToken, refreshToken, ...result } = await this.authService.login(dto);
+    this.setAuthCookies(response, accessToken, refreshToken);
     return result;
   }
 
@@ -61,8 +61,8 @@ export class AuthController {
     }
 
     try {
-      const result = await this.authService.refresh({ refreshToken });
-      this.setAuthCookies(response, result.accessToken, result.refreshToken);
+      const { accessToken, refreshToken: rotated, ...result } = await this.authService.refresh({ refreshToken });
+      this.setAuthCookies(response, accessToken, rotated);
       return result;
     } catch (error) {
       this.clearAuthCookies(response);

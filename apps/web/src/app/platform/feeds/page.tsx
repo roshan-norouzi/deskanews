@@ -8,7 +8,9 @@ import { PlatformFeedCatalogTable } from '@/components/publishing/platform-feed-
 import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Card } from '@/components/ui/card';
+import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
@@ -92,6 +94,7 @@ function validateForm(form: FeedForm) {
 }
 
 export default function PlatformFeedsPage() {
+  const confirm = useConfirm();
   const { isSuperAdmin } = useAuth();
   const [feeds, setFeeds] = useState<PlatformFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,6 +190,7 @@ export default function PlatformFeedsPage() {
       const result = await apiFetch<HealthResult>('/platform/feeds/probe', {
         method: 'POST',
         skipTenant: true,
+        signal: AbortSignal.timeout(90_000),
         body: {
           name: form.name.trim(),
           url: form.url.trim(),
@@ -208,7 +212,7 @@ export default function PlatformFeedsPage() {
     try {
       const result = await apiFetch<HealthResult & { healthStatus?: PlatformFeed['healthStatus']; healthError?: string }>(
         `/platform/feeds/${feed.id}/test`,
-        { method: 'POST', skipTenant: true },
+        { method: 'POST', skipTenant: true, signal: AbortSignal.timeout(90_000) },
       );
       setHealth(result);
       setHealthOpen(true);
@@ -257,15 +261,15 @@ export default function PlatformFeedsPage() {
 
   if (!isSuperAdmin) {
     return (
-      <ProtectedLayout title="منابع پیش‌فرض پلتفرم">
+      <ProtectedLayout>
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">فقط مدیر کل به این بخش دسترسی دارد.</div>
       </ProtectedLayout>
     );
   }
 
   return (
-    <ProtectedLayout title="منابع پیش‌فرض پلتفرم">
-      <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout>
+      <PageContainer>
         <PageHeader
           title="منابع پیش‌فرض پلتفرم"
           description="فقط نام، آدرس، نوع و زبان منابع رسمی را اینجا ثبت کنید. فیلتر کلمات و فاصله پایش را هر سازمان برای خودش تنظیم می‌کند."
@@ -360,8 +364,14 @@ export default function PlatformFeedsPage() {
                 openEdit(feed as PlatformFeed);
               }}
               onDelete={(feed) => {
-                if (!window.confirm(`منبع «${feed.name}» حذف شود؟`)) return;
                 void (async () => {
+                  const ok = await confirm({
+                    title: 'حذف منبع پیش‌فرض؟',
+                    description: `منبع «${feed.name}» از کاتالوگ پلتفرم حذف می‌شود.`,
+                    confirmLabel: 'حذف منبع',
+                    variant: 'danger',
+                  });
+                  if (!ok) return;
                   setBusy(`delete-${feed.id}`);
                   try {
                     await apiFetch(`/platform/feeds/${feed.id}`, { method: 'DELETE', skipTenant: true });
@@ -474,7 +484,7 @@ export default function PlatformFeedsPage() {
             </div>
           )}
         </Modal>
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

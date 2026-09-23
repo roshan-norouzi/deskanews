@@ -10,6 +10,7 @@ const REFRESH_KEY = 'deska_refresh_token';
 const TENANT_KEY = 'deska_tenant_id';
 const PUBLISHING_SETTINGS_DRAFT_KEY = 'deska_publishing_settings_draft';
 export const TENANT_CHANGED_EVENT = 'deska-tenant-changed';
+export const SESSION_EXPIRED_EVENT = 'deska-session-expired';
 
 function notifyTenantChanged() {
   if (typeof window === 'undefined') return;
@@ -77,6 +78,9 @@ async function refreshAccessToken(): Promise<boolean> {
 
     if (!res.ok) {
       clearTokens();
+      if ((res.status === 401 || res.status === 403) && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      }
       return false;
     }
 
@@ -96,6 +100,15 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+function apiUnreachableMessage(kind: 'network' | 'proxy'): string {
+  const base =
+    kind === 'network'
+      ? 'ارتباط با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.'
+      : 'ارتباط Web با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.';
+  if (process.env.NODE_ENV !== 'development') return base;
+  return `${base} در لوکال معمولاً API روی پورت 3101 بالا نیست — «pnpm start» (یا «pnpm dev:api») را اجرا کنید.`;
 }
 
 export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
@@ -133,8 +146,15 @@ export async function apiFetch<T = unknown>(
       headers,
       body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
-  } catch {
-    throw new ApiError('ارتباط با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.', 503);
+  } catch (error) {
+    const timedOut = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    if (timedOut) {
+      throw new ApiError(
+        'زمان پاسخ‌دهی تمام شد (معمولاً تست منبع یا دریافت از سایت خارجی طولانی شده). دوباره تلاش کنید؛ اگر تکرار شد، Worker دریافت منبع و timeout پروکسی Nginx/پنل را بررسی کنید.',
+        504,
+      );
+    }
+    throw new ApiError(apiUnreachableMessage('network'), 503);
   }
 
   if (response.status === 401 && !skipAuth) {
@@ -165,18 +185,23 @@ export async function apiFetch<T = unknown>(
       errorData = rawText || null;
     }
 
+    const isGatewayTimeout = response.status === 502 || response.status === 504;
     const isProxyFailure =
-      response.status >= 500 &&
-      (rawText === 'Internal Server Error' ||
-        rawText.includes('ECONNREFUSED') ||
-        rawText.includes('ECONNRESET') ||
-        rawText.includes('Gateway Timeout') ||
-        !rawText.trim());
+      isGatewayTimeout ||
+      (response.status >= 500 &&
+        (rawText === 'Internal Server Error' ||
+          rawText.includes('ECONNREFUSED') ||
+          rawText.includes('ECONNRESET') ||
+          rawText.includes('Gateway Timeout') ||
+          rawText.includes('Bad Gateway') ||
+          !rawText.trim()));
 
     const message = response.status === 413
       ? 'حجم فایل از حد مجاز بیشتر است؛ فایل Excel را کوچک‌تر کنید یا با پشتیبانی تماس بگیرید.'
+      : isGatewayTimeout
+      ? 'زمان پاسخ‌دهی تمام شد (معمولاً تست منبع یا دریافت از سایت خارجی طولانی شده). دوباره تلاش کنید؛ اگر تکرار شد، Worker دریافت منبع و timeout پروکسی Nginx/پنل (حداقل ۱۲۰ ثانیه برای /api) را بررسی کنید.'
       : isProxyFailure
-      ? 'ارتباط Web با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.'
+      ? apiUnreachableMessage('proxy')
       : (errorData as { message?: string | string[] })?.message
         ? Array.isArray((errorData as { message: string[] }).message)
           ? (errorData as { message: string[] }).message.join('، ')

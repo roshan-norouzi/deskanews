@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Newspaper, RefreshCw, Rss, Search, Settings2, Trash2 } from 'lucide-react';
+import { Newspaper, RefreshCw, Rss, Settings2, Trash2 } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import {
@@ -12,7 +12,14 @@ import {
 import { NewsPublishModal, type NewsPublishDraft } from '@/components/publishing/news-publish-modal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useConfirm } from '@/components/ui/confirm-provider';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FilterBar } from '@/components/ui/filter-bar';
+import { NoticeBanner } from '@/components/ui/notice-banner';
+import { PageContainer } from '@/components/ui/page-container';
+import { PageSkeleton } from '@/components/ui/page-loading';
 import { PageHeader } from '@/components/ui/page-header';
+import { QUEUED_JOB_SUCCESS } from '@/lib/product-copy';
 import { useApi } from '@/hooks/use-api';
 import { useVisibleInterval } from '@/hooks/use-visible-interval';
 import {
@@ -26,6 +33,7 @@ interface Feed { id: string; name: string; purpose: string; enabled: boolean }
 interface DestinationCategoryOption { id: string; name: string; isGeneral: boolean; status: string }
 
 export default function NewsPage() {
+  const confirm = useConfirm();
   const feedsApi = useApi<Feed[]>('/publishing/feeds');
   const categoriesApi = useApi<DestinationCategoryOption[]>('/publishing/destination/categories?status=approved');
   const [categoryId, setCategoryId] = useState('');
@@ -96,7 +104,7 @@ export default function NewsPage() {
       const queued = Boolean(result && typeof result === 'object' && 'queued' in result && (result as { queued?: boolean }).queued);
       setNotice({
         type: 'success',
-        text: queued ? 'کار به worker سپرده شد و پس از انجام در فهرست دیده می‌شود.' : success,
+        text: queued ? QUEUED_JOB_SUCCESS : success,
       });
       await articlesApi.refetch();
     } catch (error) {
@@ -112,7 +120,7 @@ export default function NewsPage() {
   const syncNews = () => run(
     'sync',
     () => apiFetch('/publishing/news/sync', { method: 'POST' }),
-    'فیدهای اتاق خبر پایش شدند؛ خبرهای جدید بر اساس تنظیمات اتوماسیون پردازش می‌شوند.',
+    'منابع اتاق خبر پایش شدند؛ خبرهای جدید بر اساس تنظیمات اتوماسیون پردازش می‌شوند.',
   );
 
   const summarize = (id: string) => run(
@@ -132,7 +140,8 @@ export default function NewsPage() {
       draft: {
         titleFa: article.titleFa,
         summaryFa: article.summaryFa,
-        contentFa: article.contentFa || '',
+        contentHtml: article.contentFa || '',
+        featuredImageUrl: article.featuredImageUrl,
       },
     });
   }, []);
@@ -158,7 +167,7 @@ export default function NewsPage() {
       setNotice({
         type: 'success',
         text: translated?.queued
-          ? 'ترجمه کامل به worker سپرده شد. چند لحظه بعد فهرست را تازه کنید.'
+          ? QUEUED_JOB_SUCCESS
           : 'متن کامل آماده انتشار شد؛ «آماده برای انتشار» را بزنید.',
       });
       await articlesApi.refetch();
@@ -185,13 +194,18 @@ export default function NewsPage() {
     try {
       const published = await apiFetch<{ queued?: boolean }>(`/publishing/news/articles/${id}/publish`, {
         method: 'POST',
-        body: draft,
+        body: {
+          titleFa: draft.titleFa,
+          summaryFa: draft.summaryFa,
+          contentHtml: draft.contentHtml,
+          featuredImageUrl: draft.featuredImageUrl,
+        },
       });
       setPublishModal(null);
       setNotice({
         type: 'success',
         text: published?.queued
-          ? 'انتشار به worker سپرده شد و پس از انجام در فهرست دیده می‌شود.'
+          ? QUEUED_JOB_SUCCESS
           : 'خبر با موفقیت به سایت مقصد ارسال شد.',
       });
       await articlesApi.refetch();
@@ -231,8 +245,14 @@ export default function NewsPage() {
     }
   }, [articlesApi]);
 
-  const reject = (id: string) => {
-    if (!window.confirm('این خبر رد شود؟ خبر پس از ۳ روز برای همیشه حذف خواهد شد.')) return;
+  const reject = async (id: string) => {
+    const ok = await confirm({
+      title: 'رد این خبر؟',
+      description: 'خبر به بخش ردشده‌ها منتقل می‌شود و پس از ۳ روز برای همیشه حذف خواهد شد.',
+      confirmLabel: 'رد خبر',
+      variant: 'danger',
+    });
+    if (!ok) return;
     void run(
       `reject-${id}`,
       () => apiFetch(`/publishing/news/articles/${id}/reject`, { method: 'POST' }),
@@ -243,37 +263,45 @@ export default function NewsPage() {
   const listTitle = activeFilter.label;
 
   return (
-    <ProtectedLayout title="اتاق خبر">
-      <main className="mx-auto w-full max-w-5xl space-y-6 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout>
+      <PageContainer width="narrow">
         <PageHeader
           title="اتاق خبر"
           description="مدیریت خبرها و فرایند انتشار."
           icon={Newspaper}
           actions={(
             <>
-              <Link
-                href="/publishing/feeds"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm text-white transition hover:bg-white/15"
-              >
-                <Rss className="h-4 w-4" />
-                فیدها
+              <Link href="/publishing/feeds">
+                <Button variant="outline" size="sm" type="button">
+                  <Rss className="h-4 w-4" />
+                  منابع خبری
+                </Button>
               </Link>
-              <Link
-                href="/publishing/settings"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm text-white transition hover:bg-white/15"
-              >
-                <Settings2 className="h-4 w-4" />
-                تنظیمات
+              <Link href="/publishing/settings">
+                <Button variant="outline" size="sm" type="button">
+                  <Settings2 className="h-4 w-4" />
+                  تنظیمات انتشار
+                </Button>
               </Link>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="border border-red-300/40 text-red-100 hover:bg-red-500/20"
+                className="border-red-200 text-red-700 hover:bg-red-50"
                 isLoading={busy === 'delete-all'}
-                onClick={() => {
-                  if (window.confirm('همه خبرهای اتاق خبر برای همیشه حذف شوند؟ فیدها و تنظیمات باقی می‌مانند و در پایش بعدی خبرها دوباره دریافت می‌شوند.')) {
-                    void run('delete-all', () => apiFetch('/publishing/news/articles', { method: 'DELETE' }), 'همه خبرهای اتاق خبر حذف شدند؛ در پایش بعدی دوباره دریافت می‌شوند.');
-                  }
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: 'حذف همه خبرهای اتاق خبر؟',
+                    description:
+                      'همه خبرهای فعلی برای همیشه حذف می‌شوند. منابع و تنظیمات باقی می‌مانند و در پایش بعدی خبرها دوباره دریافت می‌شوند.',
+                    confirmLabel: 'حذف همه خبرها',
+                    variant: 'danger',
+                  });
+                  if (!ok) return;
+                  void run(
+                    'delete-all',
+                    () => apiFetch('/publishing/news/articles', { method: 'DELETE' }),
+                    'همه خبرهای اتاق خبر حذف شدند؛ در پایش بعدی دوباره دریافت می‌شوند.',
+                  );
                 }}
               >
                 <Trash2 className="h-4 w-4" />
@@ -281,7 +309,6 @@ export default function NewsPage() {
               </Button>
               <Button
                 size="sm"
-                className="bg-white text-slate-900 hover:bg-slate-100"
                 isLoading={busy === 'sync'}
                 onClick={syncNews}
               >
@@ -293,22 +320,14 @@ export default function NewsPage() {
         />
 
         {notice && (
-          <div
-            role="status"
-            className={cn(
-              'rounded-2xl border px-4 py-3 text-sm',
-              notice.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                : 'border-red-200 bg-red-50 text-red-700',
-            )}
-          >
+          <NoticeBanner tone={notice.type === 'success' ? 'success' : 'error'} onDismiss={() => setNotice(null)}>
             {notice.text}
-          </div>
+          </NoticeBanner>
         )}
         {articlesApi.error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <NoticeBanner tone="error">
             دریافت خبرها انجام نشد: {articlesApi.error}
-          </div>
+          </NoticeBanner>
         )}
 
         <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -318,94 +337,77 @@ export default function NewsPage() {
               key={card.key}
               onClick={() => setStatus(card.key)}
               className={cn(
-                'rounded-2xl border bg-white px-4 py-3 text-right shadow-sm transition hover:shadow-md',
+                'rounded-lg border bg-white px-4 py-3 text-right transition',
                 status === card.key ? 'border-primary-400 ring-2 ring-primary-100' : 'border-slate-200',
               )}
             >
               <div className={cn('text-xl font-bold', card.tone)}>{formatPersianDigits(card.count)}</div>
               <div className="mt-0.5 text-xs font-medium text-slate-700">{card.label}</div>
-              <div className="mt-1 text-[11px] leading-5 text-slate-400">{card.description}</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">{card.description}</div>
             </button>
           ))}
         </section>
 
-        <Card className="p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-              نمایش
-              <select className="rounded-xl border px-3 py-2.5" value={status} onChange={(event) => setStatus(event.target.value as NewsroomFilter)}>
-                {NEWSROOM_FILTERS.map((filter) => (
-                  <option key={filter.key} value={filter.key}>{filter.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-              فید
-              <select className="rounded-xl border px-3 py-2.5" value={feedId} onChange={(event) => setFeedId(event.target.value)}>
-                <option value="">همه فیدهای اتاق خبر</option>
-                {feeds.map((feed) => (
-                  <option key={feed.id} value={feed.id}>
-                    {feed.name}{feed.enabled ? '' : ' (متوقف)'}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-              دسته‌بندی مقصد
-              <select
-                className="rounded-xl border px-3 py-2.5"
-                value={generalOnly ? '__general__' : categoryId}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value === '__general__') {
-                    setGeneralOnly(true);
-                    setCategoryId('');
-                    return;
-                  }
-                  setGeneralOnly(false);
-                  setCategoryId(value);
-                }}
-              >
-                <option value="">همه دسته‌ها</option>
-                <option value="__general__">فقط عمومی (دسته‌بندی‌نشده)</option>
-                {approvedCategories.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-              جست‌وجو
-              <div className="relative">
-                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  className="w-full rounded-xl border py-2.5 pl-3 pr-10"
-                  placeholder="عنوان یا نام رسانه..."
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-            </label>
-          </div>
-        </Card>
+        <FilterBar
+          searchValue={query}
+          onSearchChange={setQuery}
+          searchPlaceholder="عنوان یا نام رسانه..."
+        >
+          <label className="ds-field min-w-[12rem]">
+            منبع
+            <select className="h-10 rounded-lg border border-surface-border bg-white px-3 text-sm" value={feedId} onChange={(event) => setFeedId(event.target.value)}>
+              <option value="">همه منابع اتاق خبر</option>
+              {feeds.map((feed) => (
+                <option key={feed.id} value={feed.id}>
+                  {feed.name}{feed.enabled ? '' : ' (متوقف)'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="ds-field min-w-[12rem]">
+            دسته‌بندی مقصد
+            <select
+              className="h-10 rounded-lg border border-surface-border bg-white px-3 text-sm"
+              value={generalOnly ? '__general__' : categoryId}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === '__general__') {
+                  setGeneralOnly(true);
+                  setCategoryId('');
+                  return;
+                }
+                setGeneralOnly(false);
+                setCategoryId(value);
+              }}
+            >
+              <option value="">همه دسته‌ها</option>
+              <option value="__general__">فقط عمومی (دسته‌بندی‌نشده)</option>
+              {approvedCategories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </label>
+        </FilterBar>
 
         <div className="flex items-center justify-between">
-          <h2 className="font-bold text-slate-900">{listTitle}</h2>
+          <h2 className="ds-section-title">{listTitle}</h2>
           <span className="text-sm text-slate-500">{formatPersianDigits(rows.length)} خبر</span>
         </div>
 
         {articlesApi.isLoading && !articlesApi.data ? (
-          <div className="grid min-h-64 place-items-center">
-            <span className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-          </div>
+          <PageSkeleton rows={4} />
         ) : rows.length === 0 ? (
-          <Card className="flex min-h-64 flex-col items-center justify-center p-8 text-center">
-            <span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400">
-              <Newspaper className="h-8 w-8" />
-            </span>
-            <h3 className="mt-4 font-bold text-slate-900">خبری در این بخش نیست</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              فیدهای اتاق خبر را اضافه کنید یا «دریافت خبرهای جدید» را بزنید.
-            </p>
+          <Card>
+            <EmptyState
+              icon={Newspaper}
+              title="خبری در این بخش نیست"
+              description="منابع اتاق خبر را در «منابع خبری» اضافه کنید یا دکمه «دریافت خبرهای جدید» را بزنید."
+              action={(
+                <Link href="/publishing/feeds">
+                  <Button variant="outline" size="sm">مدیریت منابع خبری</Button>
+                </Link>
+              )}
+            />
           </Card>
         ) : (
           <section className="space-y-4">
@@ -450,8 +452,15 @@ export default function NewsPage() {
             void translateFull(publishModal.articleId, true);
           }}
           onPublish={(draft) => { void publishFromModal(draft); }}
+          onFeaturedImageChange={(url) => {
+            setPublishModal((current) => (current ? {
+              ...current,
+              featuredImageUrl: url,
+              draft: { ...current.draft, featuredImageUrl: url },
+            } : current));
+          }}
         />
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

@@ -55,7 +55,7 @@ export function AppShell({ children, title }: AppShellProps) {
   const sidebarWidth = sidebarCollapsed ? 'w-[4.5rem]' : 'w-72';
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-surface-page">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-sm lg:hidden"
@@ -66,7 +66,7 @@ export function AppShell({ children, title }: AppShellProps) {
 
       <aside
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex h-dvh max-h-dvh flex-col border-l border-sidebar-border bg-sidebar text-slate-900 shadow-card transition-all duration-200 lg:sticky lg:top-0',
+          'fixed inset-y-0 right-0 z-sidebar flex h-dvh max-h-dvh flex-col border-l border-sidebar-border bg-sidebar text-slate-900 transition-all duration-200 lg:sticky lg:top-0',
           sidebarWidth,
           sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
         )}
@@ -106,7 +106,7 @@ export function AppShell({ children, title }: AppShellProps) {
               className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500 transition hover:border-slate-300 hover:bg-white"
             >
               <Search className="h-4 w-4 shrink-0" />
-              <span className="flex-1 text-right">جستجو...</span>
+              <span className="flex-1 text-right">جست‌وجو...</span>
               <kbd className="hidden rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-400 ring-1 ring-slate-200 sm:inline">Ctrl+K</kbd>
             </button>
           </div>
@@ -116,7 +116,7 @@ export function AppShell({ children, title }: AppShellProps) {
           {navSections.map((section) => (
             <div key={section.id} className="mb-5 last:mb-0">
               {!sidebarCollapsed && (
-                <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-heading">
+                <p className="mb-2 px-3 text-xs font-semibold text-sidebar-heading">
                   {section.label}
                 </p>
               )}
@@ -183,7 +183,7 @@ export function AppShell({ children, title }: AppShellProps) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-slate-200 bg-white/90 px-4 backdrop-blur-md lg:px-8">
+        <header className="sticky top-0 z-header flex h-header items-center gap-4 border-b border-surface-border bg-white px-4 lg:px-8">
           <button
             type="button"
             className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
@@ -204,7 +204,7 @@ export function AppShell({ children, title }: AppShellProps) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-8">{children}</main>
+        <main className="flex-1 px-4 py-5 lg:px-8 lg:py-6">{children}</main>
       </div>
 
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} navGroups={navGroups} />

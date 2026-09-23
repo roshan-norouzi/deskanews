@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
@@ -146,8 +147,8 @@ export default function OrganizationsPage() {
   };
 
   return (
-    <ProtectedLayout title="سازمان‌های من" tenantRequired={false}>
-      <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout title="سازمان‌های من" tenantRequired={false} showPlatformNav>
+      <PageContainer>
         <PageHeader
           title="سازمان‌های من"
           description="سازمان موردنظر را انتخاب کن، مصرف را ببین و وارد اتاق خبر شو."
@@ -374,7 +375,7 @@ export default function OrganizationsPage() {
             </Card>
           </aside>
         </div>
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

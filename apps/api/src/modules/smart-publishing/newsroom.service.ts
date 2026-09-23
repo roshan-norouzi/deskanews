@@ -15,13 +15,14 @@ import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
+import { entryGuids, reuseKnownGuids } from './feed-dedupe';
 import { buildLatestFeedPreviewItems } from './feed-preview';
 import { PlatformFeedService } from './platform-feed.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { DestinationCategoryService } from './destination-category.service';
 import { newsroomArticleWhere, orphanedNewsArticleWhere } from './newsroom-article-stats';
 import { decodeArticleCursor, encodeArticleCursor } from '../../common/article-page';
-import { toWordPressHtml } from './news-publish-html';
+import { resolvePublishHtml } from './news-publish-html';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
@@ -97,6 +98,58 @@ function sourceBoolean(value: boolean | null | undefined, fallback: boolean): bo
 
 function sourceInterval(value: number | null | undefined, fallback: number): number {
   return Number.isInteger(value) && value! >= 5 && value! <= 1440 ? value! : fallback;
+}
+
+type FeedAutomationInput = {
+  settingsMode?: 'default' | 'custom';
+  pollIntervalMinutes?: number;
+  autoPoll?: boolean;
+  autoPrepare?: boolean;
+  autoPublish?: boolean;
+  autoSendSocial?: boolean;
+};
+
+function resolveNewsFeedAutomationMode(purpose: FeedPurpose, data: FeedAutomationInput): 'default' | 'custom' {
+  if (purpose !== 'news-room') return 'custom';
+  if (data.settingsMode === 'default') return 'default';
+  if (data.settingsMode === 'custom') return 'custom';
+  const hasExplicitAutomation = data.pollIntervalMinutes !== undefined
+    || data.autoPoll !== undefined
+    || data.autoPrepare !== undefined
+    || data.autoPublish !== undefined
+    || data.autoSendSocial !== undefined;
+  return hasExplicitAutomation ? 'custom' : 'default';
+}
+
+function resolveNewsFeedAutomationWrite(purpose: FeedPurpose, data: FeedAutomationInput) {
+  const useOrganizationDefaults = resolveNewsFeedAutomationMode(purpose, data) === 'default';
+  if (useOrganizationDefaults) {
+    return {
+      settingsMode: 'default' as const,
+      pollIntervalMinutes: null,
+      autoPoll: null,
+      autoPrepare: null,
+      autoPublish: null,
+      autoSendSocial: null,
+    };
+  }
+  return {
+    settingsMode: 'custom' as const,
+    pollIntervalMinutes: data.pollIntervalMinutes ?? 240,
+    autoPoll: data.autoPoll ?? true,
+    autoPrepare: data.autoPrepare ?? (purpose === 'news-room'),
+    autoPublish: data.autoPublish ?? false,
+    autoSendSocial: data.autoSendSocial ?? false,
+  };
+}
+
+function newsFeedAutomationTouched(data: FeedAutomationInput) {
+  return data.settingsMode !== undefined
+    || data.pollIntervalMinutes !== undefined
+    || data.autoPoll !== undefined
+    || data.autoPrepare !== undefined
+    || data.autoPublish !== undefined
+    || data.autoSendSocial !== undefined;
 }
 
 function splitText(value: string, maxChars = 10_000): string[] {
@@ -263,6 +316,7 @@ export class NewsroomService {
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : '';
 
+    const automation = resolveNewsFeedAutomationWrite(purpose, data);
     const created = await this.prisma.newsFeed.create({ data: {
       tenantId,
       name,
@@ -275,12 +329,8 @@ export class NewsroomService {
       excludeWords: parseWordList(data.excludeWords),
       purpose,
       enabled: data.enabled ?? true,
-      pollIntervalMinutes: data.pollIntervalMinutes ?? 240,
       sourceLanguage,
-      autoPoll: data.autoPoll ?? true,
-      autoPrepare: data.autoPrepare ?? purpose === 'news-room',
-      autoPublish: data.autoPublish ?? false,
-      autoSendSocial: data.autoSendSocial ?? false,
+      ...automation,
     } });
     if (sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
@@ -324,6 +374,22 @@ export class NewsroomService {
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : feed.logoUrl;
 
+    let automationPatch: ReturnType<typeof resolveNewsFeedAutomationWrite> | Record<string, never> = {};
+    if (purpose === 'news-room') {
+      if (data.settingsMode === 'default') {
+        automationPatch = resolveNewsFeedAutomationWrite(purpose, { settingsMode: 'default' });
+      } else if (data.settingsMode === 'custom' || newsFeedAutomationTouched(data)) {
+        automationPatch = resolveNewsFeedAutomationWrite(purpose, {
+          settingsMode: 'custom',
+          pollIntervalMinutes: data.pollIntervalMinutes ?? feed.pollIntervalMinutes ?? 240,
+          autoPoll: data.autoPoll ?? feed.autoPoll ?? true,
+          autoPrepare: data.autoPrepare ?? feed.autoPrepare ?? true,
+          autoPublish: data.autoPublish ?? feed.autoPublish ?? false,
+          autoSendSocial: data.autoSendSocial ?? feed.autoSendSocial ?? false,
+        });
+      }
+    }
+
     const updated = await this.prisma.newsFeed.update({ where: { id }, data: {
       name,
       url,
@@ -334,12 +400,13 @@ export class NewsroomService {
       ...(data.includeWords !== undefined ? { includeWords: parseWordList(data.includeWords) } : {}),
       ...(data.excludeWords !== undefined ? { excludeWords: parseWordList(data.excludeWords) } : {}),
       purpose,
-      ...(data.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: data.pollIntervalMinutes } : {}),
       ...(data.sourceLanguage !== undefined ? { sourceLanguage } : {}),
-      ...(data.autoPoll !== undefined ? { autoPoll: data.autoPoll } : {}),
-      ...(data.autoPrepare !== undefined ? { autoPrepare: data.autoPrepare } : {}),
-      ...(data.autoPublish !== undefined ? { autoPublish: data.autoPublish } : {}),
-      ...(data.autoSendSocial !== undefined ? { autoSendSocial: data.autoSendSocial } : {}),
+      ...automationPatch,
+      ...(purpose === 'social-studio' && data.pollIntervalMinutes !== undefined ? { pollIntervalMinutes: data.pollIntervalMinutes } : {}),
+      ...(purpose === 'social-studio' && data.autoPoll !== undefined ? { autoPoll: data.autoPoll } : {}),
+      ...(purpose === 'social-studio' && data.autoPrepare !== undefined ? { autoPrepare: data.autoPrepare } : {}),
+      ...(purpose === 'social-studio' && data.autoPublish !== undefined ? { autoPublish: data.autoPublish } : {}),
+      ...(purpose === 'social-studio' && data.autoSendSocial !== undefined ? { autoSendSocial: data.autoSendSocial } : {}),
     } });
     if (data.sourceLanguage !== undefined && sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
@@ -456,6 +523,23 @@ export class NewsroomService {
     return updated;
   }
 
+  async updateFeaturedImage(tenantId: string, id: string, featuredImageUrl: string | null, access?: MemberNewsroomAccess) {
+    const article = await this.findArticle(tenantId, id);
+    assertNewsroomArticleAccess(article, access);
+    if (['rejected', 'publishing', 'published', 'social_processing', 'social_sent'].includes(article.status)) {
+      throw new BadRequestException('تغییر تصویر شاخص در وضعیت فعلی مجاز نیست');
+    }
+    const nextUrl = featuredImageUrl?.trim() || '';
+    const updated = await this.prisma.newsArticle.update({
+      where: { id },
+      data: { featuredImageUrl: nextUrl },
+      include: {
+        destinationCategory: { select: { id: true, name: true, isGeneral: true } },
+      },
+    });
+    return { article: updated, previousFeaturedImageUrl: article.featuredImageUrl || null };
+  }
+
   async fetchFeed(tenantId: string, feedId: string) {
     const feed = await this.findFeed(tenantId, feedId);
     if (feed.purpose !== 'news-room') throw new BadRequestException('پایش این فید در بخش مربوط به آن انجام می‌شود');
@@ -470,9 +554,14 @@ export class NewsroomService {
       const { entries, resolvedFeedUrl } = await this.sourceReader.readSourceWithMeta(feed.sourceType || 'rss', feed.url, {
         resolvedFeedUrl: feed.resolvedFeedUrl,
       });
-      const filtered = entries
+      const matching = entries
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
+      const guids = entryGuids(matching);
+      const known = guids.length
+        ? await this.prisma.newsArticle.findMany({ where: { tenantId, feedId, guid: { in: guids } }, select: { guid: true, canonicalUrl: true } })
+        : [];
+      const filtered = reuseKnownGuids(matching, known);
       const result = filtered.length ? await this.prisma.newsArticle.createMany({
         skipDuplicates: true,
         data: filtered.map((entry) => ({
@@ -532,32 +621,34 @@ export class NewsroomService {
   }
 
   async probeFeed(dto: ProbeFeedDto) {
-    const url = normalizeFeedUrl(dto.url);
-    const sourceType = normalizeSourceType(dto.sourceType);
-    const includeWords = parseWordList(dto.includeWords);
-    const excludeWords = parseWordList(dto.excludeWords);
-    const resolvedFeedUrl = sourceType === 'website'
-      ? ((await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '')
-      : '';
-    const entries = await this.sourceReader.readSource(sourceType, url);
-    const items = buildLatestFeedPreviewItems(entries, includeWords, excludeWords);
-    return {
-      ok: true,
-      source: {
-        name: dto.name?.trim() || url,
-        url,
-        sourceType,
-        resolvedFeedUrl: resolvedFeedUrl || undefined,
-      },
-      items,
-    };
+    return this.sourceReader.runPreviewFetch(async () => {
+      const url = normalizeFeedUrl(dto.url);
+      const sourceType = normalizeSourceType(dto.sourceType);
+      const includeWords = parseWordList(dto.includeWords);
+      const excludeWords = parseWordList(dto.excludeWords);
+      const resolvedFeedUrl = sourceType === 'website'
+        ? ((await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '')
+        : '';
+      const entries = await this.sourceReader.readSource(sourceType, url);
+      const items = buildLatestFeedPreviewItems(entries, includeWords, excludeWords);
+      return {
+        ok: true,
+        source: {
+          name: dto.name?.trim() || url,
+          url,
+          sourceType,
+          resolvedFeedUrl: resolvedFeedUrl || undefined,
+        },
+        items,
+      };
+    });
   }
 
   async testFeed(tenantId: string, feedId: string) {
     const feed = await this.findFeed(tenantId, feedId);
     const startedAt = Date.now();
     try {
-      const entries = await this.sourceReader.readSource(feed.sourceType || 'rss', feed.url);
+      const entries = await this.sourceReader.runPreviewFetch(() => this.sourceReader.readSource(feed.sourceType || 'rss', feed.url));
       const latest = buildLatestFeedPreviewItems(entries, feed.includeWords, feed.excludeWords);
       const detectedLanguage = detectSourceLanguageFromItems(latest);
       if ((!feed.sourceLanguage || feed.sourceLanguage === 'auto') && detectedLanguage !== 'auto') {
@@ -820,13 +911,17 @@ export class NewsroomService {
 
     const titleFa = (input.titleFa ?? article.titleFa).trim();
     const summaryFa = (input.summaryFa ?? article.summaryFa).trim();
-    const contentFa = (input.contentFa ?? article.contentFa).trim();
-    if (!contentFa) throw new BadRequestException('ابتدا «ترجمه کامل» را انجام دهید و متن را بررسی کنید');
+    const rawBody = (input.contentHtml ?? input.contentFa ?? article.contentFa).trim();
+    if (!rawBody) throw new BadRequestException('ابتدا «ترجمه کامل» را انجام دهید و متن را بررسی کنید');
     if (!titleFa || !summaryFa) throw new BadRequestException('تیتر و لید/خلاصه برای انتشار الزامی است');
+    const contentFa = rawBody;
+    const featuredImageUrl = input.featuredImageUrl !== undefined
+      ? (input.featuredImageUrl || '').trim()
+      : article.featuredImageUrl;
     if (this.defersHeavyWork()) {
       await this.prisma.newsArticle.update({
         where: { id },
-        data: { titleFa, summaryFa, contentFa },
+        data: { titleFa, summaryFa, contentFa, featuredImageUrl },
       });
       return this.deferHeavyWork(tenantId, 'news.publish', { articleId: id }, `news:${id}:publish`);
     }
@@ -842,7 +937,6 @@ export class NewsroomService {
       const settings = await this.settings.getRaw(tenantId);
       this.wordpress.validateSettings(settings);
       const cachedCategories = parseWordPressCategories(settings.wp_categories);
-      const featuredImageUrl = article.featuredImageUrl;
       const categories = await this.wordpress.categories(settings).catch((error) => {
         this.logger.warn(`Refreshing WordPress categories failed: ${error instanceof Error ? error.message : 'unknown error'}`);
         return cachedCategories;
@@ -874,13 +968,13 @@ export class NewsroomService {
           articleId: article.id,
           title: titleFa,
           excerpt: summaryFa,
-          content: toWordPressHtml(contentFa, article.sourceName, article.originalUrl || article.canonicalUrl, article.id),
+          content: resolvePublishHtml(contentFa, article.sourceName, article.originalUrl || article.canonicalUrl, article.id),
           featuredImageUrl,
           categoryId: Number.isSafeInteger(categoryId) && categoryId > 0 ? categoryId : null,
         });
-        await this.integrationHealth.success({ tenantId, key: 'wordpress', type: 'publishing', name: 'WordPress', latencyMs: Date.now() - wordpressStartedAt, metadata: { operation: 'publish' } }).catch((healthError) => this.logger.warn(`WordPress health could not be recorded: ${healthError instanceof Error ? healthError.message : 'unknown error'}`));
+        await this.integrationHealth.success({ tenantId, key: 'destination', type: 'publishing', name: 'سایت مقصد', latencyMs: Date.now() - wordpressStartedAt, metadata: { operation: 'publish' } }).catch((healthError) => this.logger.warn(`Destination health could not be recorded: ${healthError instanceof Error ? healthError.message : 'unknown error'}`));
       } catch (error) {
-        await this.integrationHealth.failure({ tenantId, key: 'wordpress', type: 'publishing', name: 'WordPress', latencyMs: Date.now() - wordpressStartedAt, metadata: { operation: 'publish' }, error }).catch((healthError) => this.logger.warn(`WordPress failure health could not be recorded: ${healthError instanceof Error ? healthError.message : 'unknown error'}`));
+        await this.integrationHealth.failure({ tenantId, key: 'destination', type: 'publishing', name: 'سایت مقصد', latencyMs: Date.now() - wordpressStartedAt, metadata: { operation: 'publish' }, error }).catch((healthError) => this.logger.warn(`Destination failure health could not be recorded: ${healthError instanceof Error ? healthError.message : 'unknown error'}`));
         throw error;
       }
       const updated = await this.prisma.newsArticle.update({

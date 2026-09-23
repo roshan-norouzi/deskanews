@@ -1,8 +1,17 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true',
+  );
+}
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'wide';
 
@@ -36,23 +45,54 @@ export function Modal({
   labelledBy,
   panelClassName,
 }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    const focusPanel = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = getFocusableElements(panel);
+      (focusables[0] ?? panel).focus();
+    };
+    const focusTimer = window.setTimeout(focusPanel, 0);
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusables = getFocusableElements(panelRef.current);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = previous;
       document.removeEventListener('keydown', onKeyDown);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
     };
   }, [open, onClose]);
 
   if (!open) return null;
 
-  const zClass = zIndex === 90 ? 'z-[90]' : zIndex === 80 ? 'z-[80]' : 'z-[70]';
+  const zClass = zIndex === 90 ? 'z-[90]' : zIndex === 80 ? 'z-[80]' : 'z-modal';
 
   return (
     <div
@@ -62,11 +102,13 @@ export function Modal({
       }}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
+        tabIndex={-1}
         className={cn(
-          'flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl',
+          'flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full flex-col overflow-hidden rounded-xl bg-white shadow-elevated',
           SIZE_CLASSES[size],
           panelClassName,
         )}

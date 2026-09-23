@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,6 +18,12 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { normalizeDigits } from '@deska/shared';
 import { Prisma } from '@prisma/client';
 
+let dummyHash: Promise<string> | undefined;
+function dummyPasswordHash(): Promise<string> {
+  dummyHash ??= bcrypt.hash(randomUUID(), 12);
+  return dummyHash;
+}
+
 interface JwtPayload {
   sub: string;
   email: string;
@@ -25,6 +32,8 @@ interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -38,12 +47,20 @@ export class AuthService {
     });
 
     if (!user?.isActive || user.status !== 'active' || (user.lockedUntil && user.lockedUntil > now)) {
+      // Spend the same bcrypt time as a real check so response timing does not reveal which emails exist.
+      await bcrypt.compare(dto.password, await dummyPasswordHash());
       throw new UnauthorizedException('ایمیل یا رمز عبور نادرست است');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       await this.prisma.$transaction(async (tx) => {
+        if (user.lockedUntil && user.lockedUntil <= now) {
+          await tx.user.updateMany({
+            where: { id: user.id, lockedUntil: { lte: now } },
+            data: { failedLoginAttempts: 0, lockedUntil: null },
+          });
+        }
         const failedLogin = await tx.user.update({
           where: { id: user.id },
           data: { failedLoginAttempts: { increment: 1 } },
@@ -119,10 +136,6 @@ export class AuthService {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
       include: { user: true },
-    }) ?? await this.prisma.refreshToken.findUnique({
-      // Compatibility with refresh tokens issued before token hashing was enabled.
-      where: { token: dto.refreshToken },
-      include: { user: true },
     });
 
     if (!stored) {
@@ -181,7 +194,7 @@ export class AuthService {
   async logout(dto: { refreshToken: string }) {
     const tokenHash = this.hashRefreshToken(dto.refreshToken);
     await this.prisma.refreshToken.deleteMany({
-      where: { token: { in: [tokenHash, dto.refreshToken] } },
+      where: { token: tokenHash },
     });
     return { success: true };
   }
@@ -506,9 +519,9 @@ export class AuthService {
       }),
     ]);
 
-    // An email provider can consume this value in production. Never expose it there.
-    if (this.config.get<string>('NODE_ENV') !== 'production') {
-      return { ...generic, developmentToken: token };
+    // No email/SMS provider is wired yet; the token must never travel in the HTTP response.
+    if (this.config.get<string>('NODE_ENV') === 'development') {
+      this.logger.log(`Development password-reset token for ${user.email}: ${token}`);
     }
     return generic;
   }

@@ -6,6 +6,7 @@ import { SourceReaderService } from './source-reader.service';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
+import { entryGuids, reuseKnownGuids } from './feed-dedupe';
 import { buildLatestFeedPreviewItems } from './feed-preview';
 import {
   DEFAULT_PLATFORM_POLL_MINUTES,
@@ -403,31 +404,33 @@ export class PlatformFeedService implements OnModuleInit {
   }
 
   async probe(dto: ProbeFeedDto) {
-    const url = normalizeFeedUrl(dto.url);
-    const sourceType = normalizeSourceType(dto.sourceType);
-    const includeWords = parseWordList(dto.includeWords);
-    const excludeWords = parseWordList(dto.excludeWords);
-    const resolvedFeedUrl = sourceType === 'website'
-      ? ((await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '')
-      : '';
-    const entries = await this.sourceReader.readSource(sourceType, url);
-    const items = buildLatestFeedPreviewItems(entries, includeWords, excludeWords);
-    return {
-      ok: true,
-      source: {
-        name: dto.name?.trim() || url,
-        url,
-        sourceType,
-        resolvedFeedUrl: resolvedFeedUrl || undefined,
-      },
-      discoveredFeedUrl: resolvedFeedUrl || null,
-      items,
-    };
+    return this.sourceReader.runPreviewFetch(async () => {
+      const url = normalizeFeedUrl(dto.url);
+      const sourceType = normalizeSourceType(dto.sourceType);
+      const includeWords = parseWordList(dto.includeWords);
+      const excludeWords = parseWordList(dto.excludeWords);
+      const resolvedFeedUrl = sourceType === 'website'
+        ? ((await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '')
+        : '';
+      const entries = await this.sourceReader.readSource(sourceType, url);
+      const items = buildLatestFeedPreviewItems(entries, includeWords, excludeWords);
+      return {
+        ok: true,
+        source: {
+          name: dto.name?.trim() || url,
+          url,
+          sourceType,
+          resolvedFeedUrl: resolvedFeedUrl || undefined,
+        },
+        discoveredFeedUrl: resolvedFeedUrl || null,
+        items,
+      };
+    });
   }
 
   async test(id: string) {
     const feed = await this.findFeed(id);
-    const health = await this.checkFeedHealth(feed);
+    const health = await this.sourceReader.runPreviewFetch(() => this.checkFeedHealth(feed));
     const items = health.items;
     return {
       ok: health.status === 'healthy',
@@ -746,8 +749,13 @@ export class PlatformFeedService implements OnModuleInit {
       const { entries, resolvedFeedUrl } = await this.sourceReader.readSourceWithMeta(feed.sourceType || 'rss', feed.url, {
         resolvedFeedUrl: feed.resolvedFeedUrl,
       });
-      const filtered = entries
+      const recent = entries
         .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
+      const guids = entryGuids(recent);
+      const known = guids.length
+        ? await this.prisma.platformFeedArticle.findMany({ where: { platformFeedId: feed.id, guid: { in: guids } }, select: { guid: true, canonicalUrl: true } })
+        : [];
+      const filtered = reuseKnownGuids(recent, known);
 
       let created = 0;
       for (const entry of filtered) {
@@ -867,6 +875,10 @@ export class PlatformFeedService implements OnModuleInit {
         includeWords: [],
         excludeWords: [],
         pollIntervalMinutes: null,
+        autoPoll: null,
+        autoPrepare: null,
+        autoPublish: null,
+        autoSendSocial: null,
       };
     }
 

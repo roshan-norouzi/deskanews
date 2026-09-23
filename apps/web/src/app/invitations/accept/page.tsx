@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
+import { INVITE_LINK_INVALID } from '@/lib/product-copy';
 import { apiFetch } from '@/lib/utils';
 
 function AcceptInvitationContent() {
@@ -20,7 +21,7 @@ function AcceptInvitationContent() {
   const [acceptedTenant, setAcceptedTenant] = useState<{ tenantId: string; tenantName: string }>();
   const token = params.get('token') ?? '';
 
-  useEffect(() => { if (!token) setError('توکن دعوت در نشانی وجود ندارد.'); }, [token]);
+  useEffect(() => { if (!token) setError(INVITE_LINK_INVALID); }, [token]);
 
   const accept = async () => {
     if (!token) return;

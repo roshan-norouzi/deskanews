@@ -7,7 +7,7 @@ const TONE_VARIANT: Record<StatusTone, BadgeProps['variant']> = {
   warning: 'warning',
   danger: 'danger',
   neutral: 'default',
-  info: 'default',
+  info: 'info',
 };
 
 interface StatusBadgeProps {

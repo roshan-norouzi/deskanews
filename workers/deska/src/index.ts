@@ -47,6 +47,7 @@ export function isBlockedFetchHost(hostname: string): boolean {
     return a === 0
       || a === 10
       || a === 127
+      || a >= 224
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168)
@@ -213,6 +214,29 @@ ${items}
 </body></html>`;
 }
 
+const MAX_REDIRECTS = 5;
+
+/** Every redirect hop must pass the same host check as the original URL. */
+export async function fetchFollowingSafeRedirects(
+  url: URL,
+  headers: Record<string, string>,
+  fetcher: typeof fetch = fetch,
+): Promise<Response> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await fetcher(current.toString(), { method: 'GET', headers, redirect: 'manual' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get('location');
+    if (!location || hop === MAX_REDIRECTS) throw new Error('too_many_redirects');
+    const next = new URL(location, current);
+    if (!['http:', 'https:'].includes(next.protocol) || next.username || next.password || !hostAllowed(next.hostname)) {
+      throw new Error('redirect_host_not_allowed');
+    }
+    current = next;
+  }
+  throw new Error('too_many_redirects');
+}
+
 async function fetchUpstream(url: URL, accept: string, userAgent: string, referer?: string): Promise<Response> {
   const headers: Record<string, string> = {
     'User-Agent': userAgent,
@@ -225,7 +249,7 @@ async function fetchUpstream(url: URL, accept: string, userAgent: string, refere
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const upstream = await fetch(url.toString(), { method: 'GET', headers, redirect: 'follow' });
+      const upstream = await fetchFollowingSafeRedirects(url, headers);
       if (upstream.status === 429 && attempt < 3) {
         await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
         continue;

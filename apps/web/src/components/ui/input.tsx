@@ -3,6 +3,7 @@
 import { forwardRef, type InputHTMLAttributes } from 'react';
 import { JalaliDateInput } from '@/components/ui/jalali-date-input';
 import { cn } from '@/lib/utils';
+import { CONTROL_CLASS } from '@/lib/ui';
 import { getFieldPlaceholder } from '@/lib/field-guidance';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -39,7 +40,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label htmlFor={inputId} className="mb-1.5 block text-sm font-medium text-slate-700">
             {label}
-            {required && <span className="mr-1 text-red-500" aria-hidden="true">*</span>}
+            {required && <span className="mr-1 text-red-600" aria-hidden="true">*</span>}
+            {required && <span className="sr-only"> الزامی</span>}
           </label>
         )}
         <input
@@ -52,7 +54,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${inputId}-error` : undefined}
           className={cn(
-            'w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 hover:border-slate-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:shadow-none',
+            CONTROL_CLASS,
             error && 'border-red-500 focus:border-red-500 focus:ring-red-500/20',
             className,
           )}

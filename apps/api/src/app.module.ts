@@ -12,6 +12,7 @@ import { UsageTrackingModule } from './platform/usage/usage-tracking.module';
 import { BusinessModulesModule } from './modules/modules.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { WorkerHttpGuard } from './common/guards/worker-http.guard';
+import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
 
 @Module({
   imports: [
@@ -24,12 +25,15 @@ import { WorkerHttpGuard } from './common/guards/worker-http.guard';
       ],
     }),
     EventEmitterModule.forRoot(),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60_000,
-        limit: 180,
-      },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60_000,
+          limit: 180,
+        },
+      ],
+      storage: new RedisThrottlerStorage(),
+    }),
     PrismaModule,
     CommonModule,
     UsageTrackingModule,

@@ -227,6 +227,27 @@ export class SocialNetworkPublisherService {
     }
   }
 
+  /** One sender per article and network; the lease expires if a worker dies mid-send. */
+  private async claimDelivery(articleId: string, network: SocialNetwork): Promise<{ key: string; holder: string } | null> {
+    const key = `social-publish:${articleId}:${network}`;
+    const holder = randomUUID();
+    const now = new Date();
+    await this.prisma.schedulerLease.createMany({ data: [{ key, holder: '', expiresAt: new Date(0) }], skipDuplicates: true });
+    const claimed = await this.prisma.schedulerLease.updateMany({
+      where: { key, expiresAt: { lte: now } },
+      data: { holder, expiresAt: new Date(now.getTime() + 10 * 60_000) },
+    });
+    return claimed.count === 1 ? { key, holder } : null;
+  }
+
+  private async alreadyDelivered(articleId: string, network: SocialNetwork): Promise<boolean> {
+    const row = await this.prisma.socialArticle.findFirst({
+      where: { id: articleId },
+      select: { telegramSentAt: true, instagramSentAt: true, linkedinSentAt: true, facebookSentAt: true },
+    });
+    return Boolean(row?.[`${network}SentAt` as const]);
+  }
+
   async publishAutomatically(tenantId: string, articleId: string, networks: SocialNetwork[], useFeaturedImage = false) {
     const article = await this.prisma.socialArticle.findFirst({
       where: { id: articleId, tenantId },
@@ -286,11 +307,16 @@ export class SocialNetworkPublisherService {
     const published: SocialNetwork[] = [];
     const failed: Array<{ network: SocialNetwork; error: string }> = [];
     for (const network of pending) {
+      const lease = await this.claimDelivery(article.id, network);
+      if (!lease) continue;
       try {
+        if (await this.alreadyDelivered(article.id, network)) continue;
         await this.publish(tenantId, article.id, network, article.captionText || '', imageDataUrl);
         published.push(network);
       } catch (error) {
         failed.push({ network, error: error instanceof Error ? error.message : 'خطای انتشار خودکار' });
+      } finally {
+        await this.prisma.schedulerLease.deleteMany({ where: { key: lease.key, holder: lease.holder } }).catch(() => undefined);
       }
     }
     if (failed.length) {

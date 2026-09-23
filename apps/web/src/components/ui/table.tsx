@@ -1,10 +1,17 @@
 import { cn } from '@/lib/utils';
 import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react';
 
-export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>) {
+export function Table({ className, density = 'comfortable', ...props }: HTMLAttributes<HTMLTableElement> & { density?: 'comfortable' | 'compact' }) {
   return (
     <div className="w-full overflow-x-auto">
-      <table className={cn('w-full caption-bottom text-sm', className)} {...props} />
+      <table
+        className={cn(
+          'w-full caption-bottom text-sm',
+          density === 'compact' && '[&_th]:py-2 [&_td]:py-2',
+          className,
+        )}
+        {...props}
+      />
     </div>
   );
 }
@@ -30,7 +37,7 @@ export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCel
   return (
     <th
       className={cn(
-        'h-11 px-4 text-right align-middle text-xs font-semibold uppercase tracking-wide text-slate-500',
+        'h-11 px-4 text-right align-middle text-xs font-semibold text-slate-500',
         className,
       )}
       {...props}
@@ -42,10 +49,10 @@ export function TableCell({ className, ...props }: TdHTMLAttributes<HTMLTableCel
   return <td className={cn('px-4 py-3 align-middle text-slate-700', className)} {...props} />;
 }
 
-export function TableEmpty({ colSpan, message = 'موردی یافت نشد' }: { colSpan: number; message?: string }) {
+export function TableEmpty({ colSpan, message = 'هنوز موردی ثبت نشده است.' }: { colSpan: number; message?: string }) {
   return (
     <TableRow>
-      <TableCell colSpan={colSpan} className="py-12 text-center text-slate-400">
+      <TableCell colSpan={colSpan} className="py-12 text-center text-slate-500">
         {message}
       </TableCell>
     </TableRow>

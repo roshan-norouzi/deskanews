@@ -7,8 +7,10 @@ import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { Input } from '@/components/ui/input';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
@@ -65,6 +67,7 @@ function validateForm(form: FeedForm) {
 }
 
 export default function SocialFeedsPage() {
+  const confirm = useConfirm();
   const { data, error: loadError, isLoading, refetch } = useApi<Feed[]>('/publishing/social/feeds');
   const feeds = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -110,8 +113,8 @@ export default function SocialFeedsPage() {
   }
 
   return (
-    <ProtectedLayout title="منابع استودیوی اجتماعی">
-      <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout>
+      <PageContainer>
         <div className="space-y-4">
           <Link href="/publishing/social" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-primary-600">
             <ArrowRight className="h-4 w-4" /> بازگشت به استودیو
@@ -138,7 +141,7 @@ export default function SocialFeedsPage() {
             <div className="px-6 py-12 text-center text-sm text-slate-500">هنوز منبعی برای استودیوی اجتماعی ثبت نشده است.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-right text-sm">
+              <table className="ds-table">
                 <thead className="bg-slate-50 text-xs text-slate-500">
                   <tr>
                     <th className="px-5 py-3 font-medium">منبع</th>
@@ -163,10 +166,10 @@ export default function SocialFeedsPage() {
                         <td className="px-5 py-4"><Badge variant={feed.enabled ? 'success' : 'default'}>{feed.enabled ? 'فعال' : 'غیرفعال'}</Badge></td>
                         <td className="px-5 py-4">
                           <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" isLoading={busy === `fetch-${feed.id}`} onClick={() => run(`fetch-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/fetch`, { method: 'POST' }); await refetch(); })}><RefreshCw className="h-4 w-4" /></Button>
-                            <Button size="sm" variant="ghost" onClick={() => { setEditing(feed); setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || 'telegram', sourceLanguage: feed.sourceLanguage || 'auto', pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? true, autoPublish: feed.autoPublish ?? false }); setModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>
-                            <Button size="sm" variant="ghost" onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}><Power className={feedTogglePowerClass(feed.enabled)} /></Button>
-                            <Button size="sm" variant="ghost" className="text-red-600" onClick={() => { if (window.confirm(`«${feed.name}» حذف شود؟`)) run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}`, { method: 'DELETE' }); await refetch(); }); }}><Trash2 className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="ghost" title="دریافت مطالب" aria-label="دریافت مطالب" isLoading={busy === `fetch-${feed.id}`} onClick={() => run(`fetch-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/fetch`, { method: 'POST' }); await refetch(); })}><RefreshCw className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="ghost" title="ویرایش منبع" aria-label="ویرایش منبع" onClick={() => { setEditing(feed); setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || 'telegram', sourceLanguage: feed.sourceLanguage || 'auto', pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? true, autoPublish: feed.autoPublish ?? false }); setModalOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="ghost" title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} aria-label={feed.enabled ? 'غیرفعال کردن منبع' : 'فعال کردن منبع'} onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}><Power className={feedTogglePowerClass(feed.enabled)} /></Button>
+                            <Button size="sm" variant="ghost" className="text-red-600" title="حذف منبع" aria-label="حذف منبع" onClick={async () => { const ok = await confirm({ title: 'حذف منبع؟', description: `منبع «${feed.name}» برای همیشه حذف می‌شود.`, confirmLabel: 'حذف منبع', variant: 'danger' }); if (!ok) return; run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/social/feeds/${feed.id}`, { method: 'DELETE' }); await refetch(); }); }}><Trash2 className="h-4 w-4" /></Button>
                           </div>
                         </td>
                       </tr>
@@ -208,7 +211,7 @@ export default function SocialFeedsPage() {
             </ModalFooter>
           </form>
         </Modal>
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

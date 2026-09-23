@@ -1,6 +1,8 @@
 {
   "extends": ["next/core-web-vitals", "next/typescript"],
   "rules": {
-    "@typescript-eslint/no-explicit-any": "off"
+    "@typescript-eslint/no-explicit-any": "off",
+    // Feed logos, article images and cover previews are arbitrary remote, data: and blob: URLs that next/image cannot optimize.
+    "@next/next/no-img-element": "off"
   }
 }

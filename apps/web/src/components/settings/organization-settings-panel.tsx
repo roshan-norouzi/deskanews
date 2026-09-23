@@ -63,7 +63,7 @@ export function OrganizationSettingsPanel() {
     <div className="space-y-6">
       <PageHeader
         title="تنظیمات سازمان"
-        description="مدیریت اطلاعات سازمان فعال و مشخصات پایه آن"
+        description="مدیریت اطلاعات سازمان فعال، توکن باقیمانده و مصرف روزانه، هفتگی و ماهانه"
         icon={Building2}
       />
 

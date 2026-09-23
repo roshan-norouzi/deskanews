@@ -19,6 +19,7 @@ import { PermissionBadges, PermissionPicker } from '@/components/settings/permis
 import { useApi } from '@/hooks/use-api';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/utils';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 
 interface MemberUser {
@@ -62,6 +63,7 @@ export function OrganizationUsersPanel({
   memberRole,
   showCard = true,
 }: OrganizationUsersPanelProps) {
+  const confirm = useConfirm();
   const { user: currentUser } = useAuth();
   const membersPath = tenantId ? `/tenants/${tenantId}/members` : null;
   const { data, isLoading, error, refetch } = useApi<OrganizationMember[]>(membersPath);
@@ -199,7 +201,13 @@ export function OrganizationUsersPanel({
   const handleDeleteMember = async (member: OrganizationMember) => {
     if (!tenantId) return;
     const label = member.user.name || member.user.email;
-    if (!window.confirm(`آیا از حذف «${label}» از سازمان مطمئن هستید؟`)) return;
+    const ok = await confirm({
+      title: 'حذف کاربر از سازمان؟',
+      description: `«${label}» دیگر به این سازمان دسترسی نخواهد داشت.`,
+      confirmLabel: 'حذف از سازمان',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     setDeletingUserId(member.userId);
     try {
@@ -208,7 +216,7 @@ export function OrganizationUsersPanel({
       });
       await refetch();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'خطا در حذف کاربر');
+      setSaveError(err instanceof Error ? err.message : 'حذف کاربر از سازمان انجام نشد.');
     } finally {
       setDeletingUserId(null);
     }

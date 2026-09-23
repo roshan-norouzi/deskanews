@@ -28,6 +28,9 @@ import {
 import { GapGptClient } from './gapgpt.client';
 import { SecretProtectionService } from './secret-protection.service';
 import { RedisCache } from '../../common/redis/redis-cache';
+import type { SourceReaderService } from './source-reader.service';
+
+type PublicResourceFetcher = Pick<SourceReaderService, 'fetchPublicResource'>;
 import { ObjectStorage } from '../../common/object-storage';
 import { signEmbeddedMediaUrls, signMediaPath } from '../../common/media-signature';
 import { promises as fs } from 'node:fs';
@@ -47,6 +50,15 @@ const SECRET_KEYS = new Set<PublishingSettingKey>([
 ]);
 
 const AI_SETTING_KEY_SET = new Set<PublishingSettingKey>(AI_SETTING_KEYS);
+
+const NEWS_SCHEDULE_SETTING_KEYS: PublishingSettingKey[] = [
+  'news_poll_interval_minutes',
+  'news_max_age_days',
+  'news_auto_poll',
+  'news_auto_prepare',
+  'news_auto_publish',
+  'news_auto_send_social',
+];
 
 export const SOURCE_FETCH_SETTING_KEYS = ['source_fetch_bridge_url', 'source_fetch_bridge_secret', 'source_fetch_news_via_bridge'] as const;
 export type SourceFetchSettingKey = (typeof SOURCE_FETCH_SETTING_KEYS)[number];
@@ -691,6 +703,9 @@ export class PublishingSettingsService implements OnModuleInit {
       result[key] = SECRET_KEYS.has(key) ? '' : signEmbeddedMediaUrls(value);
       if (SECRET_KEYS.has(key)) result[`${key}_configured`] = value ? 'true' : 'false';
     }
+    const appId = String(process.env.INSTAGRAM_APP_ID || process.env.FACEBOOK_APP_ID || '').trim();
+    const appSecret = String(process.env.INSTAGRAM_APP_SECRET || process.env.FACEBOOK_APP_SECRET || '').trim();
+    result.instagram_oauth_available = appId && appSecret ? 'true' : 'false';
     return result;
   }
 
@@ -1078,7 +1093,11 @@ export class PublishingSettingsService implements OnModuleInit {
     }
   }
 
-  async save(tenantId: string, input: UpdatePublishingSettingsDto): Promise<Record<string, string>> {
+  async save(
+    tenantId: string,
+    input: UpdatePublishingSettingsDto,
+    emptySecrets: PublishingSettingKey[] = [],
+  ): Promise<Record<string, string>> {
     const previous = this.saveLocks.get(tenantId) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolve) => { release = resolve; });
@@ -1087,14 +1106,18 @@ export class PublishingSettingsService implements OnModuleInit {
     await previous;
 
     try {
-      return await this.saveUnlocked(tenantId, input);
+      return await this.saveUnlocked(tenantId, input, emptySecrets);
     } finally {
       release();
       if (this.saveLocks.get(tenantId) === queued) this.saveLocks.delete(tenantId);
     }
   }
 
-  private async saveUnlocked(tenantId: string, input: UpdatePublishingSettingsDto): Promise<Record<string, string>> {
+  private async saveUnlocked(
+    tenantId: string,
+    input: UpdatePublishingSettingsDto,
+    emptySecrets: PublishingSettingKey[] = [],
+  ): Promise<Record<string, string>> {
     const current = await this.getRaw(tenantId);
     const next: PublishingSettings = { ...current };
 
@@ -1102,7 +1125,13 @@ export class PublishingSettingsService implements OnModuleInit {
       if (AI_SETTING_KEY_SET.has(key)) continue;
       if (!isProvidedSetting(input, key)) continue;
       const value = String(input[key as keyof UpdatePublishingSettingsDto] ?? '').trim();
-      if (SECRET_KEYS.has(key) && !value) continue;
+      if (SECRET_KEYS.has(key) && !value) {
+        if (emptySecrets.includes(key)) {
+          next[key] = '';
+          continue;
+        }
+        continue;
+      }
       next[key] = value;
     }
 
@@ -1144,7 +1173,7 @@ export class PublishingSettingsService implements OnModuleInit {
       throw new BadRequestException('انتشار خودکار در سایت و ارسال خودکار به استودیوی اجتماعی نمی‌توانند هم‌زمان فعال باشند');
     }
 
-    const secretsToClear = new Set<PublishingSettingKey>();
+    const secretsToClear = new Set<PublishingSettingKey>(emptySecrets);
     const wordPressHostChanged = has('wp_site_url')
       && normalizeHttpUrlForCompare(next.wp_site_url ?? '') !== normalizeHttpUrlForCompare(current.wp_site_url ?? '');
     const wordPressSecretProvided = has('wp_app_password') && Boolean(String(input.wp_app_password ?? '').trim());
@@ -1220,7 +1249,33 @@ export class PublishingSettingsService implements OnModuleInit {
     });
     await this.cache?.del(`deska:settings:${tenantId}`);
     if (next.wp_site_url) await this.cache?.del(`deska:wp-categories:${next.wp_site_url}`);
+    if (NEWS_SCHEDULE_SETTING_KEYS.some((key) => has(key))) {
+      await this.applyNewsScheduleDefaultsToFeeds(tenantId);
+    }
     return this.getPublic(tenantId);
+  }
+
+  private async applyNewsScheduleDefaultsToFeeds(tenantId: string) {
+    await this.prisma.newsFeed.updateMany({
+      where: { tenantId, purpose: 'news-room', settingsMode: 'default' },
+      data: {
+        pollIntervalMinutes: null,
+        autoPoll: null,
+        autoPrepare: null,
+        autoPublish: null,
+        autoSendSocial: null,
+      },
+    });
+    await this.prisma.tenantPlatformFeed.updateMany({
+      where: { tenantId, settingsMode: 'default' },
+      data: {
+        pollIntervalMinutes: null,
+        autoPoll: null,
+        autoPrepare: null,
+        autoPublish: null,
+        autoSendSocial: null,
+      },
+    });
   }
 
   mergeForGlobalAiTest(current: PublishingSettings, input: UpdatePlatformAiSettingsDto): PublishingSettings {
@@ -1274,7 +1329,7 @@ export class PublishingSettingsService implements OnModuleInit {
     return merged;
   }
 
-  async testDestinationSite(settings: PublishingSettings) {
+  async testDestinationSite(settings: PublishingSettings, fetcher: PublicResourceFetcher) {
     const platform = settings.destination_platform || 'wordpress';
     if (platform === 'iransamaneh') {
       const siteUrl = String(settings.is_site_url || '').trim();
@@ -1286,7 +1341,7 @@ export class PublishingSettingsService implements OnModuleInit {
       }
       normalizeSecureServiceUrl(siteUrl, 'آدرس سایت ایران‌سامانه');
       normalizeSecureServiceUrl(webserviceUrl, 'آدرس وب‌سرویس ایران‌سامانه');
-      await this.pingPublicUrl(siteUrl, 'سایت ایران‌سامانه');
+      await this.pingPublicUrl(fetcher, siteUrl, 'سایت ایران‌سامانه');
       return {
         ok: true as const,
         message: 'اطلاعات اتصال ایران‌سامانه تأیید شد. انتشار خودکار از این مسیر در به‌روزرسانی بعدی تکمیل می‌شود.',
@@ -1302,7 +1357,7 @@ export class PublishingSettingsService implements OnModuleInit {
       }
       normalizeSecureServiceUrl(siteUrl, 'آدرس سایت نستوه');
       normalizeSecureServiceUrl(apiBaseUrl, 'آدرس REST API نستوه');
-      await this.pingPublicUrl(siteUrl, 'سایت نستوه');
+      await this.pingPublicUrl(fetcher, siteUrl, 'سایت نستوه');
       return {
         ok: true as const,
         message: 'اطلاعات اتصال نستوه تأیید شد. انتشار خودکار از این مسیر در به‌روزرسانی بعدی تکمیل می‌شود.',
@@ -1311,19 +1366,16 @@ export class PublishingSettingsService implements OnModuleInit {
     throw new BadRequestException('پلتفرم سایت مقصد پشتیبانی نمی‌شود.');
   }
 
-  private async pingPublicUrl(url: string, label: string) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
+  private async pingPublicUrl(fetcher: PublicResourceFetcher, url: string, label: string) {
+    let status: number;
     try {
-      const response = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
-      if (!response.ok && ![401, 403, 405].includes(response.status)) {
-        throw new BadRequestException(`${label} پاسخ ${response.status} برگرداند.`);
-      }
+      ({ status } = await fetcher.fetchPublicResource(url, { accept: 'text/html,*/*;q=0.8', maxBytes: 0, timeoutMs: 15_000, readBody: false }));
     } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException(`اتصال به ${label} برقرار نشد. آدرس و دسترسی شبکه را بررسی کنید.`);
-    } finally {
-      clearTimeout(timer);
+      const reason = error instanceof BadRequestException ? ` (${error.message})` : '';
+      throw new BadRequestException(`اتصال به ${label} برقرار نشد${reason}. آدرس و دسترسی شبکه را بررسی کنید.`);
+    }
+    if ((status < 200 || status >= 300) && ![401, 403, 405].includes(status)) {
+      throw new BadRequestException(`${label} پاسخ ${status} برگرداند.`);
     }
   }
 

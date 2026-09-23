@@ -32,7 +32,7 @@ export function PageHeader({
         {Icon && (
           <span
             className={cn(
-              'grid h-11 w-11 shrink-0 place-items-center rounded-full',
+              'grid h-10 w-10 shrink-0 place-items-center rounded-lg',
               isBrand ? 'bg-primary-600 text-white' : 'bg-primary-50 text-primary-600',
             )}
           >

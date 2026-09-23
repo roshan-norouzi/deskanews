@@ -70,6 +70,7 @@ export function FeedSourceLogo({
       <img
         src={src}
         alt=""
+        title={name}
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
@@ -81,6 +82,7 @@ export function FeedSourceLogo({
 
   return (
     <div
+      title={name}
       className={cn(
         'grid shrink-0 place-items-center border',
         profile ? 'rounded-full' : 'rounded-xl',

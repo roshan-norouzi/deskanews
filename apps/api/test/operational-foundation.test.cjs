@@ -108,6 +108,34 @@ test('failed jobs retry with backoff and end in the dead-letter state', async ()
   assert.ok(writes[1].data.completedAt instanceof Date);
 });
 
+test('jobs whose article or feed was deleted are cancelled at once instead of retried', async () => {
+  const { NotFoundException } = require('@nestjs/common');
+  const writes = [];
+  const released = [];
+  const jobs = new AutomationJobService(
+    { automationJob: { updateMany: async (query) => { writes.push(query); return { count: 1 }; } } },
+    { release: async (id) => { released.push(id); } },
+  );
+  const status = await jobs.fail({
+    id: 'job-gone', tenantId: 'tenant-a', type: 'news.prepare', status: 'running', payload: {},
+    dedupeKey: 'dedupe-gone', attempts: 1, maxAttempts: 5, lockedBy: 'worker',
+  }, new NotFoundException('خبر یافت نشد'));
+
+  assert.equal(status, 'cancelled');
+  assert.equal(writes[0].data.status, 'cancelled');
+  assert.equal(writes[0].data.dedupeKey, null);
+  assert.deepEqual(released, ['job-gone']);
+});
+
+test('prune also removes dead jobs past the longer retention window', async () => {
+  let where;
+  const jobs = new AutomationJobService({ automationJob: { deleteMany: async (query) => { where = query.where; return { count: 0 }; } } });
+  await jobs.prune(14, 30);
+  const dead = where.OR.find((clause) => clause.status === 'dead');
+  assert.ok(dead);
+  assert.ok(Date.now() - dead.completedAt.lte.getTime() >= 29 * 86_400_000);
+});
+
 test('automatic feed polling requeues a dead fetch job without creating duplicates', async () => {
   const dead = {
     id: 'feed-job', tenantId: 'tenant-a', type: 'news.feed.fetch', status: 'dead',

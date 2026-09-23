@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { ApiError, apiFetch, apiFetchBlob } from '@/lib/utils';
 
@@ -39,6 +40,7 @@ export function FeedBulkActions({
   onImported,
   confirmImportMessage = 'پس از آپلود، منابعی که در فایل نیستند حذف می‌شوند. ادامه می‌دهید؟',
 }: FeedBulkActionsProps) {
+  const confirm = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -61,7 +63,12 @@ export function FeedBulkActions({
   }
 
   async function importWorkbook(file: File) {
-    if (!window.confirm(confirmImportMessage)) return;
+    const ok = await confirm({
+      title: 'آپلود فایل منابع؟',
+      description: confirmImportMessage,
+      confirmLabel: 'آپلود و اعمال',
+    });
+    if (!ok) return;
     setImporting(true);
     setError('');
     try {

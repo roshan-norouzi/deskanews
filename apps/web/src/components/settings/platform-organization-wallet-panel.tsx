@@ -30,7 +30,7 @@ export function PlatformOrganizationWalletPanel() {
       const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
       const result = await apiFetch<{ items: Organization[] }>(`/platform/organizations${suffix}`, { skipTenant: true });
       setOrganizations(result.items);
-      if (!selectedId && result.items[0]) setSelectedId(result.items[0].id);
+      if (result.items[0]) setSelectedId((current) => current || result.items[0].id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'دریافت سازمان‌ها انجام نشد');
     } finally {

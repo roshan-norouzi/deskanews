@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CONTROL_CLASS } from '@/lib/ui';
 
 interface FilterBarProps {
   searchValue?: string;
@@ -22,7 +23,7 @@ export function FilterBar({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between',
+        'flex flex-col gap-3 rounded-card border border-surface-border bg-white p-4 sm:flex-row sm:items-center sm:justify-between',
         className,
       )}
     >
@@ -34,7 +35,7 @@ export function FilterBar({
               value={searchValue ?? ''}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+              className={cn(CONTROL_CLASS, 'pr-10')}
             />
           </div>
         )}

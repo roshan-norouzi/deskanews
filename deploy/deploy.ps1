@@ -1,156 +1,90 @@
 [CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('help', 'verify', 'release', 'push', 'dispatch', 'status', 'smoke')]
+  [ValidateSet('release', 'status', 'smoke', 'token', 'help')]
   [string]$Command = 'help',
 
   [string]$Message = '',
-  [switch]$NoVersionBump,
-  [switch]$SkipSystemExport,
-  [switch]$SkipVerify,
-  [switch]$NoDispatch,
+  [Alias('SkipVerify')]
+  [switch]$SkipCheck,
   [switch]$NoWait,
-  [switch]$LiveOnly,
-  [ValidateRange(5, 90)]
-  [int]$MaximumWaitMinutes = 65
+  [ValidateRange(10, 90)]
+  [int]$MaximumWaitMinutes = 45
 )
 
 $ErrorActionPreference = 'Stop'
-$deployRoot = $PSScriptRoot
-$libRoot = Join-Path $deployRoot 'lib'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+$ProgressPreference = 'SilentlyContinue'
 
-. (Join-Path $libRoot 'common.ps1')
-. (Join-Path $libRoot 'config.ps1')
-. (Join-Path $libRoot 'release.ps1')
-. (Join-Path $libRoot 'github.ps1')
-. (Join-Path $libRoot 'workflow.ps1')
-. (Join-Path $libRoot 'smoke.ps1')
+. (Join-Path $PSScriptRoot 'lib\common.ps1')
+. (Join-Path $PSScriptRoot 'lib\config.ps1')
+. (Join-Path $PSScriptRoot 'lib\github.ps1')
+. (Join-Path $PSScriptRoot 'lib\release.ps1')
 
-$Config = Get-DeployConfig -DeployRoot $libRoot
+$Config = Get-DeployConfig -DeployRoot $PSScriptRoot
 
 function Show-DeployHelp {
   Write-Host ''
-  Write-Host 'DESKA deploy - single entry point' -ForegroundColor Cyan
-  Write-Host '================================' -ForegroundColor Cyan
+  Write-Host 'DESKA deploy' -ForegroundColor Cyan
   Write-Host ''
-  Write-Host 'Usage:' -ForegroundColor Yellow
-  Write-Host '  deploy\deploy.bat [options]       # recommended on Windows (ExecutionPolicy bypass)'
-  Write-Host '  deploy.cmd [options]              # same, from repo root'
-  Write-Host '  powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1 <command> [options]'
-  Write-Host '  .\deploy\deploy.ps1 <command>     # only if scripts are allowed in your shell'
+  Write-Host '  deploy.cmd                     Publish everything: commit, version tag, GitHub, server'
+  Write-Host '  deploy.cmd -Message "text"     Same, with your own commit message'
+  Write-Host '  deploy\deploy.bat status       Latest deploy run (and its error, if it failed)'
+  Write-Host '  deploy\deploy.bat smoke        Check https://app.deska.ir is healthy'
+  Write-Host '  deploy\deploy.bat token        Replace the saved GitHub token'
   Write-Host ''
-  Write-Host 'Commands:' -ForegroundColor Yellow
-  Write-Host '  help      Show this help'
-  Write-Host '  verify    Run local pre-delivery checks (pnpm verify)'
-  Write-Host '  release   Full deploy: verify -> commit -> push -> GitHub Actions'
-  Write-Host '  push      Push current branch only'
-  Write-Host '  dispatch  Trigger GitHub Actions deploy for current branch'
-  Write-Host '  status    Show latest deploy workflow run'
-  Write-Host '  smoke     Smoke test production URL after deploy'
-  Write-Host ''
-  Write-Host 'Common options:' -ForegroundColor Yellow
-  Write-Host '  -Message <text>         Custom commit message'
-  Write-Host '  -NoVersionBump          Do not increment VERSION'
-  Write-Host '  -SkipSystemExport       Skip local system-observance export'
-  Write-Host '  -SkipVerify             Skip local verify before release'
-  Write-Host '  -NoDispatch             Commit/push only; do not start GitHub Actions'
-  Write-Host '  -NoWait                 Return after dispatch; monitor on GitHub'
-  Write-Host '  -LiveOnly               For verify: runtime checks only'
-  Write-Host ''
-  Write-Host 'GitHub token (one of):' -ForegroundColor Yellow
-  Write-Host '  DEPLOY_GITHUB_TOKEN env var'
-  Write-Host '  gh auth login'
-  Write-Host '  interactive prompt during dispatch/status'
+  Write-Host '  -SkipCheck   skip the local TypeScript check'
+  Write-Host '  -NoWait      return right after GitHub starts the deploy'
   Write-Host ''
   Write-Host 'Guide: deploy/DEPLOY.md' -ForegroundColor DarkGray
-  Write-Host ''
 }
 
-switch ($Command) {
-  'help' {
-    Show-DeployHelp
-    exit 0
+function Invoke-Release {
+  $startedAt = Get-Date
+  Initialize-Repository -ProjectRoot $Config.projectRoot
+  Assert-ReleaseBranch -Config $Config
+
+  Write-Step '1/5 GitHub access'
+  $headers = New-GitHubHeaders (Get-GitHubToken -Config $Config)
+  Write-Ok "Connected to $($Config.owner)/$($Config.repository)."
+
+  Write-Step '2/5 Local check'
+  if ($SkipCheck) { Write-Info 'Skipped (-SkipCheck).' } else { Invoke-LocalCheck -Config $Config }
+
+  Write-Step '3/5 Version and push'
+  $release = Resolve-Release -Config $Config -Message $Message
+  Publish-Release -Config $Config -Release $release
+  Write-Host "    Release: $($release.Tag) ($($release.Sha.Substring(0, 7)))" -ForegroundColor White
+
+  Write-Step "4/5 Build and deploy on GitHub Actions ($($release.Tag))"
+  $knownRunIds = Invoke-DeployWorkflow -Config $Config -Headers $headers -Tag $release.Tag -Sha $release.Sha
+  if ($NoWait) {
+    Write-Ok 'Deploy started. Follow it with: deploy\deploy.bat status'
+    return
   }
+  Wait-DeployWorkflow -Config $Config -Headers $headers -Sha $release.Sha -KnownRunIds $knownRunIds -MaximumWaitMinutes $MaximumWaitMinutes | Out-Null
 
-  'verify' {
-    Ensure-GitRepository -ProjectRoot $Config.projectRoot
-    $verifyScript = Join-Path $Config.projectRoot 'scripts/verify.ps1'
-    if (-not (Test-Path $verifyScript)) { throw "Missing verification script: $verifyScript" }
-    $verifyArgs = @('-ExecutionPolicy', 'Bypass', '-File', $verifyScript)
-    if ($LiveOnly) { $verifyArgs += '-LiveOnly' }
-    & powershell @verifyArgs
-    if ($LASTEXITCODE -ne 0) { throw 'Local verification failed.' }
-    exit 0
-  }
+  Write-Step '5/5 Production check'
+  Invoke-ProductionSmokeTest -Config $Config -ExpectedVersion $release.Version
 
-  'push' {
-    Ensure-GitRepository -ProjectRoot $Config.projectRoot
-    Write-DeployTargetSummary -Config $Config
-    Push-BranchWithRetry $Config.branch
-    Write-Host 'Branch pushed.' -ForegroundColor Green
-    exit 0
-  }
+  Write-Host ''
+  Write-Host "Done: $($release.Tag) is live on $($Config.publicUrl) ($(Format-Elapsed ((Get-Date) - $startedAt)))" -ForegroundColor Green
+}
 
-  'dispatch' {
-    Ensure-GitRepository -ProjectRoot $Config.projectRoot
-    Write-DeployTargetSummary -Config $Config
-    Invoke-DeployDispatch -Config $Config -NoWait:$NoWait -MaximumWaitMinutes $MaximumWaitMinutes | Out-Null
-    exit 0
-  }
-
-  'status' {
-    Ensure-GitRepository -ProjectRoot $Config.projectRoot
-    Write-DeployTargetSummary -Config $Config
-    Show-DeployStatus -Config $Config
-    exit 0
-  }
-
-  'smoke' {
-    Ensure-GitRepository -ProjectRoot $Config.projectRoot
-    Write-DeployTargetSummary -Config $Config
-    Invoke-ProductionSmokeTest -Config $Config
-    exit 0
-  }
-
-  'release' {
-    Ensure-GitRepository -ProjectRoot $Config.projectRoot
-    Write-DeployTargetSummary -Config $Config
-
-    if (-not $SkipVerify) {
-      Write-Host 'Step 1/4: Local verification' -ForegroundColor Cyan
-      & $PSCommandPath verify
-      if ($LASTEXITCODE -ne 0) { throw 'Release stopped because local verification failed.' }
-    } else {
-      Write-Host 'Step 1/4: Local verification skipped.' -ForegroundColor DarkGray
+try {
+  switch ($Command) {
+    'help' { Show-DeployHelp }
+    'release' { Invoke-Release }
+    'status' { Initialize-Repository -ProjectRoot $Config.projectRoot; Show-DeployStatus -Config $Config }
+    'smoke' { Invoke-ProductionSmokeTest -Config $Config -ExpectedVersion '' }
+    'token' {
+      Remove-SavedGitHubToken
+      Read-GitHubTokenFromUser -Config $Config | Out-Null
     }
-
-    Write-Host 'Step 2/4: Commit and push' -ForegroundColor Cyan
-    Export-SystemObservances -ProjectRoot $Config.projectRoot -SkipSystemExport:$SkipSystemExport
-    Invoke-ReleaseCommitAndPush -Config $Config -Message $Message -NoVersionBump:$NoVersionBump | Out-Null
-
-    if ($NoDispatch) {
-      Write-Host 'Step 3/4: GitHub Actions dispatch skipped (-NoDispatch).' -ForegroundColor Yellow
-      Write-Host 'Run: .\deploy\deploy.ps1 dispatch' -ForegroundColor Yellow
-      exit 0
-    }
-
-    Write-Host 'Step 3/4: Trigger GitHub Actions deploy' -ForegroundColor Cyan
-    $run = Invoke-DeployDispatch -Config $Config -NoWait:$NoWait -MaximumWaitMinutes $MaximumWaitMinutes
-
-    if ($NoWait -or ($run -and $run.status -ne 'completed')) {
-      Write-Host 'Step 4/4: Production smoke test skipped until the workflow completes.' -ForegroundColor Yellow
-      Write-Host 'After GitHub Actions succeeds, run: .\deploy\deploy.ps1 smoke' -ForegroundColor Yellow
-      exit 0
-    }
-
-    Write-Host 'Step 4/4: Production smoke test' -ForegroundColor Cyan
-    Invoke-ProductionSmokeTest -Config $Config
-    Write-Host 'Release completed.' -ForegroundColor Green
-    exit 0
   }
-
-  default {
-    Show-DeployHelp
-    exit 1
-  }
+  exit 0
+} catch {
+  Write-Host ''
+  Write-Host "DEPLOY FAILED: $($_.Exception.Message)" -ForegroundColor Red
+  exit 1
 }

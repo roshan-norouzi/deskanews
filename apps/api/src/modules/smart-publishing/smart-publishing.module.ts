@@ -20,11 +20,13 @@ import { TENANT_PUBLISHING_PORT } from '../../contracts/tenant-publishing.port';
 import { TenantPublishingFacade } from './tenant-publishing.facade';
 import { PlatformPublishingFacade } from './platform-publishing.facade';
 import { PLATFORM_PUBLISHING_PORT } from '../../contracts/platform-publishing.port';
+import { InstagramOAuthService } from './instagram-oauth.service';
+import { InstagramOAuthController } from './instagram-oauth.controller';
 import { FastLaneQueue } from './fast-lane.queue';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
-  controllers: [SmartPublishingController, PublishingFontFileController, PublishingImageFileController, PublishingSourceIconController, SocialPublishingMediaController],
+  controllers: [SmartPublishingController, InstagramOAuthController, PublishingFontFileController, PublishingImageFileController, PublishingSourceIconController, SocialPublishingMediaController],
   providers: [
     PublishingSettingsService,
     SecretProtectionService,
@@ -41,6 +43,7 @@ import { FastLaneQueue } from './fast-lane.queue';
     SocialCoverRendererService,
     PublishingOperationsService,
     PublishingAutomationProcessor,
+    InstagramOAuthService,
     FastLaneQueue,
     TenantPublishingFacade,
     PlatformPublishingFacade,

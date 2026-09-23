@@ -19,6 +19,10 @@ export interface TenantUsageSummary {
   tenantId: string;
   metrics: TenantUsageMetric[];
   totalCost: number;
+  availableTokens?: number;
+  consumedDay?: number;
+  consumedWeek?: number;
+  consumedMonth?: number;
 }
 
 interface OrganizationUsagePanelProps {
@@ -59,9 +63,37 @@ export function OrganizationUsagePanel({
         </div>
       ) : (
         <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+              <p className="text-sm text-slate-600">توکن باقیمانده</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {formatPersianDigits(String(data?.availableTokens ?? 0))}
+                <span className="mr-2 text-sm font-medium text-slate-500">{USAGE_UNIT_LABEL}</span>
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-sm text-slate-600">مصرف امروز</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{formatPersianDigits(String(data?.consumedDay ?? 0))}
+                <span className="mr-2 text-sm font-medium text-slate-500">{USAGE_UNIT_LABEL}</span>
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-sm text-slate-600">مصرف این هفته</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{formatPersianDigits(String(data?.consumedWeek ?? 0))}
+                <span className="mr-2 text-sm font-medium text-slate-500">{USAGE_UNIT_LABEL}</span>
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-sm text-slate-600">مصرف این ماه</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{formatPersianDigits(String(data?.consumedMonth ?? 0))}
+                <span className="mr-2 text-sm font-medium text-slate-500">{USAGE_UNIT_LABEL}</span>
+              </p>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary-100 bg-primary-50/50 px-4 py-3">
             <div>
-              <p className="text-sm text-slate-600">مصرف کل سازمان</p>
+              <p className="text-sm text-slate-600">مصرف کل ثبت‌شده</p>
               <p className="text-2xl font-bold text-slate-900">
                 {formatPersianDigits(String(data?.totalCost ?? 0))}
                 <span className="mr-2 text-sm font-medium text-slate-500">{USAGE_UNIT_LABEL}</span>

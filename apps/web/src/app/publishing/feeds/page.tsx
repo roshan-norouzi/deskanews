@@ -17,13 +17,16 @@ import { PlatformFeedsSection } from '@/components/publishing/platform-feeds-sec
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { mergeSourceLanguageCatalog, sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
+import { FEED_PROBE_REQUEST_TIMEOUT_MS, feedUsesOrganizationDefaults, newsOrganizationAutomation } from '@/lib/news-feed-automation';
 import {
   FEED_CATALOG_GROUPS,
   FEED_CATALOG_GROUP_ORDER,
@@ -59,6 +62,7 @@ interface Feed {
   enabled: boolean;
   lastFetchedAt: string | null;
   lastError: string;
+  settingsMode?: string | null;
 }
 
 interface FeedForm {
@@ -74,9 +78,10 @@ interface FeedForm {
   autoPrepare: boolean;
   autoPublish: boolean;
   autoSendSocial: boolean;
+  useOrganizationDefaults: boolean;
 }
 
-const EMPTY_FORM: FeedForm = { name: '', url: '', sourceType: 'rss', sourceLanguage: 'auto', purpose: 'news-room', includeWords: '', excludeWords: '', pollIntervalMinutes: '240', autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false };
+const EMPTY_FORM: FeedForm = { name: '', url: '', sourceType: 'rss', sourceLanguage: 'auto', purpose: 'news-room', includeWords: '', excludeWords: '', pollIntervalMinutes: '240', autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false, useOrganizationDefaults: true };
 
 interface HealthItem {
   title: string;
@@ -94,8 +99,10 @@ interface HealthResult {
 
 function validateForm(form: FeedForm) {
   if (form.name.trim().length < 2) return 'نام منبع باید حداقل ۲ نویسه باشد.';
-  const interval = Number(form.pollIntervalMinutes);
-  if (!Number.isInteger(interval) || interval < 5 || interval > 1440) return 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.';
+  if (!form.useOrganizationDefaults) {
+    const interval = Number(form.pollIntervalMinutes);
+    if (!Number.isInteger(interval) || interval < 5 || interval > 1440) return 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.';
+  }
   try {
     const url = new URL(form.url.trim());
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
@@ -119,8 +126,11 @@ function createModalTitle(group: FeedCatalogGroup, editing: boolean) {
 }
 
 export default function FeedsPage() {
+  const confirm = useConfirm();
   const { data, error: loadError, isLoading, refetch } = useApi<Feed[]>('/publishing/news/feeds');
+  const { data: orgSettings } = useApi<Record<string, string>>('/publishing/settings');
   const languagesApi = useApi<Array<{ code: string; label: string }>>('/publishing/source-languages');
+  const orgAutomation = useMemo(() => newsOrganizationAutomation(orgSettings || {}), [orgSettings]);
   const feeds = useMemo(() => Array.isArray(data) ? data : [], [data]);
   const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
   const [query, setQuery] = useState('');
@@ -184,7 +194,16 @@ export default function FeedsPage() {
     setEditing(null);
     editingIdRef.current = null;
     setModalGroup(group);
-    setForm({ ...EMPTY_FORM, sourceType: defaultSourceTypeForCatalogGroup(group) });
+    setForm({
+      ...EMPTY_FORM,
+      sourceType: defaultSourceTypeForCatalogGroup(group),
+      pollIntervalMinutes: orgAutomation.pollIntervalMinutes,
+      autoPoll: orgAutomation.autoPoll,
+      autoPrepare: orgAutomation.autoPrepare,
+      autoPublish: orgAutomation.autoPublish,
+      autoSendSocial: orgAutomation.autoSendSocial,
+      useOrganizationDefaults: true,
+    });
     setNotice(null);
     setModalOpen(true);
   }
@@ -195,14 +214,39 @@ export default function FeedsPage() {
     setEditing(feed);
     editingIdRef.current = feed.id;
     setModalGroup(group);
-    setForm({ name: feed.name, url: feed.url, sourceType: feed.sourceType || defaultSourceTypeForCatalogGroup(group), sourceLanguage: feed.sourceLanguage || 'auto', purpose: feed.purpose, includeWords: wordsToString(feed.includeWords), excludeWords: wordsToString(feed.excludeWords), pollIntervalMinutes: String(feed.pollIntervalMinutes ?? 240), autoPoll: feed.autoPoll ?? true, autoPrepare: feed.autoPrepare ?? feed.purpose === 'news-room', autoPublish: feed.autoPublish ?? false, autoSendSocial: feed.autoSendSocial ?? false });
+    const useOrganizationDefaults = feedUsesOrganizationDefaults(feed);
+    const automation = useOrganizationDefaults ? orgAutomation : {
+      pollIntervalMinutes: String(feed.pollIntervalMinutes ?? orgAutomation.pollIntervalMinutes),
+      autoPoll: feed.autoPoll ?? orgAutomation.autoPoll,
+      autoPrepare: feed.autoPrepare ?? orgAutomation.autoPrepare,
+      autoPublish: feed.autoPublish ?? orgAutomation.autoPublish,
+      autoSendSocial: feed.autoSendSocial ?? orgAutomation.autoSendSocial,
+    };
+    setForm({
+      name: feed.name,
+      url: feed.url,
+      sourceType: feed.sourceType || defaultSourceTypeForCatalogGroup(group),
+      sourceLanguage: feed.sourceLanguage || 'auto',
+      purpose: feed.purpose,
+      includeWords: wordsToString(feed.includeWords),
+      excludeWords: wordsToString(feed.excludeWords),
+      pollIntervalMinutes: automation.pollIntervalMinutes,
+      autoPoll: automation.autoPoll,
+      autoPrepare: automation.autoPrepare,
+      autoPublish: automation.autoPublish,
+      autoSendSocial: automation.autoSendSocial,
+      useOrganizationDefaults,
+    });
     setNotice(null);
     setModalOpen(true);
   }
 
   async function testSource(feed: Feed) {
     await run(`test-${feed.id}`, async () => {
-      const result = await apiFetch<HealthResult>(`/publishing/news/feeds/${feed.id}/test`, { method: 'POST' });
+      const result = await apiFetch<HealthResult>(`/publishing/news/feeds/${feed.id}/test`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(FEED_PROBE_REQUEST_TIMEOUT_MS),
+      });
       setHealth(result);
       setHealthOpen(true);
     });
@@ -217,6 +261,7 @@ export default function FeedsPage() {
     await run('probe', async () => {
       const result = await apiFetch<HealthResult>('/publishing/news/feeds/probe', {
         method: 'POST',
+        signal: AbortSignal.timeout(FEED_PROBE_REQUEST_TIMEOUT_MS),
         body: {
           name: form.name.trim(),
           url: form.url.trim(),
@@ -251,18 +296,27 @@ export default function FeedsPage() {
     }
     await run('save', async () => {
       const feedId = editingIdRef.current;
+      const body: Record<string, unknown> = {
+        name: form.name.trim(),
+        url: form.url.trim(),
+        sourceType: form.sourceType,
+        sourceLanguage: form.sourceLanguage,
+        purpose: 'news-room',
+        catalogGroup: modalGroup,
+        includeWords: form.includeWords,
+        excludeWords: form.excludeWords,
+        settingsMode: form.useOrganizationDefaults ? 'default' : 'custom',
+      };
+      if (!form.useOrganizationDefaults) {
+        body.pollIntervalMinutes = Number(form.pollIntervalMinutes);
+        body.autoPoll = form.autoPoll;
+        body.autoPrepare = form.autoPrepare;
+        body.autoPublish = form.autoPublish;
+        body.autoSendSocial = form.autoSendSocial;
+      }
       await apiFetch(feedId ? `/publishing/news/feeds/${feedId}` : '/publishing/news/feeds', {
         method: feedId ? 'PATCH' : 'POST',
-        body: {
-          ...form,
-          purpose: 'news-room',
-          catalogGroup: modalGroup,
-          name: form.name.trim(),
-          url: form.url.trim(),
-          includeWords: form.includeWords,
-          excludeWords: form.excludeWords,
-          pollIntervalMinutes: Number(form.pollIntervalMinutes),
-        },
+        body,
       });
       closeModal();
       setActiveGroup(modalGroup);
@@ -272,8 +326,8 @@ export default function FeedsPage() {
   }
 
   return (
-    <ProtectedLayout title="منابع خبری">
-      <main className="mx-auto w-full max-w-7xl space-y-8 p-4 sm:p-6" dir="rtl">
+    <ProtectedLayout>
+      <PageContainer className="space-y-8">
         <PageHeader
           title="منابع خبری"
           description="منابع خبری اتاق خبر — کاتالوگ پیش‌فرض و منابع اختصاصی سازمان. استودیوی اجتماعی منابع جداگانه دارد."
@@ -327,7 +381,7 @@ export default function FeedsPage() {
           </div>
 
         {notice && <div role="status" className={cn('rounded-xl border px-4 py-3 text-sm', notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700')}>{notice.text}</div>}
-        {loadError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">دریافت فیدها انجام نشد: {loadError}</div>}
+        {loadError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">بارگذاری منابع خبری انجام نشد: {loadError}</div>}
 
         <Card className="overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -373,7 +427,7 @@ export default function FeedsPage() {
                       <Button size="sm" variant="ghost" title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} aria-label={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} isLoading={busy === `toggle-${feed.id}`} onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}>
                         <Power className={feedTogglePowerClass(feed.enabled)} />
                       </Button>
-                      <Button size="sm" variant="ghost" title="حذف" aria-label="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => { if (window.confirm(`منبع «${feed.name}» حذف شود؟`)) run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: 'منبع حذف شد.' }); await refetch(); }); }}>
+                      <Button size="sm" variant="ghost" title="حذف" aria-label="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={async () => { const ok = await confirm({ title: 'حذف منبع؟', description: `منبع «${feed.name}» برای همیشه حذف می‌شود.`, confirmLabel: 'حذف منبع', variant: 'danger' }); if (!ok) return; run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: 'منبع حذف شد.' }); await refetch(); }); }}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </>
@@ -427,13 +481,38 @@ export default function FeedsPage() {
                   </fieldset>
                 ) : null}
                 <div className="grid gap-4 sm:grid-cols-2"><Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(event) => setForm((current) => ({ ...current, includeWords: event.target.value }))} /><Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(event) => setForm((current) => ({ ...current, excludeWords: event.target.value }))} /></div>
-                <label className="grid gap-1.5 text-sm font-medium text-slate-700">فاصله پایش (دقیقه)<input type="number" min="5" max="1440" required dir="ltr" className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value }))} /><span className="text-xs font-normal text-slate-500">بین ۵ دقیقه تا ۲۴ ساعت</span></label>
-                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">اتوماسیون اختصاصی این منبع</legend><div className="grid gap-3 sm:grid-cols-2">{[
+                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <input
+                    type="checkbox"
+                    checked={form.useOrganizationDefaults}
+                    onChange={(event) => {
+                      const useOrganizationDefaults = event.target.checked;
+                      setForm((current) => ({
+                        ...current,
+                        useOrganizationDefaults,
+                        ...(useOrganizationDefaults ? {
+                          pollIntervalMinutes: orgAutomation.pollIntervalMinutes,
+                          autoPoll: orgAutomation.autoPoll,
+                          autoPrepare: orgAutomation.autoPrepare,
+                          autoPublish: orgAutomation.autoPublish,
+                          autoSendSocial: orgAutomation.autoSendSocial,
+                        } : {}),
+                      }));
+                    }}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-900">استفاده از پیش‌فرض پایش و اتوماسیون سازمان</span>
+                    <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">با تغییر تنظیمات در «تنظیمات انتشار → پایش خبر»، همین منبع هم به‌روز می‌شود.</span>
+                  </span>
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-slate-700">فاصله پایش (دقیقه)<input type="number" min="5" max="1440" required dir="ltr" disabled={form.useOrganizationDefaults} className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 disabled:bg-slate-100 disabled:text-slate-500" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value, useOrganizationDefaults: false }))} /><span className="text-xs font-normal text-slate-500">بین ۵ دقیقه تا ۲۴ ساعت</span></label>
+                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">اتوماسیون این منبع</legend><div className="grid gap-3 sm:grid-cols-2">{[
                   ['autoPoll', 'پایش خودکار', 'منبع طبق فاصله زمانی بالا به‌صورت خودکار بررسی شود.'],
                   ['autoPrepare', 'آماده‌سازی خودکار', 'مطالب جدید بدون دخالت کاربر آماده شوند.'],
                   ['autoPublish', 'انتشار خودکار', 'خبر آماده در سایت منتشر شود.'],
                   ['autoSendSocial', 'ارسال خودکار به استودیوی اجتماعی', 'خبر آماده برای انتشار در شبکه‌های اجتماعی ارسال شود.'],
-                ].map(([key, label, description]) => { const field = key as keyof Pick<FeedForm, 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial'>; return <label key={key} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 hover:border-primary-300"><input type="checkbox" checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" /><span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{description}</span></span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">تنظیمات هر منبع بر تنظیمات عمومی سازمان اولویت دارد. منابع قدیمی که تنظیم اختصاصی ندارند، از تنظیمات عمومی استفاده می‌کنند.</p></fieldset>
+                ].map(([key, label, description]) => { const field = key as keyof Pick<FeedForm, 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial'>; return <label key={key} className={cn('flex items-start gap-3 rounded-2xl border border-slate-200 p-4', form.useOrganizationDefaults ? 'bg-slate-50 opacity-90' : 'cursor-pointer hover:border-primary-300')}><input type="checkbox" disabled={form.useOrganizationDefaults} checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked, useOrganizationDefaults: false }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" /><span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{description}</span></span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">اگر «پیش‌فرض سازمان» فعال باشد، مقادیر از تنظیمات انتشار خوانده می‌شوند. برای تنظیم اختصاصی، تیک پیش‌فرض را بردارید یا یکی از گزینه‌ها را تغییر دهید.</p></fieldset>
               </ModalBody>
               <ModalFooter className="flex items-center justify-between gap-2">
                 <Button type="button" variant="outline" isLoading={busy === 'probe'} onClick={() => void probeSource()}><HeartPulse className="h-4 w-4" /> آزمایش منبع</Button>
@@ -485,7 +564,7 @@ export default function FeedsPage() {
             </div>
           )}
         </Modal>
-      </main>
+      </PageContainer>
     </ProtectedLayout>
   );
 }

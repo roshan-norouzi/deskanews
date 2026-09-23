@@ -427,18 +427,23 @@ export class DestinationCategoryService {
     return { ok: true, approved: result.count };
   }
 
-  async bulkDeleteStale(tenantId: string, userId?: string) {
+  async bulkDeleteStale(tenantId: string, _userId?: string) {
     const platform = this.resolvePlatform(await this.settings.getRaw(tenantId));
     const staleRows = await this.prisma.destinationCategory.findMany({
       where: { tenantId, platform, status: 'stale', isGeneral: false },
       select: { id: true },
     });
-    let deleted = 0;
-    for (const row of staleRows) {
-      await this.updateStatus(row.id, tenantId, 'rejected', userId);
-      deleted++;
-    }
-    return { ok: true, deleted };
+    if (!staleRows.length) return { ok: true, deleted: 0 };
+    const ids = staleRows.map((row) => row.id);
+    const general = await this.ensureGeneralCategory(tenantId, platform);
+    const [, removed] = await this.prisma.$transaction([
+      this.prisma.newsArticle.updateMany({
+        where: { tenantId, destinationCategoryId: { in: ids } },
+        data: { destinationCategoryId: general.id, categorySource: 'general' },
+      }),
+      this.prisma.destinationCategory.deleteMany({ where: { tenantId, id: { in: ids }, isGeneral: false } }),
+    ]);
+    return { ok: true, deleted: removed.count };
   }
 
   async getApprovedCategoriesForAi(tenantId: string): Promise<WordPressCategory[]> {
@@ -460,21 +465,30 @@ export class DestinationCategoryService {
     })).filter((category) => Number.isSafeInteger(category.id) && category.id > 0);
   }
 
-  async categorizeArticle(tenantId: string, articleId: string) {
+  private async categorizationContext(tenantId: string) {
+    const settings = await this.settings.getRaw(tenantId);
+    const platform = this.resolvePlatform(settings);
+    const general = await this.ensureGeneralCategory(tenantId, platform);
+    const approved = await this.getApprovedCategoriesForAi(tenantId);
+    return { settings, platform, general, approved };
+  }
+
+  async categorizeArticle(
+    tenantId: string,
+    articleId: string,
+    context?: Awaited<ReturnType<DestinationCategoryService['categorizationContext']>>,
+  ) {
     const article = await this.prisma.newsArticle.findFirst({ where: { id: articleId, tenantId } });
     if (!article) throw new NotFoundException('خبر یافت نشد');
     if (article.categorySource === 'manual') return article;
 
-    const platform = this.resolvePlatform(await this.settings.getRaw(tenantId));
-    const general = await this.ensureGeneralCategory(tenantId, platform);
-    const approved = await this.getApprovedCategoriesForAi(tenantId);
+    const { settings, platform, general, approved } = context ?? await this.categorizationContext(tenantId);
 
     let destinationCategoryId = general.id;
     let categorySource = 'general';
 
     if (approved.length) {
       try {
-        const settings = await this.settings.getRaw(tenantId);
         const categoryId = await this.gapGpt.chooseWordPressCategory(settings, {
           sourceName: article.sourceName,
           title: article.titleFa || article.originalTitle,
@@ -517,8 +531,10 @@ export class DestinationCategoryService {
       },
       select: { id: true },
     });
+    if (!articles.length) return;
+    const context = await this.categorizationContext(tenantId);
     for (const article of articles) {
-      await this.categorizeArticle(tenantId, article.id).catch((error) => {
+      await this.categorizeArticle(tenantId, article.id, context).catch((error) => {
         this.logger.warn(`Batch categorization failed for ${article.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
       });
     }

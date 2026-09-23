@@ -212,11 +212,13 @@ export class AutomationJobService {
     return updated.count === 1;
   }
 
-  async fail(job: AutomationJob, error: unknown): Promise<'queued' | 'dead' | 'lost'> {
+  async fail(job: AutomationJob, error: unknown): Promise<'queued' | 'dead' | 'cancelled' | 'lost'> {
     if (!job.lockedBy) return 'lost';
     const message = (error instanceof Error ? error.message : String(error || 'خطای ناشناخته')).slice(0, 4000);
-    const terminal = job.attempts >= job.maxAttempts;
-    const status = terminal ? 'dead' : 'queued';
+    // A deleted article or feed will never reappear, so retrying only produces dead jobs and alerts.
+    const obsolete = error instanceof NotFoundException;
+    const terminal = obsolete || job.attempts >= job.maxAttempts;
+    const status = obsolete ? 'cancelled' : terminal ? 'dead' : 'queued';
     const updated = await this.prisma.automationJob.updateMany({
       where: { id: job.id, status: 'running', lockedBy: job.lockedBy },
       data: {
@@ -226,9 +228,10 @@ export class AutomationJobService {
         lockedAt: null,
         lockedBy: null,
         lastError: message,
+        ...(obsolete ? { dedupeKey: null } : {}),
       },
     });
-    if (updated.count === 1 && status === 'dead') await this.billing?.release(job.id, job.tenantId);
+    if (updated.count === 1 && terminal) await this.billing?.release(job.id, job.tenantId);
     return updated.count === 1 ? status : 'lost';
   }
 
@@ -353,10 +356,16 @@ export class AutomationJobService {
     return stats;
   }
 
-  async prune(retentionDays = 14) {
+  async prune(retentionDays = 14, deadRetentionDays = 30) {
     const cutoff = new Date(Date.now() - Math.max(1, retentionDays) * 86_400_000);
+    const deadCutoff = new Date(Date.now() - Math.max(retentionDays, deadRetentionDays) * 86_400_000);
     return this.prisma.automationJob.deleteMany({
-      where: { status: { in: ['completed', 'cancelled'] }, completedAt: { lte: cutoff } },
+      where: {
+        OR: [
+          { status: { in: ['completed', 'cancelled'] }, completedAt: { lte: cutoff } },
+          { status: 'dead', completedAt: { lte: deadCutoff } },
+        ],
+      },
     });
   }
 }

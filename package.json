@@ -26,6 +26,6 @@
     "worker:dev": "cd workers/deska && npm install && npx wrangler dev"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

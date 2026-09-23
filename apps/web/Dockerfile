@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 WORKDIR /app
 
@@ -23,7 +23,7 @@ ENV DOCKER_BUILD=true
 RUN pnpm --filter @deska/shared build
 RUN pnpm --filter @deska/web build
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 LABEL org.opencontainers.image.source="https://github.com/roshan-norouzi/deska"
 ENV NODE_ENV=production

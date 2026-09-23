@@ -2,7 +2,7 @@ require('reflect-metadata');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { toWordPressHtml } = require('../dist/modules/smart-publishing/news-publish-html');
+const { toWordPressHtml, resolvePublishHtml, sanitizePublishHtml, looksLikePublishHtml } = require('../dist/modules/smart-publishing/news-publish-html');
 const {
   fallbackCoverTemplateFromSample,
   normalizeInferredCoverTemplate,
@@ -13,6 +13,20 @@ test('toWordPressHtml appends a source line with name and link', () => {
   const html = toWordPressHtml('متن کامل خبر', 'رسانه فناوری', 'https://source.example/story', 'news-a');
   assert.match(html, /متن کامل خبر/);
   assert.match(html, /<p>منبع: <a href="https:\/\/source\.example\/story"[^>]*>رسانه فناوری<\/a><\/p>/);
+});
+
+test('sanitizePublishHtml keeps headings and strips scripts', () => {
+  const html = sanitizePublishHtml('<h2>تیتر</h2><p>به گزارش <a href="https://x.example">منبع</a>، متن</p><script>alert(1)</script><p>منبع: x</p>');
+  assert.match(html, /<h2>تیتر<\/h2>/);
+  assert.match(html, /به گزارش/);
+  assert.doesNotMatch(html, /script|alert/i);
+  assert.equal(looksLikePublishHtml(html), true);
+});
+
+test('resolvePublishHtml prefers edited HTML over auto wrapping', () => {
+  const edited = '<p>به گزارش من، متن ویرایش‌شده</p><p>منبع: سفارشی</p>';
+  assert.equal(resolvePublishHtml(edited, 'ایسنا', 'https://isna.ir/a', 'id-1'), sanitizePublishHtml(edited));
+  assert.match(resolvePublishHtml('فقط متن ساده', 'ایسنا', 'https://isna.ir/a', 'id-1'), /منبع:/);
 });
 
 test('resolveCoverCanvasSize maps tall samples to story size', () => {

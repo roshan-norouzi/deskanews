@@ -23,6 +23,7 @@ import { PublishingOperationsService } from './publishing-operations.service';
 import { FeedBulkService } from './feed-bulk.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { DestinationCategoryService } from './destination-category.service';
+import { DESTINATION_HEALTH_KEY, DESTINATION_HEALTH_NAME } from './destination-health';
 import { SourceIconService } from './source-icon.service';
 import { BulkApproveDestinationCategoriesDto, CreateDestinationCategoryDto, SyncDestinationCategoriesDto, UpdateDestinationCategoryDto, UpdateDestinationCategoryStatusDto } from './dto/destination-category.dto';
 @Controller('publishing')
@@ -61,20 +62,20 @@ export class SmartPublishingController {
     const platform = merged.destination_platform || body.destination_platform || 'wordpress';
     if (platform !== 'wordpress') {
       try {
-        const result = await this.settingsService.testDestinationSite(merged);
-        await this.integrationHealth.success({ tenantId: tenant.tenantId, key: `destination:${platform}`, type: 'publishing', name: platform === 'iransamaneh' ? 'ایران‌سامانه' : 'نستوه', latencyMs: Date.now() - started }).catch(() => undefined);
+        const result = await this.settingsService.testDestinationSite(merged, this.sourceReader);
+        await this.integrationHealth.success({ tenantId: tenant.tenantId, key: DESTINATION_HEALTH_KEY, type: 'publishing', name: DESTINATION_HEALTH_NAME, latencyMs: Date.now() - started }).catch(() => undefined);
         return result;
       } catch (error) {
-        await this.integrationHealth.failure({ tenantId: tenant.tenantId, key: `destination:${platform}`, type: 'publishing', name: platform === 'iransamaneh' ? 'ایران‌سامانه' : 'نستوه', latencyMs: Date.now() - started, error }).catch(() => undefined);
+        await this.integrationHealth.failure({ tenantId: tenant.tenantId, key: DESTINATION_HEALTH_KEY, type: 'publishing', name: DESTINATION_HEALTH_NAME, latencyMs: Date.now() - started, error }).catch(() => undefined);
         throw error;
       }
     }
     try {
       const result = await this.wordpress.test(merged);
-      await this.integrationHealth.success({ tenantId: tenant.tenantId, key: 'wordpress', type: 'publishing', name: 'WordPress', latencyMs: Date.now() - started, metadata: { categories: result.categories.length } }).catch(() => undefined);
+      await this.integrationHealth.success({ tenantId: tenant.tenantId, key: DESTINATION_HEALTH_KEY, type: 'publishing', name: DESTINATION_HEALTH_NAME, latencyMs: Date.now() - started, metadata: { categories: result.categories.length } }).catch(() => undefined);
       return result;
     } catch (error) {
-      await this.integrationHealth.failure({ tenantId: tenant.tenantId, key: 'wordpress', type: 'publishing', name: 'WordPress', latencyMs: Date.now() - started, error }).catch(() => undefined);
+      await this.integrationHealth.failure({ tenantId: tenant.tenantId, key: DESTINATION_HEALTH_KEY, type: 'publishing', name: DESTINATION_HEALTH_NAME, latencyMs: Date.now() - started, error }).catch(() => undefined);
       throw error;
     }
   }
@@ -228,6 +229,43 @@ export class SmartPublishingController {
     @Body() body: PublishNewsArticleDto,
   ) {
     return this.newsroom.publish(tenant.tenantId, id, body, this.memberNewsroomAccess(user, tenant));
+  }
+  @Post('news/articles/:id/featured-image') @RequirePermission('publishing.news') @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
+  async updateNewsFeaturedImage(
+    @TenantCtx() tenant: TenantContext,
+    @User() user: AuthUser,
+    @Param('id') id: string,
+    @UploadedFile() file: { originalname: string; mimetype?: string; buffer: Buffer },
+  ) {
+    const image = await this.settingsService.addImage(tenant.tenantId, file);
+    try {
+      const result = await this.newsroom.updateFeaturedImage(
+        tenant.tenantId,
+        id,
+        image.url,
+        this.memberNewsroomAccess(user, tenant),
+      );
+      await this.settingsService.removeImage(tenant.tenantId, result.previousFeaturedImageUrl).catch(() => undefined);
+      return result.article;
+    } catch (error) {
+      await this.settingsService.removeImage(tenant.tenantId, image.url).catch(() => undefined);
+      throw error;
+    }
+  }
+  @Delete('news/articles/:id/featured-image') @RequirePermission('publishing.news')
+  async removeNewsFeaturedImage(
+    @TenantCtx() tenant: TenantContext,
+    @User() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    const result = await this.newsroom.updateFeaturedImage(
+      tenant.tenantId,
+      id,
+      null,
+      this.memberNewsroomAccess(user, tenant),
+    );
+    await this.settingsService.removeImage(tenant.tenantId, result.previousFeaturedImageUrl).catch(() => undefined);
+    return result.article;
   }
   @Patch('news/articles/:id') @RequirePermission('publishing.news') updateNews(
     @TenantCtx() tenant: TenantContext,

@@ -1,1 +1,6 @@
-export { toWordPressHtml } from '@deska/shared';
+export {
+  looksLikePublishHtml,
+  resolvePublishHtml,
+  sanitizePublishHtml,
+  toWordPressHtml,
+} from '@deska/shared';

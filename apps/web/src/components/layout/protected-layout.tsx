@@ -10,6 +10,8 @@ import { PlatformNavigation } from './navigation';
 interface ProtectedLayoutProps {
   children: ReactNode;
   title?: string;
+  /** Show top platform nav pill (سازمان‌های من). Default: only on organizations flow. */
+  showPlatformNav?: boolean;
   superAdminOnly?: boolean;
   platformAdminOnly?: boolean;
   ownerOnly?: boolean;
@@ -30,6 +32,7 @@ function AccessSpinner() {
 export function ProtectedLayout({
   children,
   title,
+  showPlatformNav = false,
   superAdminOnly = false,
   platformAdminOnly = false,
   ownerOnly = false,
@@ -94,9 +97,11 @@ export function ProtectedLayout({
 
   return (
     <AppShell title={title}>
-      <Suspense fallback={null}>
-        <PlatformNavigation />
-      </Suspense>
+      {showPlatformNav && (
+        <Suspense fallback={null}>
+          <PlatformNavigation />
+        </Suspense>
+      )}
       <div key={activeTenantId ?? 'none'}>{children}</div>
     </AppShell>
   );

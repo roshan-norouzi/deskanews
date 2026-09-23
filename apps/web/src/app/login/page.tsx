@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { clearTenantId, setTenantId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { LOGIN_FAILED } from '@/lib/product-copy';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LoginPage() {
@@ -55,7 +56,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       setPassword('');
-      setError(err instanceof Error ? err.message : 'خطا در ورود');
+      setError(err instanceof Error && err.message ? err.message : LOGIN_FAILED);
     } finally {
       setSubmitting(false);
     }

@@ -32,7 +32,12 @@ export class BillingService {
       return await this.prisma.$transaction((tx) => this.reserve(tx, job.tenantId, job.id, price));
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      this.logger.warn(`Token reserve skipped for ${job.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
+      const reason = error instanceof Error ? error.message : 'unknown error';
+      if (this.enforced()) {
+        this.logger.error(`Token reserve failed for ${job.id}: ${reason}`);
+        throw new BadRequestException('رزرو توکن انجام نشد؛ چند لحظه بعد دوباره تلاش کنید');
+      }
+      this.logger.warn(`Token reserve skipped for ${job.id}: ${reason}`);
       return null;
     }
   }
@@ -105,18 +110,31 @@ export class BillingService {
 
   async credit(tenantId: string, amount: number, idempotencyKey: string) {
     if (!Number.isInteger(amount) || amount <= 0) throw new BadRequestException('مقدار توکن باید عدد صحیح مثبت باشد');
-    return this.prisma.$transaction(async (tx) => {
-      await tx.tenantWallet.upsert({ where: { tenantId }, create: { tenantId }, update: {} });
-      const existing = await tx.walletLedger.findUnique({ where: { idempotencyKey } });
-      if (existing) return tx.tenantWallet.findUnique({ where: { tenantId } });
-      await tx.walletLedger.create({
-        data: { tenantId, entryType: 'credit', amount, idempotencyKey, metricKey: 'wallet.credit' },
-      });
-      return tx.tenantWallet.update({
-        where: { tenantId },
-        data: { balanceTokens: { increment: amount } },
-      });
+    return this.prisma.$transaction((tx) => this.creditTx(tx, tenantId, amount, idempotencyKey));
+  }
+
+  private async creditTx(tx: Prisma.TransactionClient, tenantId: string, amount: number, idempotencyKey: string) {
+    await this.lockWallet(tx, tenantId);
+    const existing = await tx.walletLedger.findUnique({ where: { idempotencyKey } });
+    if (existing) return tx.tenantWallet.findUnique({ where: { tenantId } });
+    await tx.walletLedger.create({
+      data: { tenantId, entryType: 'credit', amount, idempotencyKey, metricKey: 'wallet.credit' },
     });
+    return tx.tenantWallet.update({
+      where: { tenantId },
+      data: { balanceTokens: { increment: amount } },
+    });
+  }
+
+  /**
+   * Creates the wallet if needed and holds its row lock until the transaction
+   * ends, so balance checks and ledger writes for one tenant never interleave.
+   */
+  private async lockWallet(tx: Prisma.TransactionClient, tenantId: string) {
+    const created = await tx.tenantWallet.upsert({ where: { tenantId }, create: { tenantId }, update: {} });
+    if (typeof tx.$queryRaw !== 'function') return created;
+    await tx.$queryRaw`SELECT 1 FROM "TenantWallet" WHERE "tenantId" = ${tenantId} FOR UPDATE`;
+    return (await tx.tenantWallet.findUnique({ where: { tenantId } })) ?? created;
   }
 
   async createPayment(tenantId: string, amountRials: number, tokenAmount: number) {
@@ -127,13 +145,16 @@ export class BillingService {
   }
 
   async confirmPayment(id: string) {
-    const payment = await this.prisma.paymentIntent.findUnique({ where: { id } });
-    if (!payment) throw new BadRequestException('پرداخت یافت نشد');
-    if (payment.status === 'paid') return payment;
-    await this.credit(payment.tenantId, payment.tokenAmount, `payment:${payment.id}`);
-    return this.prisma.paymentIntent.update({
-      where: { id },
-      data: { status: 'paid', paidAt: new Date() },
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentIntent.findUnique({ where: { id } });
+      if (!payment) throw new BadRequestException('پرداخت یافت نشد');
+      if (payment.status === 'paid') return payment;
+      const claimed = await tx.paymentIntent.updateMany({
+        where: { id, status: { not: 'paid' } },
+        data: { status: 'paid', paidAt: new Date() },
+      });
+      if (claimed.count === 1) await this.creditTx(tx, payment.tenantId, payment.tokenAmount, `payment:${payment.id}`);
+      return tx.paymentIntent.findUniqueOrThrow({ where: { id } });
     });
   }
 
@@ -146,7 +167,7 @@ export class BillingService {
     const amount = await this.price(tx, price.metricKey, price.fallback);
     if (amount <= 0) return null;
     await this.ensurePeriodGrant(tx, tenantId);
-    const wallet = await tx.tenantWallet.upsert({ where: { tenantId }, create: { tenantId }, update: {} });
+    const wallet = await this.lockWallet(tx, tenantId);
     const entries = await tx.walletLedger.findMany({
       where: { jobId },
       orderBy: { createdAt: 'asc' },
@@ -191,9 +212,9 @@ export class BillingService {
     const monthly = PLATFORM_PLANS[tenant?.plan ?? 'starter']?.monthlyTokens ?? PLATFORM_PLANS.starter.monthlyTokens;
     const period = new Date().toISOString().slice(0, 7);
     const idempotencyKey = `grant:${tenantId}:${period}`;
+    await this.lockWallet(tx, tenantId);
     const existing = await tx.walletLedger.findUnique({ where: { idempotencyKey } });
     if (existing) return;
-    await tx.tenantWallet.upsert({ where: { tenantId }, create: { tenantId }, update: {} });
     await tx.walletLedger.create({
       data: { tenantId, entryType: 'credit', amount: monthly, metricKey: 'plan.grant', idempotencyKey },
     });
@@ -204,37 +225,50 @@ export class BillingService {
   }
 
   private async settle(jobId: string, tenantId: string, entryType: 'commit' | 'release'): Promise<void> {
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        const entries = await tx.walletLedger.findMany({
-          where: { jobId, tenantId },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true, entryType: true, amount: true, createdAt: true },
-        });
-        const open = openReserve(entries);
-        if (!open) return;
-        await tx.walletLedger.create({
-          data: {
-            tenantId,
-            jobId,
-            entryType,
-            amount: open.amount,
-            idempotencyKey: `${entryType}:${open.id}`,
-          },
-        });
-        await tx.tenantWallet.update({
-          where: { tenantId },
-          data: {
-            reservedTokens: { decrement: open.amount },
-            ...(entryType === 'commit'
-              ? { balanceTokens: { decrement: open.amount }, consumedTokens: { increment: open.amount } }
-              : {}),
-          },
-        });
-      });
-    } catch (error) {
-      this.logger.warn(`Token ${entryType} skipped for ${jobId}: ${error instanceof Error ? error.message : 'unknown error'}`);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await this.settleOnce(jobId, tenantId, entryType);
+        return;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown error';
+        if (attempt === 3) {
+          this.logger.error(`Token ${entryType} failed for ${jobId}; reserved tokens stay held until reconciled: ${reason}`);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+      }
     }
+  }
+
+  private async settleOnce(jobId: string, tenantId: string, entryType: 'commit' | 'release'): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockWallet(tx, tenantId);
+      const entries = await tx.walletLedger.findMany({
+        where: { jobId, tenantId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, entryType: true, amount: true, createdAt: true },
+      });
+      const open = openReserve(entries);
+      if (!open) return;
+      await tx.walletLedger.create({
+        data: {
+          tenantId,
+          jobId,
+          entryType,
+          amount: open.amount,
+          idempotencyKey: `${entryType}:${open.id}`,
+        },
+      });
+      await tx.tenantWallet.update({
+        where: { tenantId },
+        data: {
+          reservedTokens: { decrement: open.amount },
+          ...(entryType === 'commit'
+            ? { balanceTokens: { decrement: open.amount }, consumedTokens: { increment: open.amount } }
+            : {}),
+        },
+      });
+    });
   }
 }
 

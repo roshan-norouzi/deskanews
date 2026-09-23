@@ -30,7 +30,8 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      `connect-src 'self' https:${production ? '' : ' ws: wss:'}`,
+      // The browser only talks to same-origin /api; data:/blob: cover image conversions use fetch().
+      `connect-src 'self' data: blob:${production ? '' : ' ws: wss:'}`,
       ...(production ? ['upgrade-insecure-requests'] : []),
     ].join('; ');
     return [{

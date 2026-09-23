@@ -3,6 +3,7 @@ import { AutomationJobService } from '../../common/services/automation-job.servi
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService, unifiedContentStage } from '../../common/services/content-workflow.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DESTINATION_HEALTH_KEY, DESTINATION_HEALTH_NAME, isDestinationConfigured } from './destination-health';
 import { PublishingSettingsService } from './publishing-settings.service';
 
 @Injectable()
@@ -55,27 +56,43 @@ export class PublishingOperationsService {
     ]);
 
     const known = new Map(records.map((item) => [item.key, item]));
+    const destinationRecord = known.get(DESTINATION_HEALTH_KEY)
+      ?? known.get('wordpress')
+      ?? known.get(`destination:${rawSettings.destination_platform || 'wordpress'}`);
     const configured = [
       { key: 'gapgpt', type: 'ai', name: 'GapGPT', configured: Boolean(rawSettings.gapgpt_base_url && rawSettings.gapgpt_api_key) },
-      { key: 'wordpress', type: 'publishing', name: 'WordPress', configured: Boolean(rawSettings.wp_site_url && rawSettings.wp_username && rawSettings.wp_app_password) },
+      {
+        key: DESTINATION_HEALTH_KEY,
+        type: 'publishing',
+        name: DESTINATION_HEALTH_NAME,
+        configured: isDestinationConfigured(rawSettings),
+        existing: destinationRecord,
+      },
       { key: 'social:telegram', type: 'social', name: 'تلگرام', configured: Boolean(rawSettings.telegram_bot_token && rawSettings.telegram_chat_id) },
       { key: 'social:instagram', type: 'social', name: 'اینستاگرام', configured: Boolean(rawSettings.social_instagram_access_token && rawSettings.social_instagram_account_id) },
       { key: 'social:linkedin', type: 'social', name: 'لینکدین', configured: Boolean(rawSettings.social_linkedin_access_token && rawSettings.social_linkedin_author_urn) },
       { key: 'social:facebook', type: 'social', name: 'فیسبوک', configured: Boolean(rawSettings.social_facebook_page_access_token && rawSettings.social_facebook_page_id) },
-    ].map((item) => known.get(item.key) ?? {
-      id: item.key,
-      tenantId,
-      ...item,
-      status: item.configured ? 'unknown' : 'unconfigured',
-      consecutiveFailures: 0,
-      latencyMs: null,
-      lastCheckedAt: null,
-      lastSuccessAt: null,
-      lastFailureAt: null,
-      lastError: '',
-      metadata: {},
-      createdAt: null,
-      updatedAt: null,
+    ].map((item) => {
+      const record = 'existing' in item ? item.existing : known.get(item.key);
+      const fallback = {
+        id: item.key,
+        tenantId,
+        key: item.key,
+        type: item.type,
+        name: item.name,
+        configured: item.configured,
+        status: item.configured ? 'unknown' : 'unconfigured',
+        consecutiveFailures: 0,
+        latencyMs: null,
+        lastCheckedAt: null,
+        lastSuccessAt: null,
+        lastFailureAt: null,
+        lastError: '',
+        metadata: {},
+        createdAt: null,
+        updatedAt: null,
+      };
+      return { ...(record ?? fallback), key: item.key, name: item.name, configured: item.configured, type: item.type };
     });
 
     const feedHealth = feeds.map((feed) => ({
