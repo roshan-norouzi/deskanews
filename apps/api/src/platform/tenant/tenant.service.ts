@@ -2,10 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TENANT_ROLES, NEWSROOM_ALL_SERVICES, normalizeDigits, normalizeNewsroomServiceIds } from '@deska/shared';
+import { TENANT_ROLES, NEWSROOM_ALL_SERVICES, isOrganizationAssignablePermission, normalizeDigits, normalizeNewsroomServiceIds, permissionsForPicker } from '@deska/shared';
 import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,16 +16,18 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
-import { PlatformFeedService } from '../../modules/smart-publishing/platform-feed.service';
+import { TENANT_PUBLISHING_PORT, type TenantPublishingPort } from '../../contracts/tenant-publishing.port';
 import { UsageTrackingService } from '../usage/usage-tracking.service';
+import { BillingService } from '../../common/services/billing.service';
 type InvitationWithTenant = Prisma.TenantInvitationGetPayload<{ include: { tenant: true } }>;
 
 @Injectable()
 export class TenantService {
   constructor(
     private prisma: PrismaService,
-    private readonly platformFeeds: PlatformFeedService,
+    @Inject(TENANT_PUBLISHING_PORT) private readonly tenantPublishing: TenantPublishingPort,
     private readonly usageTracking: UsageTrackingService,
+    private readonly billing: BillingService,
   ) {}
 
   async findAll(userId: string, isSuperAdmin: boolean) {
@@ -102,7 +105,7 @@ export class TenantService {
       return created;
     });
 
-    await this.platformFeeds.ensureSubscriptions(tenant.id);
+    await this.tenantPublishing.ensureTenantSubscriptions(tenant.id);
     return tenant;
   }
 
@@ -242,6 +245,20 @@ export class TenantService {
 
   async getUsage(tenantId: string) {
     return this.usageTracking.getTenantUsage(tenantId);
+  }
+
+  async getWallet(tenantId: string, memberRole: string) {
+    this.assertOwner(memberRole);
+    return this.billing.walletSnapshot(tenantId);
+  }
+
+  async createWalletPayment(tenantId: string, packageId: string, memberRole: string) {
+    this.assertOwner(memberRole);
+    const payment = await this.billing.createPaymentForPackage(tenantId, packageId);
+    return {
+      payment,
+      message: 'درخواست پرداخت ثبت شد. پس از تأیید درگاه، توکن به کیف پول واریز می‌شود.',
+    };
   }
 
   async listMyInvitations(userId: string) {
@@ -546,7 +563,7 @@ export class TenantService {
       throw new ForbiddenException('دسترسی‌های مالک سازمان قابل تغییر نیست');
     }
 
-    const permissions = dto.permissions !== undefined ? [...new Set(dto.permissions)] : member.permissions;
+    const permissions = dto.permissions !== undefined ? this.normalizeAssignablePermissions([...new Set(dto.permissions)]) : member.permissions;
     const newsroomServiceIds = dto.newsroomServiceIds !== undefined || dto.permissions !== undefined
       ? await this.resolveNewsroomServiceIds(tenantId, permissions, dto.newsroomServiceIds ?? member.newsroomServiceIds)
       : member.newsroomServiceIds;
@@ -656,12 +673,22 @@ export class TenantService {
     return next;
   }
 
+  private normalizeAssignablePermissions(permissions: string[]): string[] {
+    const granular = permissionsForPicker(permissions);
+    const explicit = permissions.filter((key) => isOrganizationAssignablePermission(key));
+    const merged = [...new Set([...granular, ...explicit])];
+    if (!merged.length) {
+      throw new BadRequestException('حداقل یک دسترسی منوی معتبر انتخاب کنید');
+    }
+    return merged;
+  }
+
   private async resolveMemberAccess(
     tenantId: string,
     permissions: string[],
     requestedServiceIds?: string[],
   ) {
-    const nextPermissions = [...new Set(permissions)];
+    const nextPermissions = this.normalizeAssignablePermissions(permissions);
     return {
       permissions: nextPermissions,
       newsroomServiceIds: await this.resolveNewsroomServiceIds(tenantId, nextPermissions, requestedServiceIds),

@@ -31,7 +31,11 @@ test('TenantGuard resolves permissions only inside the active tenant', async () 
 
   assert.equal(result, true);
   assert.deepEqual(request.user.permissions, getDefaultPermissionsForTenantRole('member'));
-  assert.deepEqual(request.tenant, { tenantId: 'tenant-a', memberRole: 'member' });
+  assert.deepEqual(request.tenant, {
+    tenantId: 'tenant-a',
+    memberRole: 'member',
+    newsroomServiceIds: [],
+  });
 });
 
 test('TenantGuard rejects membership in an inactive tenant', async () => {
@@ -289,6 +293,7 @@ test('a prepared newsroom article is converted directly into ready social conten
       category: 'جهان',
     }),
   };
+  const scheduler = { runIntervalMaintenance: async (_t, fn) => fn(), automationWorkerEnabled: () => true };
   const service = new SocialStudioService(
     prisma,
     settings,
@@ -298,6 +303,7 @@ test('a prepared newsroom article is converted directly into ready social conten
     { success: async () => ({}), failure: async () => ({}) },
     { record: async () => ({}) },
     { record: async () => {} },
+    scheduler,
   );
 
   const result = await service.sendNewsToStudio('tenant-a', 'news-a');
@@ -327,6 +333,7 @@ test('archived social articles are hidden from the default list', async () => {
       },
     },
   };
+  const scheduler = { runIntervalMaintenance: async (_t, fn) => fn(), automationWorkerEnabled: () => true };
   const service = new SocialStudioService(
     prisma,
     {},
@@ -336,6 +343,7 @@ test('archived social articles are hidden from the default list', async () => {
     { success: async () => ({}), failure: async () => ({}) },
     { record: async () => ({}) },
     { record: async () => {} },
+    scheduler,
   );
 
   await service.articles('tenant-a');

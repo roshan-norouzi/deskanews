@@ -11,6 +11,7 @@ import { SourceReaderService } from './source-reader.service';
 import { WordPressClient } from './wordpress.client';
 import { parseWordPressCategories } from './wordpress-category';
 import { AutomationJobService } from '../../common/services/automation-job.service';
+import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
@@ -19,6 +20,7 @@ import { PlatformFeedService } from './platform-feed.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { DestinationCategoryService } from './destination-category.service';
 import { newsroomArticleWhere, orphanedNewsArticleWhere } from './newsroom-article-stats';
+import { decodeArticleCursor, encodeArticleCursor } from '../../common/article-page';
 import { toWordPressHtml } from './news-publish-html';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
@@ -149,6 +151,7 @@ export class NewsroomService {
     private readonly platformFeeds: PlatformFeedService,
     private readonly usageTracking: UsageTrackingService,
     private readonly destinationCategories: DestinationCategoryService,
+    private readonly scheduler: SchedulerRuntimeService,
   ) {}
 
   private recordWorkflow(params: {
@@ -360,10 +363,10 @@ export class NewsroomService {
 
   async articles(
     tenantId: string,
-    filters: { status?: string; categoryId?: string; generalOnly?: boolean; access?: MemberNewsroomAccess } = {},
+    filters: { status?: string; categoryId?: string; generalOnly?: boolean; access?: MemberNewsroomAccess; cursor?: string } = {},
   ) {
     await this.purgeRejected();
-    const { status, categoryId, generalOnly, access } = filters;
+    const { status, categoryId, generalOnly, access, cursor } = filters;
     if (status && !NEWS_STATUSES.includes(status as (typeof NEWS_STATUSES)[number])) {
       throw new BadRequestException('وضعیت خبر معتبر نیست');
     }
@@ -373,26 +376,39 @@ export class NewsroomService {
       if (resolved !== 'all' && resolved !== 'none' && !resolved.includes(categoryId)) {
         throw new ForbiddenException('دسترسی به این سرویس اتاق خبر مجاز نیست');
       }
-      if (resolved === 'none') {
-        return [];
-      }
+      if (resolved === 'none') return { items: [], nextCursor: null };
     }
-    return this.prisma.newsArticle.findMany({
+    const decoded = decodeArticleCursor(cursor);
+    const reader = this.prisma.reader ?? this.prisma;
+    const rows = await reader.newsArticle.findMany({
       where: {
         ...newsroomArticleWhere(tenantId),
         ...serviceFilter,
         ...(status ? { status } : {}),
         ...(categoryId ? { destinationCategoryId: categoryId } : {}),
         ...(generalOnly ? { destinationCategory: { isGeneral: true } } : {}),
+        ...(decoded ? {
+          OR: [
+            { publishedAtSource: { lt: decoded.stamp ?? new Date(0) } },
+            { publishedAtSource: decoded.stamp, id: { lt: decoded.id } },
+          ],
+        } : {}),
       },
+      omit: { originalContent: true },
       include: {
         feed: { select: { id: true, name: true, purpose: true, sourceLanguage: true } },
         platformFeedArticle: { select: { platformFeed: { select: { sourceLanguage: true } } } },
         destinationCategory: { select: { id: true, name: true, isGeneral: true } },
       },
-      orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
-      take: 200,
+      orderBy: [{ publishedAtSource: 'desc' }, { id: 'desc' }],
+      take: 51,
     });
+    const items = rows.slice(0, 50);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > 50 && last ? encodeArticleCursor(last.publishedAtSource, last.id) : null,
+    };
   }
 
   async deleteAllArticles(tenantId: string) {
@@ -444,6 +460,8 @@ export class NewsroomService {
     const feed = await this.findFeed(tenantId, feedId);
     if (feed.purpose !== 'news-room') throw new BadRequestException('پایش این فید در بخش مربوط به آن انجام می‌شود');
     if (!feed.enabled) throw new BadRequestException('ابتدا فید را فعال کنید');
+    const deferred = await this.deferHeavyWork(tenantId, 'news.feed.fetch', { feedId }, `feed:${feedId}:fetch`);
+    if (deferred) return deferred;
     const startedAt = Date.now();
     try {
       const settings = await this.settings.getRaw(tenantId);
@@ -613,6 +631,8 @@ export class NewsroomService {
     const article = await this.findArticle(tenantId, id);
     assertNewsroomArticleAccess(article, access);
     if (['rejected', 'publishing', 'published'].includes(article.status)) throw new BadRequestException('آماده‌سازی خبر در وضعیت فعلی مجاز نیست');
+    const deferred = await this.deferHeavyWork(tenantId, 'news.prepare', { articleId: id }, `news:${id}:prepare`);
+    if (deferred) return deferred;
 
     if (article.platformFeedArticleId) {
       const shared = await this.prisma.platformFeedArticle.findUnique({ where: { id: article.platformFeedArticleId } });
@@ -716,6 +736,8 @@ export class NewsroomService {
     if (!['ready', 'publish_failed'].includes(article.status)) {
       throw new BadRequestException('ترجمه کامل در وضعیت فعلی مجاز نیست');
     }
+    const deferred = await this.deferHeavyWork(tenantId, 'news.translate', { articleId: id }, `news:${id}:translate`);
+    if (deferred) return deferred;
     const claimed = await this.prisma.newsArticle.updateMany({
       where: { id, tenantId, status: { in: ['ready', 'publish_failed'] } },
       data: { status: 'processing', processingStartedAt: new Date(), lastError: '' },
@@ -801,6 +823,13 @@ export class NewsroomService {
     const contentFa = (input.contentFa ?? article.contentFa).trim();
     if (!contentFa) throw new BadRequestException('ابتدا «ترجمه کامل» را انجام دهید و متن را بررسی کنید');
     if (!titleFa || !summaryFa) throw new BadRequestException('تیتر و لید/خلاصه برای انتشار الزامی است');
+    if (this.defersHeavyWork()) {
+      await this.prisma.newsArticle.update({
+        where: { id },
+        data: { titleFa, summaryFa, contentFa },
+      });
+      return this.deferHeavyWork(tenantId, 'news.publish', { articleId: id }, `news:${id}:publish`);
+    }
 
     const claimed = await this.prisma.newsArticle.updateMany({
       where: { id, tenantId, status: { in: ['ready', 'publish_failed'] } },
@@ -932,6 +961,7 @@ export class NewsroomService {
   @Interval('smart-publishing-newsroom-maintenance', 60_000)
   async maintenance() {
     if (this.maintenanceRunning) return;
+    await this.scheduler.runIntervalMaintenance('smart-publishing-newsroom-maintenance', async () => {
     this.maintenanceRunning = true;
     try {
       const activeTenants = await this.prisma.tenant.findMany({
@@ -970,6 +1000,7 @@ export class NewsroomService {
     } finally {
       this.maintenanceRunning = false;
     }
+    }).catch(() => undefined);
   }
 
   async queueAutomation(tenantId: string, limit = 25, providedSettings?: PublishingSettings) {
@@ -1108,6 +1139,29 @@ export class NewsroomService {
       return shared?.platformFeed.sourceLanguage || 'auto';
     }
     return 'auto';
+  }
+
+  private defersHeavyWork(): boolean {
+    const check = this.scheduler.runsHeavyWorkInline;
+    return typeof check === 'function' && check.call(this.scheduler) === false;
+  }
+
+  private async deferHeavyWork(
+    tenantId: string,
+    type: 'news.feed.fetch' | 'news.prepare' | 'news.translate' | 'news.publish',
+    payload: Record<string, unknown>,
+    dedupeKey: string,
+  ) {
+    if (!this.defersHeavyWork()) return null;
+    const queued = await this.jobs.enqueue({
+      tenantId,
+      type,
+      payload,
+      dedupeKey,
+      retryDead: true,
+      priority: 30,
+    });
+    return { queued: true as const, created: 0, jobId: queued.job.id };
   }
 
   private async findFeed(tenantId: string, id: string) {

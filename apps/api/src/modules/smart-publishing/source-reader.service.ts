@@ -258,18 +258,57 @@ function hostRequiresSourceBridge(hostname: string): boolean {
   return SOURCE_BRIDGE_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
-/** Worker answered; the publisher or an outdated Worker rejected the URL. Do not hide that behind a direct fetch. */
-function isWorkerApplicationError(error: unknown): boolean {
+/** Worker reached the publisher but got HTTP 4xx/5xx (including Cloudflare 520). */
+function isWorkerUpstreamPublisherError(error: unknown): boolean {
   const message = httpErrorMessage(error);
-  return /host_not_allowed|upstream_http_|upstream_fetch_failed|نوع محتوای|پاسخ خالی|حجم محتوای|نامعتبر|تلگرام|توییتر|X\/Twitter/u.test(message);
+  return /upstream_http_\d{3}/u.test(message);
+}
+
+function workerUpstreamStatusCode(error: unknown): number | null {
+  const match = httpErrorMessage(error).match(/upstream_http_(\d{3})/u);
+  return match ? Number(match[1]) : null;
+}
+
+function describeWorkerFetchFailure(error: unknown): string {
+  const message = httpErrorMessage(error);
+  const code = message.match(/upstream_http_(\d{3})/u)?.[1];
+  if (code === '401') {
+    return 'سایت منبع درخواست را بدون ورود قبول نکرد (HTTP 401). آدرس فید را در مرورگر بدون لاگین باز کنید؛ اگر باز شد، در پلتفرم گزینه «منابع خبری هم از این سرویس» را خاموش کنید تا سرور مستقیم وصل شود.';
+  }
+  if (code === '403') {
+    return 'سایت منبع دسترسی ربات/خودکار را مسدود کرد (HTTP 403). همان آدرس را در مرورگر بررسی کنید یا دریافت مستقیم از سرور را امتحان کنید.';
+  }
+  if (code === '520' || code === '521' || code === '522' || code === '523' || code === '524') {
+    return `خطای موقت بین سرویس دریافت و سایت منبع (HTTP ${code}). معمولاً با دریافت مستقیم از سرور یا چند دقیقه بعد دوباره حل می‌شود.`;
+  }
+  if (code === '502' || code === '503' || code === '504') {
+    return `سایت منبع یا CDN موقتاً در دسترس نبود (HTTP ${code}). بعداً دوباره تلاش کنید.`;
+  }
+  if (/^unauthorized$/u.test(message) || message.includes('unauthorized')) {
+    return 'رمز سرویس دریافت با Worker همخوان نیست. در پلتفرم → دریافت منبع رمز را یکسان کنید یا برای حفظ رمز قبلی فیلد رمز را خالی بگذارید.';
+  }
+  if (message.includes('host_not_allowed')) {
+    return 'سرویس دریافت فقط تلگرام و توییتر را می‌پذیرد. در پلتفرم → دریافت منبع، گزینه «منابع خبری هم از این سرویس» را خاموش کنید.';
+  }
+  return message;
 }
 
 /** The API could not reach the Worker itself (Cloudflare down or network). */
 function isWorkerTransportFailure(error: unknown): boolean {
-  if (isWorkerApplicationError(error)) return false;
+  if (isWorkerUpstreamPublisherError(error)) return false;
   const message = httpErrorMessage(error);
-  return /ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPROTO|fetch failed|socket|اتصال امن|مهلت|timeout/u.test(message);
+  if (/host_not_allowed|unauthorized|upstream_fetch_failed|نوع محتوای|پاسخ خالی|حجم محتوای/u.test(message)) return false;
+  return /ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPROTO|fetch failed|socket|اتصال امن|مهلت|timeout|Worker منبع با خطای HTTP/u.test(message);
 }
+
+/** News feeds may succeed via direct server fetch when the fetch service gets blocked by the publisher. */
+function shouldRetryNewsFetchDirectly(bridgeError: unknown, social: boolean): boolean {
+  if (social) return false;
+  return isWorkerTransportFailure(bridgeError) || isWorkerUpstreamPublisherError(bridgeError);
+}
+
+const BROWSER_FETCH_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 function bodyMatchesAcceptedTypes(body: string, acceptedTypes: string[]): boolean {
   const start = body.replace(/^\uFEFF/u, '').trimStart().slice(0, 800);
@@ -1591,7 +1630,7 @@ export class SourceReaderService {
       body: JSON.stringify({
         url: initialUrl,
         accept: `${acceptedTypes.join(', ')}, */*;q=0.1`,
-        user_agent: 'Mozilla/5.0 (compatible; DESKA-Newsroom/1.0; +https://pixad.ir)',
+        user_agent: BROWSER_FETCH_USER_AGENT,
       }),
       acceptedTypes: ['application/json'],
       timeoutMs: 45_000,
@@ -1607,15 +1646,19 @@ export class SourceReaderService {
     }>();
     if (!response.ok || !payload.ok) {
       const code = String(payload.error || '');
+      if (code === 'unauthorized') {
+        throw new BadRequestException(describeWorkerFetchFailure('unauthorized'));
+      }
       if (code === 'upstream_http_429') {
         throw new BadRequestException(
-          'محدودیت موقت دریافت از X/Twitter؛ چند دقیقه بعد دوباره تلاش کنید یا Worker دریافت منبع را در پلتفرم بررسی کنید',
+          'محدودیت موقت دریافت از X/Twitter؛ چند دقیقه بعد دوباره تلاش کنید.',
         );
       }
       if (code === 'host_not_allowed') {
-        throw new BadRequestException(
-          'سرویس دریافت فقط تلگرام و توییتر را می‌پذیرد. در پلتفرم → تنظیمات پلتفرم → دریافت منبع، گزینه «منابع خبری هم از این سرویس» را خاموش کنید تا خبرها مستقیم از سرور گرفته شوند.',
-        );
+        throw new BadRequestException(describeWorkerFetchFailure('host_not_allowed'));
+      }
+      if (code.startsWith('upstream_http_')) {
+        throw new BadRequestException(`دریافت منبع از طریق Worker ناموفق بود: ${code}`);
       }
       const detail = code || `Worker منبع با خطای HTTP ${response.status} پاسخ داد`;
       throw new BadRequestException(`دریافت منبع از طریق Worker ناموفق بود: ${detail}`);
@@ -1640,7 +1683,7 @@ export class SourceReaderService {
     let target = await this.assertPublicUrl(initialUrl);
     for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
       const response = await this.requestPinned(target, {
-        'user-agent': 'Mozilla/5.0 (compatible; DESKA-Newsroom/1.0; +https://pixad.ir)',
+        'user-agent': BROWSER_FETCH_USER_AGENT,
         Accept: `${acceptedTypes.join(', ')}, */*;q=0.1`,
         'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
         'Cache-Control': 'no-cache',
@@ -1701,17 +1744,20 @@ export class SourceReaderService {
       try {
         return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
       } catch (bridgeError) {
-        if (isWorkerTransportFailure(bridgeError) && !social) {
-          this.logger.warn(`Fetch service unreachable for ${hostname}; trying a direct fetch`);
+        if (shouldRetryNewsFetchDirectly(bridgeError, social)) {
+          const status = workerUpstreamStatusCode(bridgeError);
+          this.logger.warn(
+            `Fetch service failed for ${hostname}${status ? ` (HTTP ${status})` : ''}; trying a direct fetch`,
+          );
           try {
             return await this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
           } catch (directError) {
-            this.logger.warn(`Direct fetch also failed for ${hostname}: ${httpErrorMessage(directError)}`);
+            const bridgeHint = describeWorkerFetchFailure(bridgeError);
+            const directHint = httpErrorMessage(directError);
+            throw new BadRequestException(`${bridgeHint} دریافت مستقیم از سرور هم ناموفق بود: ${directHint}`);
           }
         }
-        throw bridgeError instanceof BadRequestException
-          ? bridgeError
-          : new BadRequestException(httpErrorMessage(bridgeError));
+        throw new BadRequestException(describeWorkerFetchFailure(bridgeError));
       }
     }
 

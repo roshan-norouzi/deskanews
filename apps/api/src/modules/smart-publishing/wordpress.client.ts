@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService, type SafeHttpRequestOptions, type SafeHttpResponse } from './source-reader.service';
 import { parseWordPressCategories, type WordPressCategory } from './wordpress-category';
+import { RedisCache } from '../../common/redis/redis-cache';
 
 interface WordPressText {
   raw?: string;
@@ -51,7 +52,10 @@ type WordPressRestStyle = 'pretty' | 'query';
 export class WordPressClient {
   private readonly restStyles = new Map<string, WordPressRestStyle>();
 
-  constructor(private readonly sourceReader: SourceReaderService) {}
+  constructor(
+    private readonly sourceReader: SourceReaderService,
+    @Optional() private readonly cache?: RedisCache,
+  ) {}
 
   private credentials(settings: PublishingSettings) {
     const siteUrl = String(settings.wp_site_url ?? '').trim().replace(/\/$/, '');
@@ -126,8 +130,15 @@ export class WordPressClient {
 
   async categories(settings: PublishingSettings): Promise<WordPressCategory[]> {
     const { siteUrl, authorization } = this.credentials(settings);
+    const cacheKey = `deska:wp-categories:${siteUrl}`;
+    const cached = await this.cache?.get(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached) as WordPressCategory[]; } catch { /* refill */ }
+    }
     const restStyle = await this.resolveRestStyle(siteUrl, authorization);
-    return this.fetchCategories(siteUrl, restStyle, authorization);
+    const rows = await this.fetchCategories(siteUrl, restStyle, authorization);
+    await this.cache?.set(cacheKey, JSON.stringify(rows), 600);
+    return rows;
   }
 
   async listPosts(settings: PublishingSettings, input: { status?: string; page?: number; perPage?: number; search?: string; tagId?: number } = {}) {

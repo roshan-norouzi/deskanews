@@ -1,0 +1,85 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  strix-scan:
+    runs-on: ubuntu-latest
+    env:
+      STRIX_LLM: ${{ secrets.STRIX_LLM }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Strix
+        run: curl -sSL https://strix.ai/install | bash
+
+      - name: Run diff-scoped security scan
+        run: |
+          if [ -z "$STRIX_LLM" ] || [ -z "$LLM_API_KEY" ]; then
+            echo "STRIX_LLM or LLM_API_KEY is not set. Skipping the live Strix scan."
+            echo "The api-security-regressions job still gates this pull request."
+            exit 0
+          fi
+          DIFF_BASE="origin/${{ github.base_ref }}"
+          strix -n -t ./ \
+            --scan-mode quick \
+            --scope-mode diff \
+            --diff-base "$DIFF_BASE" \
+            --max-budget 10 \
+            --instruction "Multi-tenant Deska News. Focus on apps/api/src/modules/smart-publishing source-reader SSRF, publishing controller authorization, signed media routes, and tenant isolation. Secrets must not be cached. Tenant id comes from the membership check on X-Tenant-Id, not from the caller alone."
+
+      - name: Fail unless the scan completed
+        if: always()
+        run: |
+          if [ -z "$STRIX_LLM" ] || [ -z "$LLM_API_KEY" ]; then
+            exit 0
+          fi
+          run_json=$(ls -t strix_runs/*/run.json 2>/dev/null | head -1)
+          if [ -z "$run_json" ]; then
+            echo "No Strix run.json found." >&2
+            exit 1
+          fi
+          status=$(jq -r .status "$run_json")
+          if [ "$status" != "completed" ]; then
+            echo "Strix run status is '$status' — raise --max-budget or check logs." >&2
+            exit 1
+          fi
+
+      - name: Upload SARIF to code scanning
+        if: always() && secrets.STRIX_LLM != '' && secrets.LLM_API_KEY != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: strix_runs
+          category: strix
+
+      - name: Upload Strix report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strix-security-report
+          path: strix_runs/
+          if-no-files-found: ignore
+
+  api-security-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @deska/shared build
+      - run: pnpm --filter @deska/api test

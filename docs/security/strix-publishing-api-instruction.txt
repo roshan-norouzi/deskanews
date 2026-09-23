@@ -1,0 +1,28 @@
+# Copy this file and replace placeholders locally. Do not commit real tokens.
+
+API base: http://host.docker.internal:3001/api
+Auth header: Authorization: Bearer <JWT>
+Tenant header: X-Tenant-Id: <tenant-uuid>
+
+Tenant A token: <tokenA>
+Tenant A id: <tenantA-uuid>
+Tenant A sample feed id: <feed-id>
+Tenant A sample news article id: <article-id>
+
+Tenant B token: <tokenB>
+Tenant B id: <tenantB-uuid>
+Tenant B sample feed id: <other-feed-id>
+
+Viewer token (publishing.view only): <viewer-token>
+Viewer tenant id: <tenantA-uuid>
+
+Owner or admin token: <admin-token>
+
+Focus:
+- BOLA on GET/PATCH/DELETE /publishing/feeds/:id, news and social article routes, operations/jobs/:id
+- Broken function-level auth on /publishing/settings*, /publishing/operations*, publish endpoints
+- Mass assignment on PUT /publishing/settings and article PATCH bodies
+- SSRF bounds on /publishing/proxy/image and /publishing/feeds/probe
+- Public asset routes under /publishing/settings/fonts/file, images/file, source-icons, social/media — IDOR across tenantId
+
+Out of scope: POST billing, live publish to external WordPress/social production accounts.

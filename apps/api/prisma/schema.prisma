@@ -349,6 +349,9 @@ model Tenant {
   contentWorkflowEvents    ContentWorkflowEvent[]
   usageCounters            TenantUsageCounter[]
   destinationCategories    DestinationCategory[]
+  wallet                   TenantWallet?
+  walletLedger             WalletLedger[]
+  payments                 PaymentIntent[]
 
   @@index([status])
   @@index([createdByUserId])
@@ -379,7 +382,7 @@ model UsageMetricDefinition {
   key       String               @id
   label     String
   unitLabel String               @default("توکن")
-  unitCost  Float                @default(1)
+  unitCost  Int                  @default(1)
   enabled   Boolean              @default(true)
   sortOrder Int                  @default(0)
   createdAt DateTime             @default(now())
@@ -546,4 +549,51 @@ model ContentWorkflowEvent {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, entityType, entityId, createdAt])
+}
+
+/// Short-lived lease so only one API replica runs @Interval maintenance (feed poll enqueue, prune, etc.).
+model SchedulerLease {
+  key       String   @id
+  holder    String   @default("")
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}
+
+/// Spendable tokens per organization. Reserved tokens are held by queued jobs.
+model TenantWallet {
+  tenantId       String   @id
+  balanceTokens  Int      @default(0)
+  reservedTokens Int      @default(0)
+  consumedTokens Int      @default(0)
+  updatedAt      DateTime @updatedAt
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model WalletLedger {
+  id             String   @id @default(cuid())
+  tenantId       String
+  jobId          String?
+  entryType      String
+  amount         Int
+  metricKey      String   @default("")
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([jobId])
+}
+
+model PaymentIntent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  provider     String   @default("manual")
+  amountRials  Int
+  tokenAmount  Int
+  status       String   @default("pending")
+  createdAt    DateTime @default(now())
+  paidAt       DateTime?
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
 }

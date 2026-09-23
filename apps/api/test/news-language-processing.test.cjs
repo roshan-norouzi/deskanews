@@ -22,6 +22,12 @@ const platformFeeds = {
   prepareSharedArticle: async () => null,
   toggleForTenant: async () => ({}),
 };
+const noopScheduler = {
+  runIntervalMaintenance: async (_task, fn) => fn(),
+  automationWorkerEnabled: () => true,
+  intervalMaintenanceEnabled: () => true,
+  backgroundJobsEnabled: () => true,
+};
 const TEST_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 function gapGptResponse(content) {
@@ -122,6 +128,7 @@ test('newsroom preparation fills a missing featured image from article metadata'
     platformFeeds,
     usageTracking,
     destinationCategories,
+    noopScheduler,
   );
 
   await newsroom.summarize('tenant-a', article.id);
@@ -139,7 +146,7 @@ test('source health test returns the five latest items without saving them', asy
   }));
   const prisma = { newsFeed: { findFirst: async () => ({ id: 'source-a', name: 'منبع نمونه', url: 'https://source.example', sourceType: 'website', includeWords: [], excludeWords: [], resolvedFeedUrl: '', sourceLanguage: 'auto' }), update: async () => ({}) } };
   const sourceReader = { readSource: async (sourceType, url) => { assert.equal(sourceType, 'website'); assert.equal(url, 'https://source.example'); return entries; } };
-  const newsroom = new NewsroomService(prisma, { rememberSourceLanguages: async () => [] }, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, { rememberSourceLanguages: async () => [] }, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   const result = await newsroom.testFeed('tenant-a', 'source-a');
 
@@ -161,7 +168,7 @@ test('source settings are stored independently for each source', async () => {
     platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
   const sourceReader = { discoverFeedUrl: async () => 'https://source.example/rss.xml' };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   await newsroom.addFeed('tenant-a', { name: 'منبع اختصاصی', url: 'https://source.example', purpose: 'news-room', sourceType: 'website', includeWords: ['فناوری'], pollIntervalMinutes: 15, autoPoll: true, autoPrepare: false, autoPublish: true, autoSendSocial: false });
   await newsroom.updateFeed('tenant-a', feed.id, { includeWords: ['اقتصاد'], pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
@@ -217,7 +224,7 @@ test('updating a source url and type reuses the same feed record', async () => {
     platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
   const sourceReader = { discoverFeedUrl: async () => '' };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   await newsroom.updateFeed('tenant-a', feed.id, {
     url: 'https://www.tasnimnews.com/rss',
@@ -337,7 +344,7 @@ test('newsroom publishes with the category selected from live WordPress categori
     categories: async () => categories,
     publish: async (_settings, input) => { publishInput = input; return { postId: '42', url: 'https://destination.example/post' }; },
   };
-  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, settings, gapGpt, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   await newsroom.publish('tenant-a', article.id);
 
@@ -367,7 +374,7 @@ test('newsroom never publishes an RSS summary as the full WordPress article', as
     readArticleOrFallback: async () => ({ text: article.originalSummary, featuredImageUrl: '', contentSource: 'feed', isFullText: false }),
   };
   const wordpress = { validateSettings: () => undefined, categories: async () => [] };
-  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, { getRaw: async () => ({}) }, {}, sourceReader, wordpress, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   await assert.rejects(() => newsroom.translateFull('tenant-a', article.id), /فقط چکیده خبر را ارائه می‌کند/);
   await assert.rejects(() => newsroom.publish('tenant-a', article.id), /ترجمه کامل/);
@@ -393,7 +400,7 @@ test('news automation durably queues social routing instead of publishing to Wor
       return { created: true, job: { id: 'job-a' } };
     },
   };
-  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories);
+  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   const result = await newsroom.queueAutomation('tenant-a', 3);
 
@@ -466,7 +473,7 @@ test('social automation durably queues a cover with the selected default templat
     social_auto_publish_telegram: 'false',
   }) };
   const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'job-cover' } }; } };
-  const studio = new SocialStudioService(prisma, settings, {}, {}, jobs, integrationHealth, workflow, usageTracking);
+  const studio = new SocialStudioService(prisma, settings, {}, {}, jobs, integrationHealth, workflow, usageTracking, noopScheduler);
 
   const result = await studio.queueAutomation('tenant-a', 3);
 
@@ -498,7 +505,7 @@ test('social automation queues featured-image publishing after cover generation 
     social_auto_publish_facebook: 'false',
   }) };
   const jobs = { enqueue: async (job) => { queuedJobs.push(job); return { created: true, job: { id: 'job-fallback' } }; } };
-  const studio = new SocialStudioService(prisma, settings, {}, {}, jobs, integrationHealth, workflow, usageTracking);
+  const studio = new SocialStudioService(prisma, settings, {}, {}, jobs, integrationHealth, workflow, usageTracking, noopScheduler);
 
   const result = await studio.queueFeaturedImageFallback('tenant-a', 'social-fallback-a');
 
@@ -527,7 +534,7 @@ test('server cover renderer stores the selected visual template result on the ar
     update: async ({ data }) => { updateData = data; return { ...article, ...data }; },
   } };
   const publisher = { storeGeneratedMedia: async () => ({ filename: 'generated.png', url: '/api/publishing/social/media/generated.png' }) };
-  const renderer = new SocialCoverRendererService(prisma, {}, {}, publisher, usageTracking);
+  const renderer = new SocialCoverRendererService(prisma, {}, {}, publisher, usageTracking, noopScheduler);
   renderer.queuedScreenshot = async (html) => { capturedHtml = html; return Buffer.from('png'); };
   const settings = { social_image_templates: JSON.stringify({
     version: 1, defaultTemplateId: 'default', templates: [
@@ -568,7 +575,7 @@ test('automatic publisher prefers a generated cover over the source image', asyn
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => { bridgeCalls += 1; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
   };
-  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, usageTracking);
+  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, usageTracking, noopScheduler);
   publisher.publicMedia = async () => ({ buffer: Buffer.from('generated'), contentType: 'image/png' });
 
   const result = await publisher.publishAutomatically('tenant-a', article.id, ['telegram']);
@@ -602,7 +609,7 @@ test('automatic publisher falls back to the featured image when generated media 
     proxyImage: async () => { sourceImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async (_url, options) => { bridgeCalls += 1; bridgePhoto = JSON.parse(options.body).photo_base64; return { ok: true, status: 200, json: () => ({ ok: true }) }; },
   };
-  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, usageTracking);
+  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, usageTracking, noopScheduler);
   publisher.publicMedia = async () => { throw new Error('generated file is unavailable'); };
 
   const result = await publisher.publishAutomatically('tenant-a', article.id, ['telegram']);
@@ -637,7 +644,7 @@ test('explicit featured-image fallback bypasses a stale generated cover', async 
     proxyImage: async () => { featuredImageCalls += 1; return { buffer: TEST_PNG, contentType: 'image/png' }; },
     safeRequest: async () => ({ ok: true, status: 200, json: () => ({ ok: true }) }),
   };
-  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, usageTracking);
+  const publisher = new SocialNetworkPublisherService(prisma, settings, outbound, integrationHealth, workflow, usageTracking, noopScheduler);
   publisher.publicMedia = async () => { generatedImageCalls += 1; return { buffer: Buffer.from('generated'), contentType: 'image/png' }; };
 
   const result = await publisher.publishAutomatically('tenant-a', article.id, ['telegram'], true);

@@ -57,6 +57,32 @@ export function isNewsArchived(article: Pick<NewsroomArticleSnapshot, 'status'>)
   return ['published', 'social_sent'].includes(article.status);
 }
 
+export type NewsroomStatusCounts = {
+  total: number;
+  rejected: number;
+  archive: number;
+  preparing: number;
+  statusFailed: number;
+  terminalFailed: number;
+  readyPrepared: number;
+  readyUnprepared: number;
+  inbox: number;
+  publishedToday: number;
+};
+
+export function newsroomStatsFromCounts(counts: NewsroomStatusCounts): NewsroomDashboardStats {
+  return {
+    action: counts.readyPrepared + counts.preparing + counts.terminalFailed,
+    processing: counts.inbox + counts.readyUnprepared,
+    archive: counts.archive,
+    rejected: counts.rejected,
+    preparing: counts.preparing,
+    failed: counts.statusFailed + counts.terminalFailed,
+    publishedToday: counts.publishedToday,
+    total: counts.total,
+  };
+}
+
 export function computeNewsroomDashboardStats(
   articles: NewsroomArticleSnapshot[],
   publishedToday: number,

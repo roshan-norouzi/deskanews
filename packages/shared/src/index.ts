@@ -74,8 +74,9 @@ export const ORGANIZATION_MENU_PERMISSIONS = [
   { key: 'publishing.news', label: 'اتاق خبر', group: 'محتوا', href: '/publishing/news' },
   { key: 'publishing.social', label: 'استودیوی اجتماعی', group: 'محتوا', href: '/publishing/social' },
   { key: 'publishing.media', label: 'فایل‌ها', group: 'محتوا', href: '/publishing/media' },
+  { key: 'publishing.settings', label: 'تنظیمات انتشار', group: 'پیکربندی', href: '/publishing/settings' },
   { key: 'publishing.operations', label: 'مرکز عملیات', group: 'پیکربندی', href: '/publishing/operations' },
-  { key: 'settings.manage', label: 'تنظیمات سازمان', group: 'پیکربندی', href: '/settings' },
+  { key: 'settings.manage', label: 'تنظیمات سازمان (سازمان و کاربران)', group: 'پیکربندی', href: '/settings' },
 ] as const;
 
 export type OrganizationMenuPermission = (typeof ORGANIZATION_MENU_PERMISSIONS)[number]['key'];
@@ -83,6 +84,11 @@ export type OrganizationMenuPermission = (typeof ORGANIZATION_MENU_PERMISSIONS)[
 const PUBLISHING_MENU_PERMISSIONS = ORGANIZATION_MENU_PERMISSIONS
   .map((item) => item.key)
   .filter((key) => key.startsWith('publishing.'));
+
+/** Legacy publishing.* keys expand to menu routes, except settings (explicit grant only). */
+const PUBLISHING_LEGACY_EXPANDED_PERMISSIONS = PUBLISHING_MENU_PERMISSIONS.filter(
+  (key) => key !== 'publishing.settings',
+);
 
 // Permission catalog — platform + organization menu + legacy keys
 export const APP_PERMISSIONS = [
@@ -141,7 +147,7 @@ export function expandMemberPermissions(permissions: readonly string[]): string[
   const expanded = new Set(permissions);
   if (expanded.has('*')) return ['*'];
   if (expanded.has('publishing.view') || expanded.has('publishing.manage') || expanded.has('publishing.publish')) {
-    for (const key of PUBLISHING_MENU_PERMISSIONS) expanded.add(key);
+    for (const key of PUBLISHING_LEGACY_EXPANDED_PERMISSIONS) expanded.add(key);
   }
   if (expanded.has('users.manage') || expanded.has('organization.members.manage') || expanded.has('organization.members.view') || expanded.has('organization.members.add')) {
     expanded.add('settings.manage');
@@ -253,22 +259,33 @@ export function getUsageMetricDefinition(key: UsageMetricKey) {
 export interface PlanLimits {
   maxUsers: number;
   maxStorageMb: number;
+  monthlyTokens: number;
 }
 
 export const PLATFORM_PLANS: Record<string, PlanLimits> = {
-  starter: {
-    maxUsers: 5,
-    maxStorageMb: 1024,
-  },
-  professional: {
-    maxUsers: 25,
-    maxStorageMb: 10240,
-  },
-  enterprise: {
-    maxUsers: 999,
-    maxStorageMb: 102400,
-  },
+  starter: { maxUsers: 5, maxStorageMb: 1024, monthlyTokens: 500 },
+  professional: { maxUsers: 25, maxStorageMb: 10240, monthlyTokens: 5000 },
+  enterprise: { maxUsers: 999, maxStorageMb: 102400, monthlyTokens: 50000 },
 };
+
+export interface TokenTopUpPackage {
+  id: string;
+  label: string;
+  tokenAmount: number;
+  amountRials: number;
+}
+
+/** Server-defined top-up bundles. Clients may only pass package id, never custom token counts. */
+export const TOKEN_TOP_UP_PACKAGES: readonly TokenTopUpPackage[] = [
+  { id: 'tokens-1000', label: '۱٬۰۰۰ توکن', tokenAmount: 1000, amountRials: 500_000 },
+  { id: 'tokens-5000', label: '۵٬۰۰۰ توکن', tokenAmount: 5000, amountRials: 2_000_000 },
+  { id: 'tokens-20000', label: '۲۰٬۰۰۰ توکن', tokenAmount: 20_000, amountRials: 6_000_000 },
+];
+
+export function resolveTokenTopUpPackage(packageId: string): TokenTopUpPackage | undefined {
+  const id = packageId.trim();
+  return TOKEN_TOP_UP_PACKAGES.find((pack) => pack.id === id);
+}
 
 export const STATUS_LABELS: Record<string, string> = {
   draft: 'پیش‌نویس',

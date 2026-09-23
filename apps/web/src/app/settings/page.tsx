@@ -2,15 +2,16 @@
 
 import { Suspense, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Building2, Users } from 'lucide-react';
+import { Building2, Coins, Users } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { OrganizationSettingsPanel } from '@/components/settings/organization-settings-panel';
 import { UsersSettingsPanel } from '@/components/settings/users-settings-panel';
+import { OrganizationWalletPanel } from '@/components/settings/organization-wallet-panel';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
 import { cn } from '@/lib/utils';
 
-type SettingsTab = 'organization' | 'users';
+type SettingsTab = 'organization' | 'users' | 'wallet';
 
 const TAB_DEFINITIONS: Array<{
   id: SettingsTab;
@@ -20,6 +21,7 @@ const TAB_DEFINITIONS: Array<{
 }> = [
   { id: 'organization', label: 'سازمان', icon: Building2, ownerOnly: true },
   { id: 'users', label: 'کاربران', icon: Users, ownerOnly: true },
+  { id: 'wallet', label: 'کیف پول', icon: Coins, ownerOnly: true },
 ];
 
 function SettingsPageContent() {
@@ -58,7 +60,7 @@ function SettingsPageContent() {
   const activeTab = availableTabs.some((tab) => tab.id === requestedTab)
     ? (requestedTab as SettingsTab)
     : defaultTab;
-  const tenantRequired = activeTab === 'organization' || activeTab === 'users';
+  const tenantRequired = activeTab === 'organization' || activeTab === 'users' || activeTab === 'wallet';
 
   useEffect(() => {
     if (availableTabs.length === 0) return;
@@ -109,6 +111,7 @@ function SettingsPageContent() {
 
         {activeTab === 'organization' && <OrganizationSettingsPanel />}
         {activeTab === 'users' && <UsersSettingsPanel />}
+        {activeTab === 'wallet' && <OrganizationWalletPanel tenantId={activeTenant?.id ?? null} />}
       </div>
     </ProtectedLayout>
   );

@@ -1,12 +1,11 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Header, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Header, Inject, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { PLATFORM_ROLES } from '@deska/shared';
 import type { AuthUser } from '../../common/decorators/params.decorator';
 import { User } from '../../common/decorators/params.decorator';
-import { PlatformFeedService } from '../../modules/smart-publishing/platform-feed.service';
-import { FeedBulkService } from '../../modules/smart-publishing/feed-bulk.service';
+import { PLATFORM_PUBLISHING_PORT, type PlatformPublishingPort } from '../../contracts/platform-publishing.port';
 import { PlatformAdminService } from './platform-admin.service';
 import { UpdatePlatformUserStatusDto } from './dto/update-platform-user-status.dto';
 import { UpdatePlatformUserRoleDto } from './dto/update-platform-user-role.dto';
@@ -18,23 +17,17 @@ import { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import { CreatePlatformFeedDto, UpdatePlatformFeedDto } from './dto/platform-feed.dto';
 import { ProbeFeedDto } from '../../modules/smart-publishing/dto/feed.dto';
 import { TestGapGptConnectionDto } from '../../modules/smart-publishing/dto/publishing-settings.dto';
-import { GapGptClient } from '../../modules/smart-publishing/gapgpt.client';
-import { PublishingSettingsService } from '../../modules/smart-publishing/publishing-settings.service';
 import { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
 import { UpdatePlatformAiSettingsDto } from './dto/platform-ai-settings.dto';
 import { UpdatePlatformSourceFetchSettingsDto } from './dto/platform-source-fetch-settings.dto';
 import { UpdatePlatformCatalogHealthSettingsDto } from './dto/platform-catalog-health-settings.dto';
-import { SourceReaderService } from '../../modules/smart-publishing/source-reader.service';
+import { UpdatePlatformPaymentSettingsDto } from './dto/update-platform-payment-settings.dto';
 
 @Controller('platform')
 export class PlatformAdminController {
   constructor(
     private readonly service: PlatformAdminService,
-    private readonly platformFeeds: PlatformFeedService,
-    private readonly feedBulk: FeedBulkService,
-    private readonly publishingSettings: PublishingSettingsService,
-    private readonly gapGpt: GapGptClient,
-    private readonly sourceReader: SourceReaderService,
+    @Inject(PLATFORM_PUBLISHING_PORT) private readonly publishing: PlatformPublishingPort,
   ) {}
 
   private assertSuperAdmin(actor: AuthUser) {
@@ -164,11 +157,46 @@ export class PlatformAdminController {
     return this.service.getOrganizationUsage(actor, id);
   }
 
+  @Get('organizations/:id/wallet')
+  organizationWallet(@User() actor: AuthUser, @Param('id') id: string) {
+    return this.service.organizationWallet(actor, id);
+  }
+
+  @Post('organizations/:id/wallet/credits')
+  creditOrganization(@User() actor: AuthUser, @Param('id') id: string, @Body() body: { amount?: number }) {
+    return this.service.creditOrganization(actor, id, Number(body.amount));
+  }
+
+  @Post('organizations/:id/payments')
+  createPayment(@User() actor: AuthUser, @Param('id') id: string, @Body() body: { packageId?: string }) {
+    return this.service.createOrganizationPayment(actor, id, String(body.packageId ?? ''));
+  }
+
+  @Post('payments/:id/confirm')
+  confirmPayment(@User() actor: AuthUser, @Param('id') id: string) {
+    return this.service.confirmPayment(actor, id);
+  }
+
+  @Get('payments/pending')
+  pendingPayments(@User() actor: AuthUser, @Query('limit') limit?: string) {
+    return this.service.listPendingPayments(actor, Number(limit) || 50);
+  }
+
+  @Get('payment-settings')
+  paymentSettings(@User() actor: AuthUser) {
+    return this.service.getPaymentSettings(actor);
+  }
+
+  @Put('payment-settings')
+  savePaymentSettings(@User() actor: AuthUser, @Body() dto: UpdatePlatformPaymentSettingsDto) {
+    return this.service.savePaymentSettings(actor, dto);
+  }
+
   @Get('feeds/export')
   @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   async exportPlatformFeeds(@User() actor: AuthUser, @Res() response: Response) {
     this.assertSuperAdmin(actor);
-    const buffer = await this.feedBulk.exportPlatformWorkbook();
+    const buffer = await this.publishing.exportFeeds();
     const stamp = new Date().toISOString().slice(0, 10);
     response.setHeader('Content-Disposition', `attachment; filename="deska-platform-feeds-${stamp}.xlsx"`);
     response.send(buffer);
@@ -179,136 +207,126 @@ export class PlatformAdminController {
   importPlatformFeeds(@User() actor: AuthUser, @UploadedFile() file: { buffer: Buffer; originalname?: string }) {
     this.assertSuperAdmin(actor);
     if (!file?.buffer?.length) throw new BadRequestException('فایل Excel انتخاب نشده است');
-    return this.feedBulk.importPlatformWorkbook(file.buffer);
+    return this.publishing.importFeeds(file.buffer);
   }
 
   @Get('feeds')
   listPlatformFeeds(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.listAll();
+    return this.publishing.listFeeds();
   }
 
   @Get('source-languages')
   listSourceLanguages(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.listSourceLanguageCatalog();
+    return this.publishing.listSourceLanguages();
   }
 
   @Post('feeds')
   createPlatformFeed(@User() actor: AuthUser, @Body() body: CreatePlatformFeedDto) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.create(body);
+    return this.publishing.createFeed(body);
   }
 
   @Patch('feeds/:id')
   updatePlatformFeed(@User() actor: AuthUser, @Param('id') id: string, @Body() body: UpdatePlatformFeedDto) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.update(id, body);
+    return this.publishing.updateFeed(id, body);
   }
 
   @Delete('feeds/:id')
   deletePlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.delete(id);
+    return this.publishing.deleteFeed(id);
   }
 
   @Post('feeds/probe')
   probePlatformFeed(@User() actor: AuthUser, @Body() body: ProbeFeedDto) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.probe(body);
+    return this.publishing.probeFeed(body);
   }
 
   @Post('feeds/audit')
   auditPlatformFeeds(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.auditAll();
+    return this.publishing.auditFeeds();
   }
 
   @Post('feeds/:id/test')
   testPlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.test(id);
+    return this.publishing.testFeed(id);
   }
 
   @Post('feeds/:id/fetch')
   fetchPlatformFeed(@User() actor: AuthUser, @Param('id') id: string) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.fetch(id);
+    return this.publishing.fetchFeed(id);
   }
 
   @Post('feeds/health-check')
   runCatalogHealthChecks(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.startCatalogHealthChecksManual();
+    return this.publishing.startCatalogHealth();
   }
 
   @Get('catalog-health-run-status')
   catalogHealthRunStatus(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.platformFeeds.getCatalogHealthRunStatus();
+    return this.publishing.catalogHealthStatus();
   }
 
   @Get('catalog-health-settings')
   catalogHealthSettings(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.publishingSettings.getGlobalCatalogHealthPublic();
+    return this.publishing.catalogHealthSettings();
   }
 
   @Put('catalog-health-settings')
   saveCatalogHealthSettings(@User() actor: AuthUser, @Body() body: UpdatePlatformCatalogHealthSettingsDto) {
     this.assertSuperAdmin(actor);
-    return this.publishingSettings.saveGlobalCatalogHealth(body);
+    return this.publishing.saveCatalogHealth(body);
   }
 
   @Get('ai-settings')
   aiSettings(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.publishingSettings.getGlobalAiPublic();
+    return this.publishing.aiSettings();
   }
 
   @Put('ai-settings')
   saveAiSettings(@User() actor: AuthUser, @Body() body: UpdatePlatformAiSettingsDto) {
     this.assertSuperAdmin(actor);
-    return this.publishingSettings.saveGlobalAi(body);
+    return this.publishing.saveAiSettings(body);
   }
 
   @Post('ai-settings/test-gapgpt')
-  async testGapGpt(@User() actor: AuthUser, @Body() body: TestGapGptConnectionDto) {
+  testGapGpt(@User() actor: AuthUser, @Body() body: TestGapGptConnectionDto) {
     this.assertSuperAdmin(actor);
-    return this.gapGpt.test(this.publishingSettings.mergeForGlobalAiTest(await this.publishingSettings.getGlobalAiRaw(), body));
+    return this.publishing.testGapGpt(body);
   }
 
   @Post('ai-settings/gapgpt-models')
-  async gapGptModels(@User() actor: AuthUser, @Body() body: TestGapGptConnectionDto) {
+  gapGptModels(@User() actor: AuthUser, @Body() body: TestGapGptConnectionDto) {
     this.assertSuperAdmin(actor);
-    return this.gapGpt.models(this.publishingSettings.mergeForGlobalAiTest(await this.publishingSettings.getGlobalAiRaw(), body));
-  }
-
-  @Get('ai-settings/balance')
-  async gapGptBalance(@User() actor: AuthUser) {
-    this.assertSuperAdmin(actor);
-    return this.gapGpt.accountBalance(await this.publishingSettings.getGlobalAiRaw());
+    return this.publishing.gapGptModels(body);
   }
 
   @Get('source-fetch-settings')
   sourceFetchSettings(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
-    return this.publishingSettings.getGlobalSourceFetchPublic();
+    return this.publishing.sourceFetchSettings();
   }
 
   @Put('source-fetch-settings')
   saveSourceFetchSettings(@User() actor: AuthUser, @Body() body: UpdatePlatformSourceFetchSettingsDto) {
     this.assertSuperAdmin(actor);
-    return this.publishingSettings.saveGlobalSourceFetch(body);
+    return this.publishing.saveSourceFetch(body);
   }
 
   @Post('source-fetch-settings/test')
-  async testSourceFetchSettings(@User() actor: AuthUser, @Body() body: UpdatePlatformSourceFetchSettingsDto) {
+  testSourceFetchSettings(@User() actor: AuthUser, @Body() body: UpdatePlatformSourceFetchSettingsDto) {
     this.assertSuperAdmin(actor);
-    const merged = this.publishingSettings.mergeForGlobalSourceFetchTest(
-      await this.publishingSettings.getGlobalSourceFetchRaw(),
-      body,
-    );
-    return this.sourceReader.testSourceFetchBridge(merged);
+    return this.publishing.testSourceFetch(body);
   }
 }

@@ -110,10 +110,23 @@ export function PlatformSourceFetchSettingsPanel() {
         </div>
       ) : (
         <Card className="space-y-6 p-5 sm:p-6">
+          <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-sm leading-7 text-slate-700">
+            <p className="font-semibold text-slate-900">سرور داخل ایران و رسانهٔ فیلترشده</p>
+            <ul className="mt-2 list-disc space-y-1 pr-5">
+              <li>آزمایش منبع روی <strong>لپ‌تاپ با فیلترشکن</strong> فقط مرورگر شما را نشان می‌دهد؛ <strong>سرور آنلاین</strong> همان VPN را ندارد.</li>
+              <li><strong>خبرگزاری‌های .ir و سایت‌های باز از ایران</strong> معمولاً مستقیم از سرور گرفته می‌شوند (گزینهٔ پایین خاموش).</li>
+              <li><strong>رسانهٔ بین‌المللی فیلترشده</strong> (مثل Euronews، BBC، …) باید از <strong>سرویس دریافت</strong> بیاید: آدرس زیر را ثبت کنید و «منابع خبری هم از این سرویس» را <strong>روشن</strong> کنید. این سرویس روی Cloudflare است، نه روی سرور ایران.</li>
+              <li><strong>تلگرام و توییتر</strong> همیشه از همین سرویس می‌آیند.</li>
+            </ul>
+            <p className="mt-3 text-xs text-slate-600">
+              اگر با روشن بودن گزینهٔ خبر، خطای «فقط تلگرام و توییتر» دیدید، نسخهٔ سرویس روی Cloudflare قدیمی است و باید یک‌بار اسکریپت Worker به‌روز شود (از پنل Cloudflare یا توسط پشتیبانی) — بدون تغییر آدرس در این فرم.
+            </p>
+          </div>
+
           <div>
             <h2 className="text-lg font-bold text-slate-900">دریافت منبع</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              تلگرام و توییتر همیشه از آدرس زیر گرفته می‌شوند. منابع خبری (RSS و وب‌سایت) به‌طور پیش‌فرض مستقیم از سرور دریافت می‌شوند. اگر سایتی از شبکهٔ سرور باز نشد، گزینهٔ پایین را روشن کنید تا همان آدرس برای خبرها هم استفاده شود.
+              یک آدرس سرویس برای شبکه‌های اجتماعی و — در صورت نیاز — برای RSS و وب‌سایت‌هایی که از شبکهٔ سرور ایران باز نمی‌شوند.
             </p>
           </div>
 
@@ -154,9 +167,9 @@ export function PlatformSourceFetchSettingsPanel() {
                 onChange={(event) => set('source_fetch_news_via_bridge', event.target.checked ? 'true' : 'false')}
               />
               <span>
-                <span className="block text-sm font-semibold text-slate-900">منابع خبری هم از این سرویس</span>
+                <span className="block text-sm font-semibold text-slate-900">منابع خبری هم از این سرویس (رسانهٔ فیلترشده / بین‌المللی)</span>
                 <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
-                  خاموش: RSS و وب‌سایت مستقیم از سرور. روشن: همان سرویس تلگرام و توییتر برای خبرهای فیلترشده هم استفاده شود. اگر آزمایش منبع خطای «فقط تلگرام و توییتر» داد، این گزینه را خاموش بگذارید.
+                  <strong>روشن:</strong> RSS و وب‌سایت از Cloudflare (مناسب سرور ایران + سایت فیلترشده). <strong>خاموش:</strong> فقط دریافت مستقیم از سرور — برای خبرگزاری‌های داخلی و سایت‌های بدون فیلتر. اگر هر دو مسیر خطا دادند، آدرس فید را در مرورگر بدون لاگین چک کنید.
                 </span>
               </span>
             </label>

@@ -10,6 +10,9 @@ import type { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import type { UpdatePlatformUserDto } from './dto/update-platform-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { UsageTrackingService } from '../usage/usage-tracking.service';
+import { BillingService } from '../../common/services/billing.service';
+import { PaymentSettingsService } from '../payments/payment-settings.service';
+import type { UpdatePlatformPaymentSettingsDto } from './dto/update-platform-payment-settings.dto';
 import type { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
 
 type ListQuery = { q?: string; status?: string; role?: string; page?: string; limit?: string };
@@ -22,6 +25,8 @@ export class PlatformAdminService {
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
     private readonly usageTracking: UsageTrackingService,
+    private readonly billing: BillingService,
+    private readonly paymentSettings: PaymentSettingsService,
   ) {}
 
   async overview(actor: AuthUser) {
@@ -399,6 +404,47 @@ export class PlatformAdminService {
       });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return { success: true, primaryOwnerUserId: targetUserId };
+  }
+
+  async organizationWallet(actor: AuthUser, tenantId: string) {
+    this.assertAdmin(actor);
+    return this.billing.walletSnapshot(tenantId);
+  }
+
+  async creditOrganization(actor: AuthUser, tenantId: string, amount: number) {
+    this.assertSuperAdmin(actor);
+    return this.billing.credit(tenantId, amount, `admin:${tenantId}:${Date.now()}`);
+  }
+
+  async createOrganizationPayment(actor: AuthUser, tenantId: string, packageId: string) {
+    this.assertAdmin(actor);
+    return this.billing.createPaymentForPackage(tenantId, packageId);
+  }
+
+  async confirmPayment(actor: AuthUser, paymentId: string) {
+    this.assertSuperAdmin(actor);
+    return this.billing.confirmPayment(paymentId);
+  }
+
+  async getPaymentSettings(actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.paymentSettings.getPublic();
+  }
+
+  async savePaymentSettings(actor: AuthUser, dto: UpdatePlatformPaymentSettingsDto) {
+    this.assertSuperAdmin(actor);
+    return this.paymentSettings.save(dto);
+  }
+
+  async listPendingPayments(actor: AuthUser, limit = 50) {
+    this.assertSuperAdmin(actor);
+    const take = Math.min(Math.max(limit, 1), 100);
+    return this.prisma.paymentIntent.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: { tenant: { select: { id: true, name: true, slug: true } } },
+    });
   }
 
   private assertAdmin(actor: AuthUser) {

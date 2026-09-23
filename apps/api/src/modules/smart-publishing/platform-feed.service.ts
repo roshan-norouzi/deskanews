@@ -17,6 +17,7 @@ import {
 import type { CreatePlatformFeedDto, UpdatePlatformFeedDto } from '../../platform/admin/dto/platform-feed.dto';
 import type { ProbeFeedDto, SourceType, UpdateTenantPlatformFeedDto } from './dto/feed.dto';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
+import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime.service';
 import { DestinationCategoryService } from './destination-category.service';
 import {
   evaluatePlatformFeedHealth,
@@ -212,6 +213,7 @@ export class PlatformFeedService implements OnModuleInit {
     private readonly settings: PublishingSettingsService,
     private readonly usageTracking: UsageTrackingService,
     private readonly destinationCategories: DestinationCategoryService,
+    private readonly scheduler: SchedulerRuntimeService,
   ) {}
 
   onModuleInit() {
@@ -1127,6 +1129,7 @@ export class PlatformFeedService implements OnModuleInit {
   @Interval('platform-feed-maintenance', 60_000)
   async maintenance() {
     if (this.maintenanceRunning) return;
+    await this.scheduler.runIntervalMaintenance('platform-feed-maintenance', async () => {
     this.maintenanceRunning = true;
     try {
       const feeds = await this.prisma.platformFeed.findMany({
@@ -1163,11 +1166,13 @@ export class PlatformFeedService implements OnModuleInit {
     } finally {
       this.maintenanceRunning = false;
     }
+    }).catch(() => undefined);
   }
 
   @Interval('platform-feed-health', 60_000)
   async healthMaintenance() {
     if (this.healthMaintenanceRunning) return;
+    await this.scheduler.runIntervalMaintenance('platform-feed-health', async () => {
     this.healthMaintenanceRunning = true;
     try {
       if (!(await this.shouldRunScheduledCatalogHealth())) return;
@@ -1180,6 +1185,7 @@ export class PlatformFeedService implements OnModuleInit {
     } finally {
       this.healthMaintenanceRunning = false;
     }
+    }).catch(() => undefined);
   }
 
   async ensureTenantSubscriptionsForFeeds(platformFeedIds: readonly string[]) {

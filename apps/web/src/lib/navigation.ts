@@ -57,7 +57,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'config',
     label: 'پیکربندی',
     items: [
-      { href: '/publishing/settings', label: 'تنظیمات انتشار', icon: Settings, ownerOnly: true },
+      { href: '/publishing/settings', label: 'تنظیمات انتشار', icon: Settings },
       { href: '/publishing/operations', label: 'مرکز عملیات', icon: Activity },
       { href: '/settings', label: 'تنظیمات سازمان', icon: Settings },
       { href: '/settings/account', label: 'حساب کاربری', icon: User },

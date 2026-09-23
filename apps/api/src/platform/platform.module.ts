@@ -4,6 +4,7 @@ import { HealthModule } from './health/health.module';
 import { TenantModule } from './tenant/tenant.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlatformAdminModule } from './admin/platform-admin.module';
+import { PaymentsModule } from './payments/payments.module';
 import { UsageTrackingModule } from './usage/usage-tracking.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { UsageTrackingModule } from './usage/usage-tracking.module';
     HealthModule,
     NotificationsModule,
     PlatformAdminModule,
+    PaymentsModule,
   ],
   exports: [
     AuthModule,

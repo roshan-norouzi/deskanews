@@ -14,7 +14,8 @@ test('social featured-image updates stay tenant-scoped and clear a stale generat
       update: async (args) => { updateArgs = args; return updatedArticle; },
     },
   };
-  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {}, { record: async () => {} });
+  const scheduler = { runIntervalMaintenance: async (_t, fn) => fn(), automationWorkerEnabled: () => true };
+  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {}, { record: async () => {} }, scheduler);
 
   const result = await service.updateFeaturedImage('tenant-0001', 'article-1', updatedArticle.featuredImageUrl);
 
@@ -39,7 +40,8 @@ test('social featured-image cannot update an article from another tenant', async
       update: async () => { updateCalled = true; },
     },
   };
-  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {}, { record: async () => {} });
+  const scheduler = { runIntervalMaintenance: async (_t, fn) => fn(), automationWorkerEnabled: () => true };
+  const service = new SocialStudioService(prisma, {}, {}, {}, {}, {}, {}, { record: async () => {} }, scheduler);
 
   await assert.rejects(
     () => service.updateFeaturedImage('tenant-0001', 'article-from-another-tenant', null),

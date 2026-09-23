@@ -9,6 +9,8 @@ import { SourceReaderService } from './source-reader.service';
 import { entryFilterText, matchesWordFilters } from './feed-word-filter';
 import type { SocialNetwork } from './social-network-publisher.service';
 import { AutomationJobService } from '../../common/services/automation-job.service';
+import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime.service';
+import { decodeArticleCursor, encodeArticleCursor } from '../../common/article-page';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
@@ -81,6 +83,7 @@ export class SocialStudioService {
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
     private readonly usageTracking: UsageTrackingService,
+    private readonly scheduler: SchedulerRuntimeService,
   ) {}
 
   private recordWorkflow(params: {
@@ -114,15 +117,31 @@ export class SocialStudioService {
     return feeds.map((feed) => ({ ...feed, lastError: '' }));
   }
 
-  articles(tenantId: string, status?: string) {
+  articles(tenantId: string, status?: string, cursor?: string) {
     if (status && !['pending', 'processing', 'ready', 'failed', 'archived'].includes(status)) {
       throw new BadRequestException('وضعیت محتوای اجتماعی معتبر نیست');
     }
-    return this.prisma.socialArticle.findMany({
-      where: { tenantId, ...(status ? { status } : { status: { not: 'archived' } }) },
+    const decoded = decodeArticleCursor(cursor);
+    const reader = this.prisma.reader ?? this.prisma;
+    return reader.socialArticle.findMany({
+      where: {
+        tenantId,
+        ...(status ? { status } : { status: { not: 'archived' } }),
+        ...(decoded ? {
+          OR: [
+            { createdAt: { lt: decoded.stamp ?? new Date(0) } },
+            { createdAt: decoded.stamp ?? new Date(0), id: { lt: decoded.id } },
+          ],
+        } : {}),
+      },
+      omit: { originalText: true, rewrittenText: true },
       include: { feed: { select: { id: true, name: true, enabled: true } } },
-      orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
-      take: 200,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 51,
+    }).then((rows) => {
+      const items = rows.slice(0, 50);
+      const last = items.at(-1);
+      return { items, nextCursor: rows.length > 50 && last ? encodeArticleCursor(last.createdAt, last.id) : null };
     });
   }
 
@@ -148,6 +167,8 @@ export class SocialStudioService {
     const feed = await this.prisma.newsFeed.findFirst({ where: { id: feedId, tenantId, purpose: 'social-studio' } });
     if (!feed) throw new NotFoundException('فید استودیوی اجتماعی یافت نشد');
     if (!feed.enabled) throw new BadRequestException('ابتدا فید را فعال کنید');
+    const deferred = await this.deferHeavyWork(tenantId, 'social.feed.fetch', { feedId }, `feed:${feedId}:fetch`);
+    if (deferred) return deferred;
     const startedAt = Date.now();
     try {
       const settings = await this.settings.getRaw(tenantId);
@@ -224,7 +245,7 @@ export class SocialStudioService {
     for (const feed of feeds) {
       try {
         const result = await this.fetchFeed(tenantId, feed.id);
-        results.push({ feedId: feed.id, ok: true, created: result.created });
+        results.push({ feedId: feed.id, ok: true, created: 'created' in result ? result.created : 0 });
       } catch (error) {
         results.push({ feedId: feed.id, ok: false, error: error instanceof Error ? error.message : 'خطای دریافت فید' });
       }
@@ -255,6 +276,8 @@ export class SocialStudioService {
     if (existing?.status === 'processing') {
       throw new BadRequestException('این خبر هم‌اکنون در استودیوی اجتماعی در حال آماده‌سازی است');
     }
+    const deferred = await this.deferHeavyWork(tenantId, 'news.send-social', { articleId: newsArticleId }, `news:${newsArticleId}:send-social`);
+    if (deferred) return deferred;
 
     const claimed = await this.prisma.newsArticle.updateMany({
       where: {
@@ -390,6 +413,8 @@ export class SocialStudioService {
     const article = await this.prisma.socialArticle.findFirst({ where: { id, tenantId } });
     if (!article) throw new NotFoundException('مطلب اجتماعی یافت نشد');
     const preserveArchive = article.status === 'archived';
+    const deferred = await this.deferHeavyWork(tenantId, 'social.prepare', { articleId: id }, `social:${id}:prepare`);
+    if (deferred) return deferred;
     const claimed = await this.prisma.socialArticle.updateMany({
       where: { id, tenantId, status: { in: ['pending', 'ready', 'failed', 'archived'] } },
       data: { status: 'processing', processingStartedAt: new Date(), lastError: '' },
@@ -546,6 +571,7 @@ export class SocialStudioService {
   @Interval('smart-publishing-social-maintenance', 60_000)
   async maintenance() {
     if (this.maintenanceRunning) return;
+    await this.scheduler.runIntervalMaintenance('smart-publishing-social-maintenance', async () => {
     this.maintenanceRunning = true;
     try {
       const activeTenants = await this.prisma.tenant.findMany({
@@ -582,6 +608,44 @@ export class SocialStudioService {
     } finally {
       this.maintenanceRunning = false;
     }
+    }).catch(() => undefined);
+  }
+
+  defersHeavyWork(): boolean {
+    const check = this.scheduler.runsHeavyWorkInline;
+    return typeof check === 'function' && check.call(this.scheduler) === false;
+  }
+
+  async rememberGeneratedImage(tenantId: string, id: string, url: string) {
+    const article = await this.prisma.socialArticle.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!article) throw new NotFoundException('مطلب اجتماعی یافت نشد');
+    await this.prisma.socialArticle.update({ where: { id }, data: { generatedImageUrl: url } });
+    return { ok: true };
+  }
+
+  async enqueueNetworkPublish(tenantId: string, articleId: string, network: string) {
+    if (!['telegram', 'instagram', 'linkedin', 'facebook'].includes(network)) {
+      throw new BadRequestException('شبکه اجتماعی معتبر نیست');
+    }
+    return this.deferHeavyWork(tenantId, 'social.publish', { articleId, networks: [network] }, `social:${articleId}:publish:${network}`);
+  }
+
+  private async deferHeavyWork(
+    tenantId: string,
+    type: 'social.feed.fetch' | 'social.prepare' | 'social.publish' | 'news.send-social',
+    payload: Record<string, unknown>,
+    dedupeKey: string,
+  ) {
+    if (!this.defersHeavyWork()) return null;
+    const queued = await this.jobs.enqueue({
+      tenantId,
+      type,
+      payload,
+      dedupeKey,
+      retryDead: true,
+      priority: 30,
+    });
+    return { queued: true as const, created: 0, jobId: queued.job.id, message: 'کار به worker سپرده شد.' };
   }
 
   private autoPublishNetworks(settings: PublishingSettings): SocialNetwork[] {

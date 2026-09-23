@@ -21,6 +21,8 @@ function createService(feeds, checkDelayMs = 50) {
     markCatalogHealthLastRun: async () => {},
   };
 
+  const scheduler = { runIntervalMaintenance: async (_task, fn) => fn() };
+
   return new PlatformFeedService(
     prisma,
     sourceReader,
@@ -28,6 +30,7 @@ function createService(feeds, checkDelayMs = 50) {
     settings,
     {},
     { categorizeArticlesByCanonicalUrls: async () => {} },
+    scheduler,
   );
 }
 

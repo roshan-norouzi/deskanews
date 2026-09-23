@@ -8,6 +8,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { resolveProcessRole } from './common/process-role';
 
 // Load .env from monorepo root when running from apps/api
 config({ path: join(process.cwd(), '.env') });
@@ -121,8 +122,9 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT ?? 3001;
+  const role = resolveProcessRole(process.env.DESKA_PROCESS_ROLE);
   await app.listen(port);
-  console.log(`Deska News API running on port ${port}`);
+  console.log(`Deska News API running on port ${port} (${role})`);
 }
 
 bootstrap();

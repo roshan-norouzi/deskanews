@@ -7,6 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
+    "start:worker": "node dist/main.js",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:sync": "prisma db push",
@@ -19,6 +20,7 @@
     "test": "pnpm build && node --test test/*.test.cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1138.0",
     "@deska/shared": "workspace:*",
     "@nestjs/common": "^11.0.7",
     "@nestjs/config": "^4.0.0",
@@ -31,6 +33,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.3.1",
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.3.8",
     "cheerio": "^1.2.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -39,6 +42,7 @@
     "express": "^5.2.1",
     "fast-xml-parser": "^5.11.0",
     "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
     "jalaliday": "^2.3.0",
     "multer": "^2.0.2",
     "passport": "^0.7.0",

@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { extractFeedDomain } from '@deska/shared';
+import { RedisCache } from '../../common/redis/redis-cache';
 
 const FETCH_TIMEOUT_MS = 2000;
 const MAX_ICON_BYTES = 200_000;
@@ -18,6 +19,8 @@ export function sanitizeSourceIconDomain(value: string): string {
 export class SourceIconService {
   private readonly logger = new Logger(SourceIconService.name);
   private readonly inflight = new Map<string, Promise<{ buffer: Buffer; contentType: string } | null>>();
+
+  constructor(@Optional() private readonly cache?: RedisCache) {}
 
   async getIcon(domainOrUrl: string): Promise<{ buffer: Buffer; contentType: string } | null> {
     const domain = sanitizeSourceIconDomain(domainOrUrl) || extractFeedDomain(domainOrUrl);
@@ -48,7 +51,9 @@ export class SourceIconService {
     const fetched = await this.fetchIcon(domain);
     await fs.mkdir(this.storageDir(), { recursive: true }).catch(() => undefined);
     if (!fetched) {
-      await fs.writeFile(this.cachePath(domain, '.missing'), String(Date.now())).catch(() => undefined);
+      const stamp = String(Date.now());
+      await this.cache?.set(`deska:icon-miss:${domain}`, stamp, 24 * 60 * 60);
+      await fs.writeFile(this.cachePath(domain, '.missing'), stamp).catch(() => undefined);
       return null;
     }
     await fs.writeFile(this.cachePath(domain, this.extensionFor(fetched.contentType)), fetched.buffer).catch((error) => {
@@ -76,6 +81,8 @@ export class SourceIconService {
   }
 
   private async hasRecentNegativeCache(domain: string): Promise<boolean> {
+    const redisStamp = Number(await this.cache?.get(`deska:icon-miss:${domain}`));
+    if (Number.isFinite(redisStamp) && redisStamp > 0 && Date.now() - redisStamp < NEGATIVE_TTL_MS) return true;
     try {
       const stamp = Number(await fs.readFile(this.cachePath(domain, '.missing'), 'utf8'));
       return Number.isFinite(stamp) && Date.now() - stamp < NEGATIVE_TTL_MS;

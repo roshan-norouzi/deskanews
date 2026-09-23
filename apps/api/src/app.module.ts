@@ -11,6 +11,7 @@ import { PlatformModule } from './platform/platform.module';
 import { UsageTrackingModule } from './platform/usage/usage-tracking.module';
 import { BusinessModulesModule } from './modules/modules.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { WorkerHttpGuard } from './common/guards/worker-http.guard';
 
 @Module({
   imports: [
@@ -36,6 +37,10 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     BusinessModulesModule,
   ],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: WorkerHttpGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

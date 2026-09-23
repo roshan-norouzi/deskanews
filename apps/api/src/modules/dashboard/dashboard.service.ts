@@ -3,7 +3,7 @@ import { AutomationJobService } from '../../common/services/automation-job.servi
 import { unifiedContentStage } from '../../common/services/content-workflow.service';
 import { NotificationService } from '../../common/services/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { computeNewsroomDashboardStats, newsroomArticleWhere } from '../smart-publishing/newsroom-article-stats';
+import { newsroomArticleWhere, newsroomStatsFromCounts } from '../smart-publishing/newsroom-article-stats';
 
 function countsByStatus(rows: Array<{ status: string; _count: { _all: number } }>) {
   return Object.fromEntries(rows.map((row) => [row.status, row._count._all]));
@@ -35,45 +35,42 @@ export class DashboardService {
       socialItems,
       deadJobs,
     ] = await Promise.all([
-      this.prisma.tenantMember.count({ where: { tenantId, status: 'active' } }),
-      this.prisma.newsArticle.findMany({
-        where: newsroomArticleWhere(tenantId),
-        select: { status: true, titleFa: true, summaryFa: true, publishedAt: true },
-      }),
-      this.prisma.socialArticle.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
-      this.prisma.newsArticle.count({
+      this.prisma.reader.tenantMember.count({ where: { tenantId, status: 'active' } }),
+      this.countNewsroom(tenantId),
+      this.prisma.reader.socialArticle.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
+      this.prisma.reader.newsArticle.count({
         where: {
           ...newsroomArticleWhere(tenantId),
           publishedAt: { gte: startOfDay },
         },
       }),
-      this.prisma.socialArticle.count({
+      this.prisma.reader.socialArticle.count({
         where: { tenantId, OR: [
           { telegramSentAt: { gte: startOfDay } }, { instagramSentAt: { gte: startOfDay } },
           { linkedinSentAt: { gte: startOfDay } }, { facebookSentAt: { gte: startOfDay } },
         ] },
       }),
       this.jobs.stats(tenantId),
-      this.prisma.integrationHealth.count({ where: { tenantId, status: { in: ['degraded', 'down'] } } }),
+      this.prisma.reader.integrationHealth.count({ where: { tenantId, status: { in: ['degraded', 'down'] } } }),
       this.notifications.summary(tenantId, userId),
-      this.prisma.activity.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 8 }),
-      this.prisma.newsArticle.findMany({
+      this.prisma.reader.activity.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 8 }),
+      this.prisma.reader.newsArticle.findMany({
         where: { tenantId, status: { in: ['new', 'ready', 'failed', 'publish_failed', 'social_failed'] }, feed: { purpose: 'news-room' } },
         orderBy: { updatedAt: 'desc' }, take: 8,
         select: { id: true, originalTitle: true, titleFa: true, status: true, lastError: true, updatedAt: true, sourceName: true },
       }),
-      this.prisma.socialArticle.findMany({
+      this.prisma.reader.socialArticle.findMany({
         where: { tenantId, status: { in: ['pending', 'ready', 'failed'] } },
         orderBy: { updatedAt: 'desc' }, take: 8,
         select: { id: true, title: true, status: true, lastError: true, updatedAt: true, author: true },
       }),
-      this.prisma.automationJob.findMany({
+      this.prisma.reader.automationJob.findMany({
         where: { tenantId, status: 'dead' }, orderBy: { updatedAt: 'desc' }, take: 5,
         select: { id: true, type: true, status: true, lastError: true, updatedAt: true, attempts: true },
       }),
     ]);
 
-    const newsroom = computeNewsroomDashboardStats(newsroomArticles, publishedToday);
+    const newsroom = newsroomStatsFromCounts({ ...newsroomArticles, publishedToday });
     const social = countsByStatus(socialGroups);
     const workItems = [
       ...newsItems.map((item) => ({
@@ -123,5 +120,23 @@ export class DashboardService {
       recentActivity,
       generatedAt: now.toISOString(),
     };
+  }
+
+  private countNewsroom(tenantId: string) {
+    const reader = this.prisma.reader;
+    const scoped = (extra: Record<string, unknown>) => ({ AND: [newsroomArticleWhere(tenantId), extra] });
+    return Promise.all([
+      reader.newsArticle.count({ where: newsroomArticleWhere(tenantId) }),
+      reader.newsArticle.count({ where: scoped({ status: 'rejected' }) }),
+      reader.newsArticle.count({ where: scoped({ status: { in: ['published', 'social_sent'] } }) }),
+      reader.newsArticle.count({ where: scoped({ status: { in: ['publishing', 'social_processing'] } }) }),
+      reader.newsArticle.count({ where: scoped({ status: 'failed' }) }),
+      reader.newsArticle.count({ where: scoped({ status: { in: ['publish_failed', 'social_failed'] } }) }),
+      reader.newsArticle.count({ where: scoped({ status: 'ready', NOT: [{ titleFa: '' }, { summaryFa: '' }] }) }),
+      reader.newsArticle.count({ where: scoped({ status: 'ready', OR: [{ titleFa: '' }, { summaryFa: '' }] }) }),
+      reader.newsArticle.count({ where: scoped({ status: { in: ['new', 'processing', 'failed'] } }) }),
+    ]).then(([total, rejected, archive, preparing, statusFailed, terminalFailed, readyPrepared, readyUnprepared, inbox]) => ({
+      total, rejected, archive, preparing, statusFailed, terminalFailed, readyPrepared, readyUnprepared, inbox,
+    }));
   }
 }

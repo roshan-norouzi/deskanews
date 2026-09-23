@@ -27,6 +27,9 @@ import {
 } from './cover-template-from-sample';
 import { GapGptClient } from './gapgpt.client';
 import { SecretProtectionService } from './secret-protection.service';
+import { RedisCache } from '../../common/redis/redis-cache';
+import { ObjectStorage } from '../../common/object-storage';
+import { signEmbeddedMediaUrls, signMediaPath } from '../../common/media-signature';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -50,6 +53,12 @@ export type SourceFetchSettingKey = (typeof SOURCE_FETCH_SETTING_KEYS)[number];
 export type SourceFetchSettings = Partial<Record<SourceFetchSettingKey, string>>;
 
 const SOURCE_FETCH_SECRET_KEYS = new Set<SourceFetchSettingKey>(['source_fetch_bridge_secret']);
+
+export function redactPublishingSecrets(settings: PublishingSettings): PublishingSettings {
+  const copy: PublishingSettings = { ...settings };
+  for (const key of SECRET_KEYS) delete copy[key];
+  return copy;
+}
 
 export const SOURCE_FETCH_BRIDGE_MISSING_MESSAGE =
   'آدرس Worker Deska ثبت نشده است. مدیر کل باید از مسیر «پلتفرم → Worker دریافت منبع» (/platform/source-fetch) آدرس Worker را وارد کند.';
@@ -374,6 +383,8 @@ export class PublishingSettingsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly secrets: SecretProtectionService,
     @Optional() private readonly gapGpt?: GapGptClient,
+    @Optional() private readonly cache?: RedisCache,
+    @Optional() private readonly objects?: ObjectStorage,
   ) {}
 
   async onModuleInit() {
@@ -398,10 +409,10 @@ export class PublishingSettingsService implements OnModuleInit {
     const id = randomUUID();
     const filename = `${id}${ext}`;
     const dir = this.tenantAssetDirectory('fonts', tenantId);
-    await this.writeTenantAsset(dir, filename, file.buffer, 'فونت');
+    await this.putAsset('fonts', tenantId, filename, file.buffer, 'فونت');
     const current = await this.getRaw(tenantId);
     const library = JSON.parse(normalizeFontLibrary(current.social_font_library || DEFAULTS.social_font_library!)) as FontRecord[];
-    const record: FontRecord = { id, name, variant, weight: FONT_VARIANTS[variant], url: `/publishing/settings/fonts/file/${tenantId}/${filename}` };
+    const record: FontRecord = { id, name, variant, weight: FONT_VARIANTS[variant], url: signMediaPath(`/publishing/settings/fonts/file/${tenantId}/${filename}`) };
     const replaced = library.find((font) => font.name.toLowerCase() === name.toLowerCase() && font.variant === variant);
     const next = [...library.filter((font) => font.name.toLowerCase() !== name.toLowerCase() || font.variant !== variant), record];
     await this.save(tenantId, { social_font_library: JSON.stringify(next) });
@@ -451,7 +462,7 @@ export class PublishingSettingsService implements OnModuleInit {
     this.assertAssetPath(tenantId, filename, /\.(woff2?|ttf|otf)$/i);
     const ext = path.extname(filename).toLowerCase();
     const contentType = ext === '.woff2' ? 'font/woff2' : ext === '.woff' ? 'font/woff' : ext === '.ttf' ? 'font/ttf' : 'font/otf';
-    try { return { buffer: await fs.readFile(path.join(this.tenantAssetDirectory('fonts', tenantId), filename)), contentType }; } catch { throw new NotFoundException(); }
+    try { return { buffer: await this.readAsset('fonts', tenantId, filename), contentType }; } catch { throw new NotFoundException(); }
   }
 
   async legacyFontFile(filename: string): Promise<{ buffer: Buffer; contentType: string }> {
@@ -470,9 +481,8 @@ export class PublishingSettingsService implements OnModuleInit {
     if (file.mimetype && file.mimetype.toLowerCase() !== contentTypes[ext]) throw new BadRequestException('پسوند و نوع فایل تصویر با یکدیگر سازگار نیستند');
     if (!this.hasImageSignature(file.buffer, contentTypes[ext])) throw new BadRequestException('محتوای فایل تصویر معتبر نیست');
     const filename = `${randomUUID()}${ext}`;
-    const dir = this.tenantAssetDirectory('cover-images', tenantId);
-    await this.writeTenantAsset(dir, filename, file.buffer, 'تصویر');
-    return { url: `/publishing/settings/images/file/${tenantId}/${filename}` };
+    await this.putAsset('cover-images', tenantId, filename, file.buffer, 'تصویر');
+    return { url: signMediaPath(`/publishing/settings/images/file/${tenantId}/${filename}`) };
   }
 
   async inferCoverTemplateFromSample(
@@ -480,10 +490,11 @@ export class PublishingSettingsService implements OnModuleInit {
     imageUrl: string,
   ): Promise<{ name: string; template: ReturnType<typeof normalizeInferredCoverTemplate>; usedAi: boolean }> {
     const prefix = `/publishing/settings/images/file/${tenantId}/`;
-    if (!imageUrl.startsWith(prefix) || imageUrl.includes('..')) {
+    const imagePath = imageUrl.split('?')[0] ?? imageUrl;
+    if (!imagePath.startsWith(prefix) || imagePath.includes('..')) {
       throw new BadRequestException('تصویر نمونه باید از فایل‌های همین سازمان باشد');
     }
-    const filename = imageUrl.slice(prefix.length);
+    const filename = imagePath.slice(prefix.length);
     const file = await this.imageFile(tenantId, filename);
     const measured = readRasterImageSize(file.buffer, file.contentType);
     const canvas = resolveCoverCanvasSize(measured?.width || 1080, measured?.height || 1080);
@@ -512,18 +523,19 @@ export class PublishingSettingsService implements OnModuleInit {
 
   async removeImage(tenantId: string, url: string | null | undefined): Promise<void> {
     const prefix = `/publishing/settings/images/file/${tenantId}/`;
-    if (!url?.startsWith(prefix)) return;
+    const imagePath = url?.split('?')[0];
+    if (!imagePath?.startsWith(prefix)) return;
     const [articleReferences, settings] = await Promise.all([
       this.prisma.socialArticle.count({
         where: {
           tenantId,
-          OR: [{ featuredImageUrl: url }, { generatedImageUrl: url }, { authorImageUrl: url }],
+          OR: [{ featuredImageUrl: imagePath }, { generatedImageUrl: imagePath }, { authorImageUrl: imagePath }],
         },
       }),
       this.getRaw(tenantId),
     ]);
-    if (articleReferences > 0 || Object.values(settings).some((value) => typeof value === 'string' && value.includes(url))) return;
-    const filename = url.slice(prefix.length);
+    if (articleReferences > 0 || Object.values(settings).some((value) => typeof value === 'string' && value.includes(imagePath))) return;
+    const filename = imagePath.slice(prefix.length);
     this.assertAssetPath(tenantId, filename, /\.(jpe?g|png|webp|avif)$/i);
     try {
       await fs.unlink(path.join(this.tenantAssetDirectory('cover-images', tenantId), filename));
@@ -537,7 +549,7 @@ export class PublishingSettingsService implements OnModuleInit {
     this.assertAssetPath(tenantId, filename, /\.(jpe?g|png|webp|avif)$/i);
     const ext = path.extname(filename).toLowerCase();
     const contentTypes: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif' };
-    try { return { buffer: await fs.readFile(path.join(this.tenantAssetDirectory('cover-images', tenantId), filename)), contentType: contentTypes[ext] }; } catch { throw new NotFoundException(); }
+    try { return { buffer: await this.readAsset('cover-images', tenantId, filename), contentType: contentTypes[ext] }; } catch { throw new NotFoundException(); }
   }
 
   async legacyImageFile(filename: string): Promise<{ buffer: Buffer; contentType: string }> {
@@ -553,6 +565,19 @@ export class PublishingSettingsService implements OnModuleInit {
     if (contentType === 'image/webp') return buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
     if (contentType === 'image/avif') return buffer.length >= 16 && buffer.toString('ascii', 4, 8) === 'ftyp' && /(?:avif|avis)/u.test(buffer.toString('ascii', 8, Math.min(buffer.length, 40)));
     return false;
+  }
+
+  private async putAsset(kind: 'fonts' | 'cover-images', tenantId: string, filename: string, buffer: Buffer, label: 'فونت' | 'تصویر') {
+    if (this.objects?.isRemote()) {
+      await this.objects.put(`${kind}/${tenantId}/${filename}`, buffer);
+      return;
+    }
+    await this.writeTenantAsset(this.tenantAssetDirectory(kind, tenantId), filename, buffer, label);
+  }
+
+  private async readAsset(kind: 'fonts' | 'cover-images', tenantId: string, filename: string) {
+    if (this.objects?.isRemote()) return this.objects.get(`${kind}/${tenantId}/${filename}`);
+    return fs.readFile(path.join(this.tenantAssetDirectory(kind, tenantId), filename));
   }
 
   private tenantAssetDirectory(kind: 'fonts' | 'cover-images', tenantId: string): string {
@@ -600,6 +625,17 @@ export class PublishingSettingsService implements OnModuleInit {
   }
 
   async getRaw(tenantId: string): Promise<PublishingSettings> {
+    const cacheKey = `deska:settings:${tenantId}`;
+    const cached = await this.cache?.get(cacheKey);
+    if (cached) {
+      try { return await this.overlaySecrets(tenantId, JSON.parse(cached) as PublishingSettings); } catch { /* refill */ }
+    }
+    const merged = await this.assembleRaw(tenantId);
+    await this.cache?.set(cacheKey, JSON.stringify(redactPublishingSecrets(merged)), 60);
+    return merged;
+  }
+
+  private async assembleRaw(tenantId: string): Promise<PublishingSettings> {
     const tenant = await this.getTenantStoredRaw(tenantId);
     const globalAi = await this.getGlobalAiRaw();
     const hasPlatformAi = Boolean(globalAi.gapgpt_base_url?.trim() || globalAi.gapgpt_api_key?.trim());
@@ -610,6 +646,17 @@ export class PublishingSettingsService implements OnModuleInit {
     const withoutAi = { ...tenant };
     for (const key of AI_SETTING_KEYS) delete withoutAi[key];
     return { ...withoutAi, ...aiSettings };
+  }
+
+  private async overlaySecrets(tenantId: string, cached: PublishingSettings): Promise<PublishingSettings> {
+    const tenant = await this.getTenantStoredRaw(tenantId);
+    const globalAi = await this.getGlobalAiRaw();
+    const hasPlatformAi = Boolean(globalAi.gapgpt_base_url?.trim() || globalAi.gapgpt_api_key?.trim());
+    const next: PublishingSettings = { ...cached };
+    for (const key of SECRET_KEYS) {
+      next[key] = AI_SETTING_KEY_SET.has(key) && hasPlatformAi ? globalAi[key] : tenant[key];
+    }
+    return next;
   }
 
   async getTenantStoredRaw(tenantId: string): Promise<PublishingSettings> {
@@ -641,7 +688,7 @@ export class PublishingSettingsService implements OnModuleInit {
     const result: Record<string, string> = {};
     for (const key of PUBLISHING_SETTING_KEYS) {
       const value = raw[key] ?? '';
-      result[key] = SECRET_KEYS.has(key) ? '' : value;
+      result[key] = SECRET_KEYS.has(key) ? '' : signEmbeddedMediaUrls(value);
       if (SECRET_KEYS.has(key)) result[`${key}_configured`] = value ? 'true' : 'false';
     }
     return result;
@@ -1171,6 +1218,8 @@ export class PublishingSettingsService implements OnModuleInit {
         }),
       },
     });
+    await this.cache?.del(`deska:settings:${tenantId}`);
+    if (next.wp_site_url) await this.cache?.del(`deska:wp-categories:${next.wp_site_url}`);
     return this.getPublic(tenantId);
   }
 

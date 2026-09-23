@@ -423,10 +423,34 @@ test('SourceReader surfaces Worker host_not_allowed without a direct fallback', 
     () => service.readFeed('https://www.euronews.com/rss?format=xml'),
     (error) => {
       assert.ok(error instanceof BadRequestException);
-      assert.match(error.getResponse().message, /host_not_allowed|Worker Deska/u);
+      assert.match(error.getResponse().message, /تلگرام و توییتر|منابع خبری/u);
       return true;
     },
   );
+});
+
+test('SourceReader falls back to direct fetch when fetch service gets upstream HTTP 520 for news', async () => {
+  const order = [];
+  const service = new SourceReaderService({
+    getSourceFetchPolicy: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+      newsViaBridge: true,
+    }),
+  });
+  service.safeFetchTextViaBridge = async () => {
+    order.push('bridge');
+    throw new BadRequestException('دریافت منبع از طریق Worker ناموفق بود: upstream_http_520');
+  };
+  service.safeFetchTextDirect = async (url) => {
+    order.push('direct');
+    assert.match(url, /isna\.ir/u);
+    return `<?xml version="1.0"?><rss version="2.0"><channel><item><title>OK</title><link>https://www.isna.ir/1</link></item></channel></rss>`;
+  };
+
+  const entries = await service.readFeed('https://www.isna.ir/rss');
+  assert.deepEqual(order, ['bridge', 'direct']);
+  assert.match(entries[0].title, /OK/);
 });
 
 test('SourceReader uses Worker first for international RSS when bridge is configured', async () => {

@@ -25,13 +25,15 @@ export class PermissionsGuard implements CanActivate {
 
     if (user?.role === 'super_admin') return true;
 
-    const ownerOnly = required.some((permission) => permission === 'publishing.settings');
-    if (ownerOnly && request.tenant?.memberRole !== 'owner') {
-      throw new ForbiddenException('این تنظیمات فقط در اختیار مالک سازمان است');
-    }
-
     const permissions: string[] = user?.permissions ?? [];
     if (permissions.includes('*')) return true;
+
+    const requiresPublishingSettings = required.some((permission) => permission === 'publishing.settings');
+    if (requiresPublishingSettings && request.tenant?.memberRole !== 'owner') {
+      if (!permissions.includes('publishing.settings') && !permissions.includes('*')) {
+        throw new ForbiddenException('تنظیمات انتشار فقط برای مالک یا اعضایی که این دسترسی را دارند مجاز است');
+      }
+    }
 
     const hasAll = required.every((p) => this.hasPermission(permissions, p));
 

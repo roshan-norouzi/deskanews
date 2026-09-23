@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { USAGE_METRIC_KEYS } from '@deska/shared';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PublishingSettingsService, SOURCE_FETCH_BRIDGE_MISSING_MESSAGE } from './publishing-settings.service';
+import { signMediaPath } from '../../common/media-signature';
+import { ObjectStorage } from '../../common/object-storage';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
@@ -114,6 +116,7 @@ export class SocialNetworkPublisherService {
     private readonly integrationHealth: IntegrationHealthService,
     private readonly workflow: ContentWorkflowService,
     private readonly usageTracking: UsageTrackingService,
+    @Optional() private readonly objects?: ObjectStorage,
   ) {}
 
   private storagePath() { return path.join(process.env.STORAGE_PATH || path.resolve(process.cwd(), 'uploads'), 'social-publishing'); }
@@ -125,11 +128,16 @@ export class SocialNetworkPublisherService {
   async storeGeneratedMedia(buffer: Buffer): Promise<{ filename: string; url: string }> {
     const image = remoteImagePayload(buffer, 'image/png');
     const stored = await this.storeMedia(image, false);
-    return { ...stored, url: `/api/publishing/social/media/${stored.filename}` };
+    return { ...stored, url: signMediaPath(`/publishing/social/media/${stored.filename}`, 7200) };
   }
 
   private async storeMedia(image: ImagePayload, temporary: boolean): Promise<{ filename: string }> {
     const filename = `${randomUUID()}.${image.extension}`;
+    const key = `social-publishing/${filename}`;
+    if (this.objects?.isRemote()) {
+      await this.objects.put(key, image.buffer, image.contentType);
+      return { filename };
+    }
     await fs.mkdir(this.storagePath(), { recursive: true });
     await fs.writeFile(path.join(this.storagePath(), filename), image.buffer, { mode: 0o600 });
     if (temporary) {
@@ -143,8 +151,12 @@ export class SocialNetworkPublisherService {
     if (!/^[a-f0-9-]+\.(?:png|jpg|webp)$/iu.test(filename)) throw new NotFoundException();
     const extension = path.extname(filename).toLowerCase();
     const contentType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg';
-    try { return { buffer: await fs.readFile(path.join(this.storagePath(), path.basename(filename))), contentType }; }
-    catch { throw new NotFoundException(); }
+    try {
+      const buffer = this.objects?.isRemote()
+        ? await this.objects.get(`social-publishing/${path.basename(filename)}`)
+        : await fs.readFile(path.join(this.storagePath(), path.basename(filename)));
+      return { buffer, contentType };
+    } catch { throw new NotFoundException(); }
   }
 
   async publish(tenantId: string, articleId: string, network: string, caption: string, imageDataUrl: string): Promise<{ ok: true; network: SocialNetwork; message: string }> {
@@ -437,7 +449,8 @@ export class SocialNetworkPublisherService {
     if (!settings.social_public_media_base_url) throw new BadRequestException('برای اینستاگرام ابتدا آدرس عمومی API رسانه را تنظیم کنید');
     const stored = await this.storePublicMedia(image);
     const version = graphVersion(settings.social_instagram_api_version, 'v23.0');
-    const mediaUrl = `${settings.social_public_media_base_url.replace(/\/$/u, '')}/api/publishing/social/media/${stored.filename}`;
+    const signedPath = signMediaPath(`/publishing/social/media/${stored.filename}`, 7200);
+    const mediaUrl = `${settings.social_public_media_base_url.replace(/\/$/u, '')}/api${signedPath}`;
     const create = new URLSearchParams({ image_url: mediaUrl, caption, access_token: settings.social_instagram_access_token });
     const containerResponse = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(settings.social_instagram_account_id)}/media`, { method: 'POST', body: create, signal: AbortSignal.timeout(30_000) });
     if (!containerResponse.ok) throw new BadRequestException(`اینستاگرام ساخت محفظه انتشار را با خطای ${containerResponse.status} رد کرد`);

@@ -22,6 +22,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { CreateWalletPaymentDto } from './dto/create-wallet-payment.dto';
 import { TenantService } from './tenant.service';
 
 @Controller('tenants')
@@ -131,6 +132,24 @@ export class TenantController {
   getUsage(@Param('id') id: string, @TenantCtx() tenant: TenantContext) {
     this.assertTenantMatch(id, tenant.tenantId);
     return this.tenantService.getUsage(tenant.tenantId);
+  }
+
+  @Get(':id/wallet')
+  @UseGuards(TenantGuard)
+  getWallet(@Param('id') id: string, @TenantCtx() tenant: TenantContext) {
+    this.assertTenantMatch(id, tenant.tenantId);
+    return this.tenantService.getWallet(tenant.tenantId, tenant.memberRole);
+  }
+
+  @Post(':id/wallet/payments')
+  @UseGuards(TenantGuard)
+  createWalletPayment(
+    @Param('id') id: string,
+    @Body() dto: CreateWalletPaymentDto,
+    @TenantCtx() tenant: TenantContext,
+  ) {
+    this.assertTenantMatch(id, tenant.tenantId);
+    return this.tenantService.createWalletPayment(tenant.tenantId, dto.packageId, tenant.memberRole);
   }
 
   @Get(':id/members')

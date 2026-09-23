@@ -39,7 +39,12 @@ function createService() {
     resolveFeedProfilePhoto: async () => '',
   };
 
-  const service = new PlatformFeedService(prisma, sourceReader, { rememberSourceLanguages: async () => [] }, {}, {}, {});
+  const gapGpt = {};
+  const settings = { rememberSourceLanguages: async () => [] };
+  const usageTracking = { record: async () => {} };
+  const destinationCategories = {};
+  const scheduler = { runIntervalMaintenance: async (_task, fn) => fn() };
+  const service = new PlatformFeedService(prisma, sourceReader, gapGpt, settings, usageTracking, destinationCategories, scheduler);
   return { service, platformFeeds, newsFeeds };
 }
 

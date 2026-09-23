@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Building2, Crown, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, Crown, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
 import { PLATFORM_ROLES, TENANT_ROLE_LABELS, USAGE_UNIT_LABEL, formatPersianDigits, type TenantRole } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,15 +16,6 @@ type PlatformUser = { id: string; name: string; email: string; role: string; sta
 type Organization = { id: string; name: string; slug: string; status: string; primaryOwner?: { id: string; name: string } | null; _count: { members: number } };
 type ListResult<T> = { items: T[]; total: number };
 type Overview = { users: number; activeUsers: number; organizations: number; activeOrganizations: number; memberships: number };
-type AiAccountBalance = {
-  configured: boolean;
-  remaining: number | null;
-  used: number | null;
-  total: number | null;
-  unitLabel: string;
-  billingPeriod: string | null;
-  message?: string;
-};
 type OrganizationDetail = Organization & {
   members: Array<{ userId: string; role: string; status: string; user: { name: string; email: string } }>;
 };
@@ -59,28 +50,11 @@ function splitDisplayName(name: string) {
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
-function formatAiBalanceDisplay(balance: AiAccountBalance | null) {
-  if (!balance) return { primary: '—', secondary: 'در حال دریافت...' };
-  if (!balance.configured) return { primary: 'تنظیم نشده', secondary: balance.message ?? '' };
-  if (balance.remaining !== null) {
-    return {
-      primary: `${formatPersianDigits(balance.remaining.toLocaleString('en-US'))} ${balance.unitLabel || 'توکن'}`,
-      secondary: balance.used !== null && balance.total !== null
-        ? `مصرف: ${formatPersianDigits(balance.used.toLocaleString('en-US'))} از ${formatPersianDigits(balance.total.toLocaleString('en-US'))}`
-        : balance.billingPeriod
-          ? `دوره: ${balance.billingPeriod}`
-          : 'موجودی باقی‌مانده',
-    };
-  }
-  return { primary: 'نامشخص', secondary: balance.message ?? 'دریافت موجودی انجام نشد' };
-}
-
 export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean }) {
   const { isSuperAdmin } = useAuth();
   const [tab, setTab] = useState<'users' | 'organizations'>('users');
   const [query, setQuery] = useState('');
   const [overview, setOverview] = useState<Overview>();
-  const [aiBalance, setAiBalance] = useState<AiAccountBalance | null>(null);
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [detail, setDetail] = useState<OrganizationDetail>();
@@ -101,19 +75,15 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
     setError('');
     try {
       const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
-      const [summary, result, balance] = await Promise.all([
+      const [summary, result] = await Promise.all([
         apiFetch<Overview>('/platform/overview', { skipTenant: true }),
         tab === 'users'
           ? apiFetch<ListResult<PlatformUser>>(`/platform/users${suffix}`, { skipTenant: true })
           : tab === 'organizations'
             ? apiFetch<ListResult<Organization>>(`/platform/organizations${suffix}`, { skipTenant: true })
             : Promise.resolve({ items: [], total: 0 } as ListResult<PlatformUser>),
-        isSuperAdmin
-          ? apiFetch<AiAccountBalance>('/platform/ai-settings/balance', { skipTenant: true }).catch(() => null)
-          : Promise.resolve(null),
       ]);
       setOverview(summary);
-      setAiBalance(balance);
       if (tab === 'users') setUsers((result as ListResult<PlatformUser>).items);
       else setOrganizations((result as ListResult<Organization>).items);
     } catch (reason) {
@@ -121,7 +91,7 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
     } finally {
       setLoading(false);
     }
-  }, [query, tab, isSuperAdmin]);
+  }, [query, tab]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 250);
@@ -269,8 +239,6 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
     }
   };
 
-  const aiBalanceDisplay = formatAiBalanceDisplay(aiBalance);
-
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       {!embedded && (
@@ -280,7 +248,7 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
         </section>
       )}
       {overview && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             ['کل کاربران', overview.users],
             ['کاربران فعال', overview.activeUsers],
@@ -295,20 +263,6 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
               </CardContent>
             </Card>
           ))}
-          <Card className="border-sky-100 bg-sky-50/70">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-xs text-sky-700">موجودی GapGPT</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">{aiBalanceDisplay.primary}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">{aiBalanceDisplay.secondary}</p>
-                </div>
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-white text-sky-700 shadow-sm">
-                  <Bot className="h-4 w-4" />
-                </span>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
       <Card>

@@ -30,14 +30,16 @@ export default function NewsPage() {
   const categoriesApi = useApi<DestinationCategoryOption[]>('/publishing/destination/categories?status=approved');
   const [categoryId, setCategoryId] = useState('');
   const [generalOnly, setGeneralOnly] = useState(false);
+  const [cursor, setCursor] = useState('');
   const articlesPath = useMemo(() => {
     const params = new URLSearchParams();
     if (categoryId) params.set('categoryId', categoryId);
     if (generalOnly) params.set('generalOnly', 'true');
+    if (cursor) params.set('cursor', cursor);
     const query = params.toString();
     return `/publishing/news/articles${query ? `?${query}` : ''}`;
-  }, [categoryId, generalOnly]);
-  const articlesApi = useApi<NewsArticleCardData[]>(articlesPath);
+  }, [categoryId, generalOnly, cursor]);
+  const articlesApi = useApi<{ items: NewsArticleCardData[]; nextCursor: string | null }>(articlesPath);
   const { data: feedData } = feedsApi;
   const { data: articleData, execute: executeArticles } = articlesApi;
   const [status, setStatus] = useState<NewsroomFilter>('action');
@@ -63,7 +65,7 @@ export default function NewsPage() {
     () => (Array.isArray(categoriesApi.data) ? categoriesApi.data : []),
     [categoriesApi.data],
   );
-  const articles = useMemo(() => (Array.isArray(articleData) ? articleData : []), [articleData]);
+  const articles = useMemo(() => (Array.isArray(articleData?.items) ? articleData.items : []), [articleData]);
 
   const activeFilter = newsroomFilterMeta(status);
 
@@ -88,8 +90,12 @@ export default function NewsPage() {
     setBusy(key);
     setNotice(null);
     try {
-      await operation();
-      setNotice({ type: 'success', text: success });
+      const result = await operation();
+      const queued = Boolean(result && typeof result === 'object' && 'queued' in result && (result as { queued?: boolean }).queued);
+      setNotice({
+        type: 'success',
+        text: queued ? 'کار به worker سپرده شد و پس از انجام در فهرست دیده می‌شود.' : success,
+      });
       await articlesApi.refetch();
     } catch (error) {
       setNotice({
@@ -144,8 +150,13 @@ export default function NewsPage() {
     setBusy(`translate-${id}`);
     setNotice(null);
     try {
-      await apiFetch<NewsArticleCardData>(`/publishing/news/articles/${id}/translate-full`, { method: 'POST' });
-      setNotice({ type: 'success', text: 'متن کامل آماده انتشار شد؛ «آماده برای انتشار» را بزنید.' });
+      const translated = await apiFetch<{ queued?: boolean }>(`/publishing/news/articles/${id}/translate-full`, { method: 'POST' });
+      setNotice({
+        type: 'success',
+        text: translated?.queued
+          ? 'ترجمه کامل به worker سپرده شد. چند لحظه بعد فهرست را تازه کنید.'
+          : 'متن کامل آماده انتشار شد؛ «آماده برای انتشار» را بزنید.',
+      });
       await articlesApi.refetch();
     } catch (error) {
       setNotice({
@@ -168,12 +179,17 @@ export default function NewsPage() {
     setBusy(`publish-${id}`);
     setNotice(null);
     try {
-      await apiFetch(`/publishing/news/articles/${id}/publish`, {
+      const published = await apiFetch<{ queued?: boolean }>(`/publishing/news/articles/${id}/publish`, {
         method: 'POST',
         body: draft,
       });
       setPublishModal(null);
-      setNotice({ type: 'success', text: 'خبر با موفقیت به سایت مقصد ارسال شد.' });
+      setNotice({
+        type: 'success',
+        text: published?.queued
+          ? 'انتشار به worker سپرده شد و پس از انجام در فهرست دیده می‌شود.'
+          : 'خبر با موفقیت به سایت مقصد ارسال شد.',
+      });
       await articlesApi.refetch();
     } catch (error) {
       setNotice({
@@ -403,6 +419,12 @@ export default function NewsPage() {
                 onReject={reject}
               />
             ))}
+            {(cursor || articleData?.nextCursor) && (
+              <div className="flex justify-center gap-2">
+                {cursor && <Button variant="outline" onClick={() => setCursor('')}>صفحه اول</Button>}
+                {articleData?.nextCursor && <Button variant="outline" onClick={() => setCursor(articleData.nextCursor || '')}>صفحه بعد</Button>}
+              </div>
+            )}
           </section>
         )}
         <NewsPublishModal

@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { Public, RequirePermission } from '../../common/decorators/metadata.decorator';
+import { verifyMediaSignature } from '../../common/media-signature';
 import { TenantCtx, User } from '../../common/decorators/params.decorator';
 import type { AuthUser, TenantContext } from '../../common/decorators/params.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -129,7 +130,13 @@ export class SmartPublishingController {
     return this.destinationCategoryService.bulkDeleteStale(tenant.tenantId, user.id);
   }
 
-  @Get('proxy/image') async proxyImage(@Query('url') url: string, @Res() response: Response) { const result = await this.sourceReader.proxyImage(String(url || '')); response.setHeader('Content-Type', result.contentType); response.setHeader('Cache-Control', 'private, max-age=3600'); return response.send(result.buffer); }
+  @Get('proxy/image') async proxyImage(@Query('url') url: string, @Res() response: Response) {
+    const result = await this.sourceReader.proxyImage(String(url || ''));
+    response.setHeader('Content-Type', result.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return response.send(result.buffer);
+  }
 
   @Get('feeds') @RequirePermission('publishing.feeds') feeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId); }
   @Get('source-languages') sourceLanguages() { return this.newsroom.listSourceLanguages(); }
@@ -181,12 +188,14 @@ export class SmartPublishingController {
     @Query('status') status?: string,
     @Query('categoryId') categoryId?: string,
     @Query('generalOnly') generalOnly?: string,
+    @Query('cursor') cursor?: string,
   ) {
     return this.newsroom.articles(tenant.tenantId, {
       status,
       categoryId,
       generalOnly: generalOnly === 'true',
       access: { permissions: user.permissions, newsroomServiceIds: tenant.newsroomServiceIds },
+      cursor,
     });
   }
   @Delete('news/articles') @RequirePermission('publishing.news') deleteAllNewsArticles(@TenantCtx() tenant: TenantContext) { return this.newsroom.deleteAllArticles(tenant.tenantId); }
@@ -244,11 +253,21 @@ export class SmartPublishingController {
   @Post('social/feeds/:id/test') @RequirePermission('publishing.manage') testSocialFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.testFeed(tenant.tenantId, id); }
   @Post('social/feeds/:id/fetch') @RequirePermission('publishing.manage') fetchSocialFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.fetchFeed(tenant.tenantId, id); }
   @Post('social/sync') @RequirePermission('publishing.manage') syncSocial(@TenantCtx() tenant: TenantContext) { return this.socialStudio.sync(tenant.tenantId); }
-  @Get('social/articles') @RequirePermission('publishing.social') socialArticles(@TenantCtx() tenant: TenantContext, @Query('status') status?: string) { return this.socialStudio.articles(tenant.tenantId, status); }
+  @Get('social/articles') @RequirePermission('publishing.social') socialArticles(@TenantCtx() tenant: TenantContext, @Query('status') status?: string, @Query('cursor') cursor?: string) { return this.socialStudio.articles(tenant.tenantId, status, cursor); }
   @Delete('social/articles') @RequirePermission('publishing.manage') deleteAllSocialArticles(@TenantCtx() tenant: TenantContext) { return this.socialStudio.deleteAllArticles(tenant.tenantId); }
   @Post('social/articles/:id/archive') @RequirePermission('publishing.manage') archiveSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.archive(tenant.tenantId, id); }
   @Post('social/articles/:id/prepare') @RequirePermission('publishing.manage') prepareSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.prepare(tenant.tenantId, id); }
-  @Post('social/articles/:id/publish/:network') @RequirePermission('publishing.publish') publishSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Param('network') network: string, @Body() body: PublishSocialArticleDto) { return this.socialPublisher.publish(tenant.tenantId, id, network, body.caption, body.imageDataUrl); }
+  @Post('social/articles/:id/publish/:network') @RequirePermission('publishing.publish') async publishSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Param('network') network: string, @Body() body: PublishSocialArticleDto) {
+    if (this.socialStudio.defersHeavyWork()) {
+      if (body.caption?.trim()) await this.socialStudio.updateCaption(tenant.tenantId, id, body.caption);
+      if (body.imageDataUrl?.trim()) {
+        const stored = await this.socialPublisher.storeGeneratedMedia(Buffer.from(body.imageDataUrl.replace(/^data:image\/\w+;base64,/u, ''), 'base64'));
+        await this.socialStudio.rememberGeneratedImage(tenant.tenantId, id, stored.url);
+      }
+      return this.socialStudio.enqueueNetworkPublish(tenant.tenantId, id, network);
+    }
+    return this.socialPublisher.publish(tenant.tenantId, id, network, body.caption, body.imageDataUrl);
+  }
   @Post('social/articles/:id/featured-image') @RequirePermission('publishing.manage') @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })) async updateSocialFeaturedImage(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @UploadedFile() file: { originalname: string; mimetype?: string; buffer: Buffer }) {
     const image = await this.settingsService.addImage(tenant.tenantId, file);
     try {
@@ -270,17 +289,28 @@ export class SmartPublishingController {
   @Patch('social/articles/:id/title') @RequirePermission('publishing.manage') updateSocialTitle(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateSocialTitleDto) { return this.socialStudio.updateTitle(tenant.tenantId, id, body.title); }
 }
 
+function assertSignedMedia(request: Request) {
+  const pathname = (request.path || '').replace(/^\/api(?=\/)/u, '');
+  const exp = typeof request.query.exp === 'string' ? request.query.exp : undefined;
+  const sig = typeof request.query.sig === 'string' ? request.query.sig : undefined;
+  if (!verifyMediaSignature(pathname, exp, sig)) {
+    throw new UnauthorizedException('لینک فایل منقضی یا نامعتبر است');
+  }
+}
+
 @Public()
 @Controller('publishing/settings/fonts/file')
 export class PublishingFontFileController {
   constructor(private readonly settingsService: PublishingSettingsService) {}
-  @Get(':tenantId/:filename') async tenantFile(@Param('tenantId') tenantId: string, @Param('filename') filename: string, @Res() response: Response) {
+  @Get(':tenantId/:filename') async tenantFile(@Req() request: Request, @Param('tenantId') tenantId: string, @Param('filename') filename: string, @Res() response: Response) {
+    assertSignedMedia(request);
     const result = await this.settingsService.fontFile(tenantId, filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return response.send(result.buffer);
   }
-  @Get(':filename') async file(@Param('filename') filename: string, @Res() response: Response) {
+  @Get(':filename') async file(@Req() request: Request, @Param('filename') filename: string, @Res() response: Response) {
+    assertSignedMedia(request);
     const result = await this.settingsService.legacyFontFile(filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -292,13 +322,15 @@ export class PublishingFontFileController {
 @Controller('publishing/settings/images/file')
 export class PublishingImageFileController {
   constructor(private readonly settingsService: PublishingSettingsService) {}
-  @Get(':tenantId/:filename') async tenantFile(@Param('tenantId') tenantId: string, @Param('filename') filename: string, @Res() response: Response) {
+  @Get(':tenantId/:filename') async tenantFile(@Req() request: Request, @Param('tenantId') tenantId: string, @Param('filename') filename: string, @Res() response: Response) {
+    assertSignedMedia(request);
     const result = await this.settingsService.imageFile(tenantId, filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     return response.send(result.buffer);
   }
-  @Get(':filename') async file(@Param('filename') filename: string, @Res() response: Response) {
+  @Get(':filename') async file(@Req() request: Request, @Param('filename') filename: string, @Res() response: Response) {
+    assertSignedMedia(request);
     const result = await this.settingsService.legacyImageFile(filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -330,7 +362,8 @@ export class SocialPublishingMediaController {
   constructor(private readonly socialPublisher: SocialNetworkPublisherService) {}
 
   @Get(':filename')
-  async file(@Param('filename') filename: string, @Res() response: Response) {
+  async file(@Req() request: Request, @Param('filename') filename: string, @Res() response: Response) {
+    assertSignedMedia(request);
     const result = await this.socialPublisher.publicMedia(filename);
     response.setHeader('Content-Type', result.contentType);
     response.setHeader('Cache-Control', 'public, max-age=300');

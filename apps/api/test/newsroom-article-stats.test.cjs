@@ -4,6 +4,7 @@ const {
   computeNewsroomDashboardStats,
   isNewsInProcessing,
   isNewsReadyForAction,
+  newsroomStatsFromCounts,
 } = require('../dist/modules/smart-publishing/newsroom-article-stats');
 
 test('newsroom stats ignore archived items and match newsroom filters', () => {
@@ -18,6 +19,33 @@ test('newsroom stats ignore archived items and match newsroom filters', () => {
   assert.equal(stats.action, 1);
   assert.equal(stats.archive, 1);
   assert.equal(stats.total, 4);
+});
+
+test('dashboard counts match the in-memory newsroom stats', () => {
+  const articles = [
+    { status: 'new', titleFa: '', summaryFa: '', publishedAt: null },
+    { status: 'ready', titleFa: 'تیتر', summaryFa: 'خلاصه', publishedAt: null },
+    { status: 'ready', titleFa: '', summaryFa: 'خلاصه', publishedAt: null },
+    { status: 'publishing', titleFa: 'تیتر', summaryFa: 'خلاصه', publishedAt: null },
+    { status: 'publish_failed', titleFa: 'تیتر', summaryFa: 'خلاصه', publishedAt: null },
+    { status: 'failed', titleFa: '', summaryFa: '', publishedAt: null },
+    { status: 'published', titleFa: 'تیتر', summaryFa: 'خلاصه', publishedAt: null },
+    { status: 'rejected', titleFa: '', summaryFa: '', publishedAt: null },
+  ];
+  const fromRows = computeNewsroomDashboardStats(articles, 3);
+  const fromCounts = newsroomStatsFromCounts({
+    total: articles.length,
+    rejected: 1,
+    archive: 1,
+    preparing: 1,
+    statusFailed: 1,
+    terminalFailed: 1,
+    readyPrepared: 1,
+    readyUnprepared: 1,
+    inbox: 2,
+    publishedToday: 3,
+  });
+  assert.deepEqual(fromCounts, fromRows);
 });
 
 test('ready without persian summary counts as processing not action', () => {

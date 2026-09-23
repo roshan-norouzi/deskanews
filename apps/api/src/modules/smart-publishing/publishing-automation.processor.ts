@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import type { AutomationJob } from '@prisma/client';
 import { hostname } from 'node:os';
 import { AutomationJobService } from '../../common/services/automation-job.service';
+import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime.service';
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { NotificationService } from '../../common/services/audit.service';
 import { NewsroomService } from './newsroom.service';
@@ -38,10 +39,12 @@ export class PublishingAutomationProcessor {
     private readonly socialPublisher: SocialNetworkPublisherService,
     private readonly integrations: IntegrationHealthService,
     private readonly notifications: NotificationService,
+    private readonly scheduler: SchedulerRuntimeService,
   ) {}
 
   @Interval('publishing-durable-job-worker', 2_000)
   async processDueJobs() {
+    if (!this.scheduler.automationWorkerEnabled()) return;
     if (this.processing) return;
     this.processing = true;
     try {
@@ -72,9 +75,16 @@ export class PublishingAutomationProcessor {
     }
   }
 
+  async executeById(id: string) {
+    const job = await this.jobs.claimById(this.workerId, id);
+    if (!job) return;
+    await this.processOne(job);
+  }
+
   @Interval('publishing-durable-job-maintenance', 60_000)
   async maintenance() {
     if (this.maintaining) return;
+    await this.scheduler.runIntervalMaintenance('publishing-durable-job-maintenance', async () => {
     this.maintaining = true;
     try {
       await this.jobs.recoverStale();
@@ -84,6 +94,7 @@ export class PublishingAutomationProcessor {
     } finally {
       this.maintaining = false;
     }
+    }).catch(() => undefined);
   }
 
   private async processOne(job: AutomationJob) {
@@ -142,6 +153,8 @@ export class PublishingAutomationProcessor {
         return this.newsroom.fetchFeed(job.tenantId, requiredString(payload, 'feedId'));
       case 'news.prepare':
         return this.newsroom.summarize(job.tenantId, requiredString(payload, 'articleId'));
+      case 'news.translate':
+        return this.newsroom.translateFull(job.tenantId, requiredString(payload, 'articleId'));
       case 'news.publish': {
         const articleId = requiredString(payload, 'articleId');
         await this.newsroom.translateFull(job.tenantId, articleId);
@@ -180,6 +193,7 @@ export class PublishingAutomationProcessor {
     const labels: Record<string, string> = {
       'news.feed.fetch': 'دریافت فید خبری',
       'news.prepare': 'آماده‌سازی خبر',
+      'news.translate': 'ترجمه کامل خبر',
       'news.publish': 'انتشار خبر در سایت',
       'news.send-social': 'ارسال خبر به استودیوی اجتماعی',
       'social.feed.fetch': 'دریافت فید اجتماعی',

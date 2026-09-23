@@ -1,11 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma, type AutomationJob } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BillingService } from './billing.service';
 
 export const AUTOMATION_JOB_TYPES = [
   'news.feed.fetch',
   'news.prepare',
+  'news.translate',
   'news.publish',
   'news.send-social',
   'social.feed.fetch',
@@ -18,6 +20,14 @@ export type AutomationJobType = (typeof AUTOMATION_JOB_TYPES)[number];
 export const AUTOMATION_JOB_STATUSES = ['queued', 'running', 'completed', 'dead', 'cancelled'] as const;
 export type AutomationJobStatus = (typeof AUTOMATION_JOB_STATUSES)[number];
 
+/** Executed on Redis when REDIS_URL is set. Postgres row stays the audit record. */
+export const FAST_LANE_JOB_TYPES = ['news.prepare', 'social.cover'] as const;
+
+type FastLane = {
+  enabled(): boolean;
+  push(job: { id: string; type: string; status: string }): Promise<void>;
+};
+
 export function retryDelayMs(attempt: number): number {
   const safeAttempt = Math.max(1, Math.min(10, Math.trunc(attempt)));
   return Math.min(30 * 60_000, 15_000 * (2 ** (safeAttempt - 1)));
@@ -25,7 +35,17 @@ export function retryDelayMs(attempt: number): number {
 
 @Injectable()
 export class AutomationJobService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(AutomationJobService.name);
+  private fastLane: FastLane | null = null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly billing?: BillingService,
+  ) {}
+
+  bindFastLane(lane: FastLane) {
+    this.fastLane = lane;
+  }
 
   async enqueue(params: {
     tenantId: string;
@@ -48,7 +68,7 @@ export class AutomationJobService {
           status: { in: ['queued', 'running', 'dead'] },
         },
       });
-      if (existing && existing.status !== 'dead') return { job: existing, created: false };
+      if (existing && existing.status !== 'dead') return { job: this.publishFastLane(existing), created: false };
       if (existing?.status === 'dead' && params.retryDead) {
         const reset = await this.prisma.automationJob.updateMany({
           where: { id: existing.id, status: 'dead' },
@@ -68,7 +88,7 @@ export class AutomationJobService {
         });
         if (reset.count === 1) {
           const job = await this.prisma.automationJob.findUnique({ where: { id: existing.id } });
-          if (job) return { job, created: true };
+          if (job) return { job: this.publishFastLane(await this.attachReservation(job)), created: true };
         }
         const current = await this.prisma.automationJob.findUnique({ where: { id: existing.id } });
         if (current) return { job: current, created: false };
@@ -88,7 +108,7 @@ export class AutomationJobService {
           availableAt: params.availableAt ?? new Date(),
         },
       });
-      return { job, created: true };
+      return { job: this.publishFastLane(await this.attachReservation(job)), created: true };
     } catch (error) {
       if (dedupeKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const existing = await this.prisma.automationJob.findFirst({
@@ -107,7 +127,11 @@ export class AutomationJobService {
     const safeLimit = Math.max(1, Math.min(20, Math.trunc(limit)));
     for (let scan = 0; scan < safeLimit * 4 && claimed.length < safeLimit; scan += 1) {
       const candidate = await this.prisma.automationJob.findFirst({
-        where: { status: 'queued', availableAt: { lte: now } },
+        where: {
+          status: 'queued',
+          availableAt: { lte: now },
+          ...(this.fastLane?.enabled() ? { type: { notIn: [...FAST_LANE_JOB_TYPES] } } : {}),
+        },
         orderBy: [{ priority: 'desc' }, { availableAt: 'asc' }, { createdAt: 'asc' }],
         select: { id: true },
       });
@@ -131,6 +155,43 @@ export class AutomationJobService {
     return claimed;
   }
 
+  async claimById(workerId: string, id: string): Promise<AutomationJob | null> {
+    const now = new Date();
+    const lockId = `${workerId}:${randomUUID()}`;
+    const result = await this.prisma.automationJob.updateMany({
+      where: { id, status: 'queued' },
+      data: {
+        status: 'running',
+        lockedAt: now,
+        lockedBy: lockId,
+        startedAt: now,
+        attempts: { increment: 1 },
+        lastError: '',
+      },
+    });
+    if (!result.count) return null;
+    return this.prisma.automationJob.findUnique({ where: { id } });
+  }
+
+  listFastLaneQueued(take = 50) {
+    return this.prisma.automationJob.findMany({
+      where: { status: 'queued', type: { in: [...FAST_LANE_JOB_TYPES] } },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+      take: Math.max(1, Math.min(100, take)),
+      select: { id: true, type: true, status: true },
+    });
+  }
+
+  private publishFastLane<T extends { id: string; type: string; status: string }>(job: T): T {
+    if (!this.fastLane?.enabled() || job.status !== 'queued' || !FAST_LANE_JOB_TYPES.includes(job.type as typeof FAST_LANE_JOB_TYPES[number])) {
+      return job;
+    }
+    void this.fastLane.push(job).catch((error) => {
+      this.logger.warn(`Fast-lane push failed for ${job.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
+    });
+    return job;
+  }
+
   async complete(job: AutomationJob, result?: unknown): Promise<boolean> {
     // The lock token is a lease, not merely diagnostic metadata. A worker that
     // exceeded the stale timeout must not complete a later worker's claim.
@@ -147,6 +208,7 @@ export class AutomationJobService {
         lastError: '',
       },
     });
+    if (updated.count === 1) await this.billing?.commit(job.id, job.tenantId);
     return updated.count === 1;
   }
 
@@ -166,6 +228,7 @@ export class AutomationJobService {
         lastError: message,
       },
     });
+    if (updated.count === 1 && status === 'dead') await this.billing?.release(job.id, job.tenantId);
     return updated.count === 1 ? status : 'lost';
   }
 
@@ -185,10 +248,10 @@ export class AutomationJobService {
   }
 
   async retry(tenantId: string, id: string) {
-    const job = await this.prisma.automationJob.findFirst({ where: { id, tenantId } });
-    if (!job) throw new NotFoundException('کار خودکار یافت نشد');
-    if (!['dead', 'cancelled'].includes(job.status)) throw new BadRequestException('فقط کار متوقف‌شده یا لغوشده قابل تلاش مجدد است');
-    return this.prisma.automationJob.update({
+    const existing = await this.prisma.automationJob.findFirst({ where: { id, tenantId } });
+    if (!existing) throw new NotFoundException('کار خودکار یافت نشد');
+    if (!['dead', 'cancelled'].includes(existing.status)) throw new BadRequestException('فقط کار متوقف‌شده یا لغوشده قابل تلاش مجدد است');
+    const job = await this.prisma.automationJob.update({
       where: { id },
       data: {
         status: 'queued',
@@ -201,9 +264,16 @@ export class AutomationJobService {
         lastError: '',
       },
     });
+    return this.publishFastLane(await this.attachReservation(job));
   }
 
   async retryAllDead(tenantId: string): Promise<{ retried: number }> {
+    const dead = this.prisma.automationJob.findMany
+      ? await this.prisma.automationJob.findMany({
+        where: { tenantId, status: 'dead' },
+        select: { id: true },
+      })
+      : [];
     const result = await this.prisma.automationJob.updateMany({
       where: { tenantId, status: 'dead' },
       data: {
@@ -217,7 +287,35 @@ export class AutomationJobService {
         lastError: '',
       },
     });
+    for (const row of dead) {
+      const job = await this.prisma.automationJob.findUnique({ where: { id: row.id } });
+      if (job?.status === 'queued') await this.attachReservation(job);
+    }
     return { retried: result.count };
+  }
+
+  private async attachReservation(job: AutomationJob): Promise<AutomationJob> {
+    if (!this.billing) return job;
+    let reservationId: string | null;
+    try {
+      reservationId = await this.billing.shadowReserve(job);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        await this.prisma.automationJob.update({
+          where: { id: job.id },
+          data: { status: 'cancelled', dedupeKey: null, lastError: error.message.slice(0, 1000) },
+        });
+      }
+      throw error;
+    }
+    if (!reservationId) return job;
+    const current = job.payload && typeof job.payload === 'object' && !Array.isArray(job.payload)
+      ? job.payload as Record<string, unknown>
+      : {};
+    return this.prisma.automationJob.update({
+      where: { id: job.id },
+      data: { payload: { ...current, reservationId } as Prisma.InputJsonValue },
+    });
   }
 
   async cancel(tenantId: string, id: string) {
@@ -226,6 +324,7 @@ export class AutomationJobService {
       data: { status: 'cancelled', dedupeKey: null, completedAt: new Date(), lockedAt: null, lockedBy: null },
     });
     if (!result.count) throw new BadRequestException('این کار قابل لغو نیست');
+    await this.billing?.release(id, tenantId);
     return { ok: true };
   }
 
