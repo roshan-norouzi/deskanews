@@ -2,6 +2,11 @@
 
 All notable releases of Deska News follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.32 — 2026-09-23
+
+- Primary Postgres no longer bind-mounts `pg_hba.conf` (that path became a Docker directory on the server and blocked every deploy)
+- Deploy stops Postgres before repairing support files; checksum no longer requires replica files
+
 ## 1.0.30 — 2026-09-23
 
 - Fix deploy status polling (GitHub workflow API id + fallback listing)

@@ -2,7 +2,7 @@
 
 ## Read replica
 
-Compose starts `postgres` as a primary (`wal_level=replica`) and optional `postgres-replica` from `pg_basebackup` when you enable the **`read-replica`** Compose profile. By default production deploy does **not** start the replica or set `DATABASE_REPLICA_URL`, so single-node servers stay simple.
+Compose starts `postgres` as a primary (`wal_level=replica`). The official image `pg_hba.conf` is used (password auth on the Docker network). Optional `postgres-replica` from `pg_basebackup` starts only when you enable the **`read-replica`** Compose profile and the files under `deploy/postgres/` exist. By default production deploy does **not** start the replica or set `DATABASE_REPLICA_URL`.
 
 To enable the replica on a host that has the resources and `deploy/postgres/*` files in place:
 

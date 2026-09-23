@@ -155,13 +155,9 @@ for incoming_file in "$incoming_compose" "$incoming_script" "$incoming_checksum"
     exit 1
   fi
 done
+# Release bind-mounts so mistaken Docker directories can be removed.
+docker compose --env-file .env stop postgres postgres-replica postgres-replica-bootstrap >/dev/null 2>&1 || true
 fix_stale_postgres_support_mounts
-for postgres_support_file in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
-  if [ ! -f "$postgres_support_file" ] || [ ! -s "$postgres_support_file" ]; then
-    deploy_error "missing required postgres support file ${postgres_support_file}; the deploy workflow uploads these before running this script."
-    exit 1
-  fi
-done
 
 available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
 if ! printf '%s' "$available_kb" | grep -Eq '^[0-9]+$' || [ "$available_kb" -lt 786432 ]; then

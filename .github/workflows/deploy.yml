@@ -285,8 +285,6 @@ jobs:
           sha256sum \
             ".deska-compose-${VERSION}.yml" \
             ".deska-server-deploy-${VERSION}.sh" \
-            deploy/postgres/pg_hba.conf \
-            deploy/postgres/replica-entrypoint.sh \
             > ".deska-deploy-${VERSION}.sha256"
           echo 'DESKA_DEPLOY_STAGE: deployment manifest prepared; application images are already in the registry'
 
@@ -353,7 +351,7 @@ jobs:
           upload_file ".deska-deploy-${VERSION}.sha256"
           upload_remote_path deploy/postgres-support-paths.sh deploy/postgres-support-paths.sh
           ssh "${ssh_options[@]}" -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" \
-            "mkdir -p '$DEPLOY_PATH/deploy/postgres' && cd '$DEPLOY_PATH' && . ./deploy/postgres-support-paths.sh && fix_stale_postgres_support_mounts"
+            "cd '$DEPLOY_PATH' && if [ -f .env ]; then docker compose --env-file .env stop postgres postgres-replica postgres-replica-bootstrap >/dev/null 2>&1 || true; fi && . ./deploy/postgres-support-paths.sh && fix_stale_postgres_support_mounts"
           upload_remote_path deploy/postgres/pg_hba.conf deploy/postgres/pg_hba.conf
           upload_remote_path deploy/postgres/replica-entrypoint.sh deploy/postgres/replica-entrypoint.sh
 
@@ -376,10 +374,13 @@ jobs:
               IFS= read -r deploy_path
               IFS= read -r version
               IFS= read -r image_prefix
-              if ! printf "%s" "$registry_token" | docker login ghcr.io -u "$registry_user" --password-stdin >/dev/null; then
+              if ! printf "%s" "$registry_token" | docker login ghcr.io -u "$registry_user" --password-stdin 2>/tmp/deska-docker-login.err; then
                 echo "DESKA_DEPLOY_ERROR: server could not authenticate with the image registry."
+                sed -n "1,20p" /tmp/deska-docker-login.err | sed "s/ghp_[A-Za-z0-9]*/[REDACTED]/g; s/github_pat_[A-Za-z0-9_]*/[REDACTED]/g"
+                rm -f /tmp/deska-docker-login.err
                 exit 1
               fi
+              rm -f /tmp/deska-docker-login.err
               unset registry_token
               trap "docker logout ghcr.io >/dev/null 2>&1 || true" EXIT
               cd "$deploy_path"

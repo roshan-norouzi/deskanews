@@ -14,8 +14,6 @@ services:
       - max_wal_senders=3
       - -c
       - max_replication_slots=3
-      - -c
-      - hba_file=/etc/deska/pg_hba.conf
     environment:
       POSTGRES_USER: deska
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
@@ -24,7 +22,6 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./deploy/postgres/pg_hba.conf:/etc/deska/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deska -d deska_news"]
       interval: 5s
