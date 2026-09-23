@@ -34,8 +34,10 @@ function Show-DeployHelp {
   Write-Host '================================' -ForegroundColor Cyan
   Write-Host ''
   Write-Host 'Usage:' -ForegroundColor Yellow
-  Write-Host '  .\deploy\deploy.ps1 <command> [options]'
-  Write-Host '  deploy\deploy.bat                 # shortcut for release'
+  Write-Host '  deploy\deploy.bat [options]       # recommended on Windows (ExecutionPolicy bypass)'
+  Write-Host '  deploy.cmd [options]              # same, from repo root'
+  Write-Host '  powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1 <command> [options]'
+  Write-Host '  .\deploy\deploy.ps1 <command>     # only if scripts are allowed in your shell'
   Write-Host ''
   Write-Host 'Commands:' -ForegroundColor Yellow
   Write-Host '  help      Show this help'

@@ -5,14 +5,22 @@
 ## یک دستور برای انتشار
 
 ```bat
+deploy.cmd
+```
+
+یا:
+
+```bat
 deploy\deploy.bat
 ```
 
-یا در PowerShell:
+یا در PowerShell (اگر `.\deploy\deploy.ps1` خطای ExecutionPolicy داد):
 
 ```powershell
-.\deploy\deploy.ps1 release
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy.ps1 release
 ```
+
+> **Windows:** مستقیم `.\deploy\deploy.ps1` ممکن است به‌خاطر ExecutionPolicy بلاک شود؛ از **`deploy.cmd`** یا **`deploy\deploy.bat`** استفاده کنید (هر دو خودکار `-ExecutionPolicy Bypass` دارند).
 
 این دستور به‌ترتیب انجام می‌دهد:
 
