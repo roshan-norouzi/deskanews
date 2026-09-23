@@ -138,6 +138,12 @@ for incoming_file in "$incoming_compose" "$incoming_script" "$incoming_checksum"
     exit 1
   fi
 done
+for postgres_support_file in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
+  if [ ! -s "$postgres_support_file" ]; then
+    deploy_error "missing required postgres support file ${postgres_support_file}; upload deploy/postgres from the repository before deploying."
+    exit 1
+  fi
+done
 
 available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
 if ! printf '%s' "$available_kb" | grep -Eq '^[0-9]+$' || [ "$available_kb" -lt 786432 ]; then

@@ -30,7 +30,7 @@ deploy\deploy.bat
 
 ## انتشار خودکار از لوکال
 
-Workflow `deploy.yml` روی شاخهٔ `main` با `workflow_dispatch` اجرا می‌شود. ایمیج‌های API و Web به‌صورت موازی در GHCR ساخته می‌شوند؛ فقط manifest کوچک از SSH به سرور می‌رود.
+Workflow `deploy.yml` روی شاخهٔ `main` با `workflow_dispatch` اجرا می‌شود. ایمیج‌های API و Web به‌صورت موازی در GHCR ساخته می‌شوند؛ manifest کوچک (compose، اسکریپت deploy، و فایل‌های `deploy/postgres/`) از SSH به سرور می‌رود.
 
 سرویس Docker: **`deska-news`** (`COMPOSE_PROJECT_NAME=deska-news`).
 

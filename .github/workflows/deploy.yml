@@ -282,7 +282,12 @@ jobs:
         run: |
           cp docker-compose.yml ".deska-compose-${VERSION}.yml"
           cp deploy/server-deploy.sh ".deska-server-deploy-${VERSION}.sh"
-          sha256sum ".deska-compose-${VERSION}.yml" ".deska-server-deploy-${VERSION}.sh" > ".deska-deploy-${VERSION}.sha256"
+          sha256sum \
+            ".deska-compose-${VERSION}.yml" \
+            ".deska-server-deploy-${VERSION}.sh" \
+            deploy/postgres/pg_hba.conf \
+            deploy/postgres/replica-entrypoint.sh \
+            > ".deska-deploy-${VERSION}.sha256"
           echo 'DESKA_DEPLOY_STAGE: deployment manifest prepared; application images are already in the registry'
 
       - name: Configure SSH
@@ -330,9 +335,25 @@ jobs:
             echo "DESKA_DEPLOY_ERROR: upload of ${deployment_file} failed after 3 attempts."
             return 1
           }
+          upload_remote_path() {
+            local local_file="$1"
+            local remote_file="$2"
+            for attempt in 1 2 3; do
+              echo "DESKA_DEPLOY_STAGE: uploading ${remote_file} (attempt ${attempt}/3)"
+              if scp -q "${ssh_options[@]}" -P "$SERVER_PORT" "$local_file" "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/$remote_file"; then
+                return 0
+              fi
+              sleep $((attempt * 10))
+            done
+            echo "DESKA_DEPLOY_ERROR: upload of ${remote_file} failed after 3 attempts."
+            return 1
+          }
+          ssh "${ssh_options[@]}" -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$DEPLOY_PATH/deploy/postgres'"
           upload_file ".deska-compose-${VERSION}.yml"
           upload_file ".deska-server-deploy-${VERSION}.sh"
           upload_file ".deska-deploy-${VERSION}.sha256"
+          upload_remote_path deploy/postgres/pg_hba.conf deploy/postgres/pg_hba.conf
+          upload_remote_path deploy/postgres/replica-entrypoint.sh deploy/postgres/replica-entrypoint.sh
 
       - name: Deploy and verify on server
         shell: bash
@@ -359,5 +380,6 @@ jobs:
               fi
               unset registry_token
               trap "docker logout ghcr.io >/dev/null 2>&1 || true" EXIT
+              cd "$deploy_path"
               DEPLOY_PATH="$deploy_path" VERSION="$version" IMAGE_PREFIX="$image_prefix" bash "$deploy_path/.deska-server-deploy-${version}.sh"
             '
