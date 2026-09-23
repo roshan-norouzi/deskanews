@@ -75,7 +75,7 @@ services:
       start_period: 20s
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
@@ -86,7 +86,7 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:latest}
     command: server /data --console-address ":9001"
     restart: unless-stopped
     environment:

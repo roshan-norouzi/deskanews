@@ -2,6 +2,16 @@
 
 All notable releases of Deska News follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.34 — 2026-09-23
+
+- Production no longer pulls Redis/MinIO from Docker Hub (blocked from the server; MinIO Hub image returns access denied)
+- GitHub Actions mirrors Redis and MinIO to GHCR; compose starts with `--pull never` after GHCR pull
+
+## 1.0.33 — 2026-09-23
+
+- Do not stop Postgres before backup (that made `pg_dump` fail and aborted deploy)
+- Skip backup if the database is already down; wait until Postgres is ready before `prisma migrate deploy`
+
 ## 1.0.32 — 2026-09-23
 
 - Primary Postgres no longer bind-mounts `pg_hba.conf` (that path became a Docker directory on the server and blocked every deploy)

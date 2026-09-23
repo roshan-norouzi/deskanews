@@ -93,7 +93,7 @@ rollback_release() {
   fi
   cp -p "$backup_dir/environment.env" .env
   chmod 600 .env
-  docker compose --env-file .env up -d --no-build --remove-orphans || return 1
+  docker compose --env-file .env up -d --no-build --pull never --remove-orphans || return 1
   for attempt in $(seq 1 45); do
     if curl -fsS http://127.0.0.1:3001/api/health/ready >/dev/null 2>&1; then
       if [ -f "$backup_dir/installed-version" ]; then cp -p "$backup_dir/installed-version" .deska-installed-version; fi
@@ -155,8 +155,6 @@ for incoming_file in "$incoming_compose" "$incoming_script" "$incoming_checksum"
     exit 1
   fi
 done
-# Release bind-mounts so mistaken Docker directories can be removed.
-docker compose --env-file .env stop postgres postgres-replica postgres-replica-bootstrap >/dev/null 2>&1 || true
 fix_stale_postgres_support_mounts
 
 available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
@@ -178,6 +176,8 @@ chmod 600 "$candidate_env"
 replace_env_value "$candidate_env" APP_VERSION "$VERSION"
 replace_env_value "$candidate_env" IMAGE_PREFIX "$IMAGE_PREFIX"
 replace_env_value "$candidate_env" COMPOSE_PROJECT_NAME "deska-news"
+replace_env_value "$candidate_env" REDIS_IMAGE "${IMAGE_PREFIX}/redis:7-alpine"
+replace_env_value "$candidate_env" MINIO_IMAGE "${IMAGE_PREFIX}/minio:latest"
 
 jwt_secret_value="$(read_env_value "$candidate_env" JWT_SECRET)"
 settings_key_value="$(read_env_value "$candidate_env" SETTINGS_ENCRYPTION_KEY)"
@@ -220,17 +220,28 @@ if [ -f docker-compose.yml ]; then cp -p docker-compose.yml "$backup_dir/docker-
 if [ -f .deska-installed-version ]; then cp -p .deska-installed-version "$backup_dir/installed-version"; fi
 printf 'target_version=%s\ncreated_at=%s\n' "$VERSION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$backup_dir/metadata.env"
 
-postgres_id="$(docker compose --env-file .env ps -q postgres 2>/dev/null || true)"
-if [ -n "$postgres_id" ]; then
-  timeout --foreground --kill-after=20s 180s docker compose --env-file .env exec -T postgres pg_dump -U deska -d deska_news --format=custom > "$backup_dir/database.dump"
-  test -s "$backup_dir/database.dump"
+postgres_ready=0
+if docker compose --env-file .env exec -T postgres pg_isready -U deska -d deska_news >/dev/null 2>&1; then
+  postgres_ready=1
+fi
+if [ "$postgres_ready" -eq 1 ]; then
+  timeout --foreground --kill-after=20s 180s docker compose --env-file .env exec -T postgres pg_dump -U deska -d deska_news --format=custom > "$backup_dir/database.dump" || true
+  if [ ! -s "$backup_dir/database.dump" ]; then
+    rm -f -- "$backup_dir/database.dump"
+    printf 'PostgreSQL was running but dump failed; continuing deploy.\n' > "$backup_dir/database-dump-skipped.txt"
+    printf 'DESKA_DEPLOY_STAGE: skipped database dump because PostgreSQL did not produce a backup file\n'
+  fi
 else
-  printf 'PostgreSQL was not running before this deployment.\n' > "$backup_dir/database-not-running.txt"
+  printf 'PostgreSQL was not accepting connections before this deployment.\n' > "$backup_dir/database-not-running.txt"
+  printf 'DESKA_DEPLOY_STAGE: skipped database dump; PostgreSQL is not ready\n'
 fi
 api_id="$(docker compose --env-file .env ps -q api 2>/dev/null || true)"
 if [ -n "$api_id" ]; then
-  timeout --foreground --kill-after=20s 300s docker exec "$api_id" tar -czf - -C /app/uploads . > "$backup_dir/uploads.tar.gz"
-  test -s "$backup_dir/uploads.tar.gz"
+  timeout --foreground --kill-after=20s 300s docker exec "$api_id" tar -czf - -C /app/uploads . > "$backup_dir/uploads.tar.gz" || true
+  if [ ! -s "$backup_dir/uploads.tar.gz" ]; then
+    rm -f -- "$backup_dir/uploads.tar.gz"
+    printf 'API uploads archive was empty or failed; continuing deploy.\n' > "$backup_dir/uploads-skipped.txt"
+  fi
 else
   printf 'API storage was not mounted before this deployment.\n' > "$backup_dir/uploads-not-running.txt"
 fi
@@ -254,10 +265,22 @@ while IFS= read -r old_backup; do
   esac
 done < <(ls -1dt -- "$backup_root"/* 2>/dev/null | tail -n +11 || true)
 
-run_deployment_stage 'Pull versioned images' 600 docker compose --env-file "$candidate_env" -f "$incoming_compose" pull api web
+run_deployment_stage 'Pull versioned images' 600 docker compose --env-file "$candidate_env" -f "$incoming_compose" pull api web redis minio
 run_deployment_stage 'Verify API image' 30 docker image inspect --format '{{.Id}}' "${IMAGE_PREFIX}/api:${VERSION}"
 run_deployment_stage 'Verify Web image' 30 docker image inspect --format '{{.Id}}' "${IMAGE_PREFIX}/web:${VERSION}"
 run_deployment_stage 'Start database' 120 docker compose --env-file "$candidate_env" -f "$incoming_compose" up -d postgres
+current_deployment_stage='Wait for PostgreSQL'
+printf 'DESKA_DEPLOY_STAGE: Wait for PostgreSQL (maximum 90s)\n'
+for attempt in $(seq 1 30); do
+  if docker compose --env-file "$candidate_env" -f "$incoming_compose" exec -T postgres pg_isready -U deska -d deska_news >/dev/null 2>&1; then
+    break
+  fi
+  if [ "$attempt" = 30 ]; then
+    deploy_error 'PostgreSQL did not become ready after starting the updated database container.'
+    false
+  fi
+  sleep 3
+done
 run_deployment_stage 'Apply database migrations' 300 docker compose --env-file "$candidate_env" -f "$incoming_compose" run --rm --no-deps api /app/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 
 mv "$incoming_compose" docker-compose.yml
@@ -265,7 +288,7 @@ mv "$candidate_env" .env
 chmod 600 .env
 release_switched=1
 
-run_deployment_stage 'Start updated services' 300 docker compose --env-file .env up -d --no-build --remove-orphans
+run_deployment_stage 'Start updated services' 300 docker compose --env-file .env up -d --no-build --pull never --remove-orphans
 if [ -f "$backup_dir/installed-version" ]; then
   printf 'DESKA_DEPLOY_STAGE: skipping seed on upgrade; preserving existing server data\n'
 else

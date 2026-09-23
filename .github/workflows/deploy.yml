@@ -243,9 +243,37 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.cache_scope }}
           provenance: false
 
+  publish-runtime-images:
+    name: Mirror Redis and MinIO to GHCR
+    needs: [prepare, preflight-server]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Copy Redis and MinIO into GHCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull redis:7-alpine
+          docker tag redis:7-alpine "${IMAGE_PREFIX}/redis:7-alpine"
+          docker push "${IMAGE_PREFIX}/redis:7-alpine"
+          docker pull quay.io/minio/minio:latest
+          docker tag quay.io/minio/minio:latest "${IMAGE_PREFIX}/minio:latest"
+          docker push "${IMAGE_PREFIX}/minio:latest"
+          echo 'DESKA_DEPLOY_STAGE: redis and minio images are available on GHCR'
+
   deploy:
     name: Deploy on server
-    needs: [prepare, preflight-server, build-images]
+    needs: [prepare, preflight-server, build-images, publish-runtime-images]
     runs-on: ubuntu-latest
     # Backups and registry pulls have their own bounded timeouts. Keep the job
     # envelope larger than their sum so GitHub never kills a healthy rollback.
@@ -351,7 +379,7 @@ jobs:
           upload_file ".deska-deploy-${VERSION}.sha256"
           upload_remote_path deploy/postgres-support-paths.sh deploy/postgres-support-paths.sh
           ssh "${ssh_options[@]}" -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" \
-            "cd '$DEPLOY_PATH' && if [ -f .env ]; then docker compose --env-file .env stop postgres postgres-replica postgres-replica-bootstrap >/dev/null 2>&1 || true; fi && . ./deploy/postgres-support-paths.sh && fix_stale_postgres_support_mounts"
+            "cd '$DEPLOY_PATH' && . ./deploy/postgres-support-paths.sh && fix_stale_postgres_support_mounts"
           upload_remote_path deploy/postgres/pg_hba.conf deploy/postgres/pg_hba.conf
           upload_remote_path deploy/postgres/replica-entrypoint.sh deploy/postgres/replica-entrypoint.sh
 
