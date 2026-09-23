@@ -18,6 +18,23 @@ deploy_error() {
   printf 'DESKA_DEPLOY_ERROR: %s\n' "$*" >&2
 }
 
+fix_stale_postgres_support_mounts() {
+  local path nested
+  for path in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
+    nested="${path}/$(basename "$path")"
+    if [ -f "$nested" ]; then
+      printf 'DESKA_DEPLOY_STAGE: relocating nested upload at %s\n' "$nested"
+      mv "$nested" "${path}.deska-fix"
+      rm -rf -- "$path"
+      mv "${path}.deska-fix" "$path"
+    elif [ -d "$path" ] && [ ! -f "$path" ]; then
+      printf 'DESKA_DEPLOY_STAGE: removing mistaken directory at %s\n' "$path"
+      rm -rf -- "$path"
+    fi
+  done
+  mkdir -p deploy/postgres
+}
+
 run_deployment_stage() {
   local label="$1"
   local maximum_seconds="$2"
@@ -138,9 +155,10 @@ for incoming_file in "$incoming_compose" "$incoming_script" "$incoming_checksum"
     exit 1
   fi
 done
+fix_stale_postgres_support_mounts
 for postgres_support_file in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
-  if [ ! -s "$postgres_support_file" ]; then
-    deploy_error "missing required postgres support file ${postgres_support_file}; upload deploy/postgres from the repository before deploying."
+  if [ ! -f "$postgres_support_file" ] || [ ! -s "$postgres_support_file" ]; then
+    deploy_error "missing required postgres support file ${postgres_support_file}; the deploy workflow uploads these before running this script."
     exit 1
   fi
 done

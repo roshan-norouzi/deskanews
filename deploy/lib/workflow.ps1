@@ -57,6 +57,12 @@ function Write-FailedWorkflowDiagnostics {
       $payload -match '^DESKA_DEPLOY_(STAGE|ERROR):'
     })
     if ($diagnosticLines.Count -eq 0) {
+      $diagnosticLines = @($allLogLines | Where-Object {
+        $payload = $_ -replace '^\d{4}-\d{2}-\d{2}T[^ ]+Z\s*', ''
+        $payload -match '^DESKA_DEPLOY_ERROR:'
+      })
+    }
+    if ($diagnosticLines.Count -eq 0) {
       $diagnosticLines = @($allLogLines | Where-Object { $_ -match '(?i)(deployment stopped|error|failed|fatal|denied|not found|permission|connection refused|timeout|no such file|unhealthy|exit code|docker compose)' })
     }
     if ($diagnosticLines.Count -gt 0) {

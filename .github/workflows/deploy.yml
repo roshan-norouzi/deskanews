@@ -348,12 +348,29 @@ jobs:
             echo "DESKA_DEPLOY_ERROR: upload of ${remote_file} failed after 3 attempts."
             return 1
           }
-          ssh "${ssh_options[@]}" -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$DEPLOY_PATH/deploy/postgres'"
           upload_file ".deska-compose-${VERSION}.yml"
           upload_file ".deska-server-deploy-${VERSION}.sh"
           upload_file ".deska-deploy-${VERSION}.sha256"
+          ssh "${ssh_options[@]}" -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$DEPLOY_PATH/deploy/postgres' && cd '$DEPLOY_PATH' && bash -s" <<'REMOTE_FIX'
+fix_stale_postgres_support_mounts() {
+  local path nested
+  for path in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
+    nested="${path}/$(basename "$path")"
+    if [ -f "$nested" ]; then
+      mv "$nested" "${path}.deska-fix"
+      rm -rf -- "$path"
+      mv "${path}.deska-fix" "$path"
+    elif [ -d "$path" ] && [ ! -f "$path" ]; then
+      rm -rf -- "$path"
+    fi
+  done
+  mkdir -p deploy/postgres
+}
+fix_stale_postgres_support_mounts
+REMOTE_FIX
           upload_remote_path deploy/postgres/pg_hba.conf deploy/postgres/pg_hba.conf
           upload_remote_path deploy/postgres/replica-entrypoint.sh deploy/postgres/replica-entrypoint.sh
+          upload_remote_path deploy/postgres-support-paths.sh deploy/postgres-support-paths.sh
 
       - name: Deploy and verify on server
         shell: bash

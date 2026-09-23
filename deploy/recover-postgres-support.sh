@@ -12,21 +12,33 @@ set -Eeuo pipefail
 DEPLOY_PATH="${DEPLOY_PATH:-/www/wwwroot/deska.ir/app}"
 cd "$DEPLOY_PATH"
 
+# shellcheck source=postgres-support-paths.sh
+if [ -f deploy/postgres-support-paths.sh ]; then
+  # shellcheck disable=SC1091
+  . deploy/postgres-support-paths.sh
+else
+  fix_stale_postgres_support_mounts() {
+    local path nested
+    for path in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
+      nested="${path}/$(basename "$path")"
+      if [ -f "$nested" ]; then
+        mv "$nested" "${path}.deska-fix"
+        rm -rf -- "$path"
+        mv "${path}.deska-fix" "$path"
+      elif [ -d "$path" ] && [ ! -f "$path" ]; then
+        rm -rf -- "$path"
+      fi
+    done
+    mkdir -p deploy/postgres
+  }
+fi
+
 if [ ! -f .env ]; then
   echo 'DESKA_RECOVER_ERROR: .env is missing.' >&2
   exit 1
 fi
 
-fix_mount_path() {
-  local path="$1"
-  if [ -d "$path" ] && [ ! -f "$path" ]; then
-    echo "Removing mistaken directory at ${path} (Docker created it when the file was missing)."
-    rm -rf -- "$path"
-  fi
-}
-
-fix_mount_path deploy/postgres/pg_hba.conf
-fix_mount_path deploy/postgres/replica-entrypoint.sh
+fix_stale_postgres_support_mounts
 
 for required in deploy/postgres/pg_hba.conf deploy/postgres/replica-entrypoint.sh; do
   if [ ! -s "$required" ]; then
