@@ -51,6 +51,8 @@ export default function NewsPage() {
     articleId: string;
     articleTitle: string;
     sourceName: string;
+    sourceUrl: string;
+    featuredImageUrl: string | null;
     draft: NewsPublishDraft;
   } | null>(null);
   const [translatePendingIds, setTranslatePendingIds] = useState<Record<string, true>>({});
@@ -125,10 +127,12 @@ export default function NewsPage() {
       articleId: article.id,
       articleTitle: article.titleFa || article.originalTitle,
       sourceName: article.sourceName,
+      sourceUrl: article.originalUrl || '',
+      featuredImageUrl: article.featuredImageUrl,
       draft: {
         titleFa: article.titleFa,
         summaryFa: article.summaryFa,
-        contentFa: article.contentFa,
+        contentFa: article.contentFa || '',
       },
     });
   }, []);
@@ -429,8 +433,11 @@ export default function NewsPage() {
         )}
         <NewsPublishModal
           open={Boolean(publishModal)}
+          articleId={publishModal?.articleId || ''}
           articleTitle={publishModal?.articleTitle || ''}
           sourceName={publishModal?.sourceName || ''}
+          sourceUrl={publishModal?.sourceUrl || ''}
+          featuredImageUrl={publishModal?.featuredImageUrl ?? null}
           initialDraft={publishModal?.draft || null}
           busyTranslate={Boolean(publishModal && busy === `translate-${publishModal.articleId}`)}
           busyPublish={Boolean(publishModal && busy === `publish-${publishModal.articleId}`)}

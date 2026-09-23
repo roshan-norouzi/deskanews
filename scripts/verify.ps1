@@ -65,6 +65,62 @@ function Test-PortInUse {
     return [bool]$conn
 }
 
+$script:verifyApiProcess = $null
+
+function Stop-VerifyApiIfStarted {
+    if ($null -eq $script:verifyApiProcess) { return }
+    try {
+        if (-not $script:verifyApiProcess.HasExited) {
+            Stop-Process -Id $script:verifyApiProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+    } catch { }
+    $script:verifyApiProcess = $null
+}
+
+function Ensure-VerifyApiRunning {
+    if (Test-PortInUse -Port $apiPort) { return }
+
+    $apiMain = Join-Path $root 'apps/api/dist/main.js'
+    if (-not (Test-Path $apiMain)) {
+        throw "API is not listening on port $apiPort and $apiMain is missing. Run full verify once, or start the stack with: pnpm start"
+    }
+
+    Write-Host "`n> Start API for runtime checks" -ForegroundColor Yellow
+    $apiDir = Join-Path $root 'apps/api'
+    $script:verifyApiProcess = Start-Process -FilePath 'node' -ArgumentList @('dist/main.js') -WorkingDirectory $apiDir -PassThru -WindowStyle Hidden
+    $deadline = (Get-Date).AddSeconds(60)
+    $ready = $false
+    while ((Get-Date) -lt $deadline) {
+        if ($script:verifyApiProcess.HasExited) {
+            throw "Temporary API process exited during startup (code $($script:verifyApiProcess.ExitCode)). Check Postgres/Redis and .env, or run: pnpm start"
+        }
+        if (Test-PortInUse -Port $apiPort) {
+            try {
+                $live = Invoke-RestMethod -Uri "$apiBase/api/health/live" -TimeoutSec 3
+                if ($live.status -eq 'ok' -and $live.live -eq $true) {
+                    $ready = $true
+                    break
+                }
+            } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not $ready) {
+        throw "API did not become ready on port $apiPort within 60s. Ensure Docker Postgres/Redis are up (docker compose up postgres redis -d) or run: pnpm start"
+    }
+    Write-Host "  OK (temporary API on :$apiPort)" -ForegroundColor Green
+}
+
+function Test-StepAfterAuth {
+    param([string]$Name, [scriptblock]$Action)
+    if (-not $script:verifySession -or -not $script:verifyTenant) {
+        Write-Host "`n> $Name" -ForegroundColor Yellow
+        Write-Host "  SKIP (auth login did not succeed)" -ForegroundColor DarkYellow
+        return
+    }
+    Test-Step $Name $Action
+}
+
 function Read-DotEnvValue {
     param([string]$Key)
     if (-not (Test-Path '.env')) { return '' }
@@ -147,6 +203,9 @@ if (-not $LiveOnly) {
     }
 }
 
+try {
+    Ensure-VerifyApiRunning
+
 Test-Step "API liveness and readiness" {
     $live = Invoke-RestMethod -Uri "$apiBase/api/health/live" -TimeoutSec 5
     if ($live.status -ne 'ok' -or $live.live -ne $true) { throw "API liveness not ok" }
@@ -179,14 +238,14 @@ Test-Step "Auth login + /me" {
     $script:verifyTenant = $me.tenants[0].id
 }
 
-Test-Step "Tenant members API" {
+Test-StepAfterAuth "Tenant members API" {
     $h = @{ "X-Tenant-Id" = $script:verifyTenant }
     $members = Invoke-RestMethod -Uri "$apiBase/api/tenants/$($script:verifyTenant)/members" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
     if ($members.Count -lt 1) { throw "Tenant has no members" }
     $script:verifyPublishingEnabled = $true
 }
 
-Test-Step "Cross-site write protection" {
+Test-StepAfterAuth "Cross-site write protection" {
     $blocked = $false
     try {
         Invoke-WebRequest -Uri "$apiBase/api/auth/logout" -Method POST `
@@ -199,7 +258,7 @@ Test-Step "Cross-site write protection" {
     if (-not $blocked) { throw 'Authenticated cross-site write request was not blocked' }
 }
 
-Test-Step "Publishing and dashboard endpoints" {
+Test-StepAfterAuth "Publishing and dashboard endpoints" {
     $h = @{ "X-Tenant-Id" = $script:verifyTenant }
     $settings = Invoke-RestMethod -Uri "$apiBase/api/publishing/settings" -WebSession $script:verifySession -Headers $h -TimeoutSec 10
     if ($null -eq $settings.gapgpt_model) { throw "Publishing settings response invalid" }
@@ -211,12 +270,16 @@ Test-Step "Publishing and dashboard endpoints" {
     if ($null -eq $platformFeeds) { throw "Platform feeds response invalid" }
 }
 
-Test-Step "Publishing operations center" {
+Test-StepAfterAuth "Publishing operations center" {
     $h = @{ "X-Tenant-Id" = $script:verifyTenant }
     $operations = Invoke-RestMethod -Uri "$apiBase/api/publishing/operations" -WebSession $script:verifySession -Headers $h -TimeoutSec 15
     if ($null -eq $operations.queue -or $null -eq $operations.integrations -or $null -eq $operations.workflow) {
         throw "Publishing operations response invalid"
     }
+}
+
+} finally {
+    Stop-VerifyApiIfStarted
 }
 
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
@@ -225,6 +288,6 @@ if ($failed.Count -eq 0) {
     exit 0
 } else {
     Write-Host "Failed ($($failed.Count)): $($failed -join ', ')" -ForegroundColor Red
-    Write-Host "Try: pnpm restart:web  or  pnpm dev:clean" -ForegroundColor Yellow
+    Write-Host "Try: pnpm start  (full stack)  or  docker compose up postgres redis -d  then  pnpm verify" -ForegroundColor Yellow
     exit 1
 }
