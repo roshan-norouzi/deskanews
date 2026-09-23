@@ -2,6 +2,15 @@
 
 All notable releases of Deska News follow [Semantic Versioning](https://semver.org/).
 
+## 1.0.29 — 2026-09-23
+
+- Fix invalid `deploy.yml` YAML (heredoc broke `workflow_dispatch`; deploy dispatch works again)
+- Production deploy uploads and normalizes `deploy/postgres/*` bind-mount files on the server
+
+## 1.0.28 — 2026-09-23
+
+- Deploy pipeline uploads PostgreSQL support files; server script repairs mistaken Docker directory mounts
+
 ## 1.0.7 — 2026-09-20
 
 - Destination category sync from WordPress with admin approve/reject workflow

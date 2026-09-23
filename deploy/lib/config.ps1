@@ -13,7 +13,7 @@ function Get-DeployConfig {
     branch = 'main'
     owner = 'roshan-norouzi'
     repository = 'deskanews'
-    workflowFile = 'deploy.yml'
+    workflowFile = '.github/workflows/deploy.yml'
     serverHost = ''
     serverUser = ''
     serverPort = 22

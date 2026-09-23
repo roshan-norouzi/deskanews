@@ -74,8 +74,20 @@ function Invoke-GitHubWorkflowDispatch {
     Write-Warning 'gh workflow run failed; falling back to the GitHub REST API.'
   }
 
-  $uri = "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/workflows/$($Config.workflowFile)/dispatches"
-  Invoke-RestMethod -Method Post -Uri $uri -Headers $Headers -ContentType 'application/json' -Body (@{ ref = $Config.branch } | ConvertTo-Json) -TimeoutSec 30 | Out-Null
+  $uri = "https://api.github.com/repos/$($Config.owner)/$($Config.repository)/actions/workflows/$([Uri]::EscapeDataString($Config.workflowFile))/dispatches"
+  try {
+    Invoke-RestMethod -Method Post -Uri $uri -Headers $Headers -ContentType 'application/json' -Body (@{ ref = $Config.branch } | ConvertTo-Json) -TimeoutSec 30 | Out-Null
+  } catch {
+    $detail = $_.ErrorDetails.Message
+    if ($detail -match 'workflow_dispatch') {
+      throw @(
+        'GitHub rejected the deploy workflow dispatch. The workflow YAML on main is likely invalid (check Actions tab for a parse error on deploy.yml).'
+        'Push a fix, wait until GitHub shows the workflow name as "Build and deploy DESKA", then run dispatch again.'
+        "API response: $detail"
+      ) -join ' '
+    }
+    throw
+  }
 }
 
 function Get-LatestWorkflowRun {
