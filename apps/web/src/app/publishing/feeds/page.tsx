@@ -13,7 +13,7 @@ import {
   Power,
 } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
-import { FeedSourceFilters, matchesFeedCatalogFilters } from '@/components/publishing/feed-source-filters';
+import { FeedSourceFilters, matchesFeedCatalogFilters, normalizeFeedTopicKey } from '@/components/publishing/feed-source-filters';
 import { PlatformFeedsSection } from '@/components/publishing/platform-feeds-section';
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
@@ -26,8 +26,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
-import { mergeSourceLanguageCatalog, sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
-import { FeedChannelFields, channelsForFeed, topicLabelsForSourceGroup, type FeedChannelDraft } from '@/components/publishing/feed-channel-fields';
+import { formatPersianDigits, mergeSourceLanguageCatalog, sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
+import { FeedChannelFields, channelsForFeed, groupFeedsBySourceTopic, type FeedChannelDraft } from '@/components/publishing/feed-channel-fields';
 import { FEED_PROBE_REQUEST_TIMEOUT_MS, feedUsesOrganizationDefaults, newsOrganizationAutomation } from '@/lib/news-feed-automation';
 import {
   FEED_CATALOG_GROUPS,
@@ -36,7 +36,6 @@ import {
   defaultSourceTypeForCatalogGroup,
   feedSourceTypeHint,
   resolveCatalogGroup,
-  sortFeedsByName,
   type FeedCatalogGroup,
   type FeedSourceType,
 } from '@/lib/feed-source-types';
@@ -160,16 +159,18 @@ export default function FeedsPage() {
   const [health, setHealth] = useState<HealthResult | null>(null);
   const editingIdRef = useRef<string | null>(null);
 
-  const visibleCustomFeeds = useMemo(() => {
+  const catalogBrowseActive = selectedCatalogGroups.size > 0 || selectedTopics.size > 0;
+  const visibleCustomBuckets = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
-    return sortFeedsByName(feeds.filter((feed) => {
-      if (!feed.enabled) return false;
+    const matched = feeds.filter((feed) => {
+      if (!catalogBrowseActive && !feed.enabled) return false;
       if (!matchesFeedCatalogFilters(feed, selectedCatalogGroups, selectedTopics, labelOptions)) return false;
       if (!normalized) return true;
       return feed.name.toLocaleLowerCase('fa').includes(normalized)
         || feed.url.toLocaleLowerCase('fa').includes(normalized);
-    }));
-  }, [feeds, labelOptions, query, selectedCatalogGroups, selectedTopics]);
+    });
+    return groupFeedsBySourceTopic(matched, (feed) => normalizeFeedTopicKey(feed.topicLabel, labelOptions));
+  }, [catalogBrowseActive, feeds, labelOptions, query, selectedCatalogGroups, selectedTopics]);
 
   const modalSourceTypes = FEED_CATALOG_GROUPS[modalGroup].sourceTypes;
   const showSourceTypePicker = modalSourceTypes.length > 1;
@@ -330,14 +331,12 @@ export default function FeedsPage() {
     });
   }
 
-  const catalogBrowseActive = selectedCatalogGroups.size > 0 || selectedTopics.size > 0;
-
   return (
     <ProtectedLayout>
       <PageContainer className="space-y-8">
         <PageHeader
           title="منابع خبری"
-          description="هر منبع یک نام و یک نوع رسانه دارد. فیدهای RSS همان منبع با موضوع جدا، مثلاً ورزشی یا اقتصادی، اینجا فیلتر و روشن می‌شوند."
+          description="هر کارت یک منبع و یک موضوع است. چند فید با موضوع یکسان، مثلاً سه فید اجتماعی، با هم نمایش داده می‌شوند و با یک دکمه روشن یا خاموش می‌شوند."
           icon={Rss}
           actions={
             <Button className="shrink-0" onClick={() => openCreate()}>
@@ -402,55 +401,90 @@ export default function FeedsPage() {
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
               {query.trim()
-                ? `${visibleCustomFeeds.length} منبع اختصاصی در نتایج جست‌وجو`
-                : `${visibleCustomFeeds.length} منبع اختصاصی روشن`}
+                ? `${visibleCustomBuckets.length} موضوع اختصاصی در نتایج جست‌وجو`
+                : `${visibleCustomBuckets.length} موضوع اختصاصی روشن`}
             </p>
           </div>
 
           {isLoading ? (
             <div className="grid min-h-56 place-items-center"><span className="h-9 w-9 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
-          ) : visibleCustomFeeds.length === 0 ? (
+          ) : visibleCustomBuckets.length === 0 ? (
             <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">فیدی با این فیلتر نیست</h2><p className="mt-2 text-sm text-slate-500">نوع رسانه یا موضوع را عوض کنید، یا منبعی با فیدهای موضوعی اضافه کنید.</p><Button className="mt-5" onClick={() => openCreate()}><Plus className="h-4 w-4" /> افزودن منبع</Button></div>
           ) : (
             <FeedSourceCardGrid>
-              {visibleCustomFeeds.map((feed) => (
+              {visibleCustomBuckets.map((bucket) => {
+                const feed = bucket.anchor;
+                const nextEnabled = !bucket.enabled;
+                const toggleTitle = bucket.members.length > 1
+                  ? (bucket.enabled ? 'خاموش کردن همه فیدهای این موضوع' : 'روشن کردن همه فیدهای این موضوع')
+                  : (bucket.enabled ? 'غیرفعال کردن' : 'فعال کردن');
+                return (
                 <FeedSourceCard
-                  key={feed.id}
+                  key={bucket.key}
                   name={feed.name}
-                  url={feed.url}
+                  url={bucket.members.length === 1 ? feed.url : undefined}
                   logoUrl={feed.logoUrl}
                   sourceType={feed.sourceType}
-                  enabled={feed.enabled}
-                  topicLabels={topicLabelsForSourceGroup(feed, feeds)}
+                  enabled={bucket.enabled}
+                  topicLabels={bucket.topicLabel ? [bucket.topicLabel] : []}
                   badge={<span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{FEED_CATALOG_GROUPS[resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage)].label}</span>}
-                  footer={
-                    feed.lastFetchedAt ? (
-                      <p className="text-[10px] text-slate-400">
-                        آخرین پایش: {new Date(feed.lastFetchedAt).toLocaleString('fa-IR')}
-                      </p>
-                    ) : null
-                  }
+                  footer={bucket.members.length > 1 ? (
+                    <p className="text-[11px] font-medium text-slate-500">{formatPersianDigits(bucket.members.length)} فید این موضوع</p>
+                  ) : feed.lastFetchedAt ? (
+                    <p className="text-[10px] text-slate-400">آخرین پایش: {new Date(feed.lastFetchedAt).toLocaleString('fa-IR')}</p>
+                  ) : null}
                   actions={
                     <>
                       <Button size="sm" variant="ghost" title="آزمایش منبع" aria-label="آزمایش منبع" isLoading={busy === `test-${feed.id}`} onClick={() => void testSource(feed)}>
                         <HeartPulse className="h-4 w-4 text-emerald-600" />
                       </Button>
-                      <Button size="sm" variant="ghost" title="پایش الآن" aria-label="پایش الآن" isLoading={busy === `fetch-${feed.id}`} onClick={() => run(`fetch-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/fetch`, { method: 'POST' }); setNotice({ type: 'success', text: `پایش «${feed.name}» انجام شد.` }); await refetch(); })}>
+                      <Button size="sm" variant="ghost" title="پایش الآن" aria-label="پایش الآن" isLoading={busy === `fetch-${bucket.key}`} onClick={() => run(`fetch-${bucket.key}`, async () => {
+                        for (const member of bucket.members) {
+                          await apiFetch(`/publishing/news/feeds/${member.id}/fetch`, { method: 'POST' });
+                        }
+                        setNotice({ type: 'success', text: `پایش «${feed.name}» انجام شد.` });
+                        await refetch();
+                      })}>
                         <RefreshCw className="h-4 w-4" />
                       </Button>
                       <Button size="sm" variant="ghost" title="ویرایش" aria-label="ویرایش" onClick={() => openEdit(feed)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} aria-label={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'} isLoading={busy === `toggle-${feed.id}`} onClick={() => run(`toggle-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}/toggle`, { method: 'POST' }); await refetch(); })}>
-                        <Power className={feedTogglePowerClass(feed.enabled)} />
+                      <Button size="sm" variant="ghost" title={toggleTitle} aria-label={toggleTitle} isLoading={busy === `toggle-${bucket.key}`} onClick={() => run(`toggle-${bucket.key}`, async () => {
+                        for (const member of bucket.members) {
+                          if (member.enabled === nextEnabled) continue;
+                          await apiFetch(`/publishing/news/feeds/${member.id}/toggle`, { method: 'POST' });
+                        }
+                        await refetch();
+                      })}>
+                        <Power className={feedTogglePowerClass(bucket.enabled)} />
                       </Button>
-                      <Button size="sm" variant="ghost" title="حذف" aria-label="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={async () => { const ok = await confirm({ title: 'حذف منبع؟', description: `منبع «${feed.name}» برای همیشه حذف می‌شود.`, confirmLabel: 'حذف منبع', variant: 'danger' }); if (!ok) return; run(`delete-${feed.id}`, async () => { await apiFetch(`/publishing/news/feeds/${feed.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: 'منبع حذف شد.' }); await refetch(); }); }}>
+                      <Button size="sm" variant="ghost" title="حذف" aria-label="حذف" className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={async () => {
+                        const topic = bucket.topicLabel || 'بدون موضوع';
+                        const ok = await confirm({
+                          title: 'حذف فیدهای این موضوع؟',
+                          description: bucket.members.length > 1
+                            ? `${formatPersianDigits(bucket.members.length)} فید موضوع «${topic}» از «${feed.name}» حذف می‌شود.`
+                            : `فید «${feed.name}» حذف می‌شود.`,
+                          confirmLabel: 'حذف',
+                          variant: 'danger',
+                        });
+                        if (!ok) return;
+                        run(`delete-${bucket.key}`, async () => {
+                          for (const member of bucket.members) {
+                            await apiFetch(`/publishing/news/feeds/${member.id}`, { method: 'DELETE' });
+                          }
+                          setNotice({ type: 'success', text: 'فیدهای این موضوع حذف شد.' });
+                          await refetch();
+                        });
+                      }}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </>
                   }
                 />
-              ))}
+                );
+              })}
             </FeedSourceCardGrid>
           )}
         </Card>

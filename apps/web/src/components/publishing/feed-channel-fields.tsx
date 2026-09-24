@@ -36,6 +36,55 @@ export function topicLabelsForSourceGroup<T extends { id: string; topicLabel?: s
   return [...labels].sort((left, right) => left.localeCompare(right, 'fa'));
 }
 
+export interface SourceTopicBucket<T> {
+  key: string;
+  topicKey: string;
+  topicLabel: string;
+  anchor: T;
+  members: T[];
+  enabled: boolean;
+}
+
+/** One card per source and topic. Several RSS URLs that share a topic stay in one bucket. */
+export function groupFeedsBySourceTopic<T extends {
+  id: string;
+  name: string;
+  enabled: boolean;
+  sourceGroupId?: string | null;
+  topicLabel?: string | null;
+}>(
+  feeds: readonly T[],
+  topicKeyOf: (feed: T) => string,
+): SourceTopicBucket<T>[] {
+  const grouped = new Map<string, T[]>();
+  for (const feed of feeds) {
+    const key = `${feed.sourceGroupId || feed.id}::${topicKeyOf(feed)}`;
+    const bucket = grouped.get(key);
+    if (bucket) bucket.push(feed);
+    else grouped.set(key, [feed]);
+  }
+  const buckets: SourceTopicBucket<T>[] = [];
+  for (const [key, members] of grouped) {
+    const topicKey = key.slice(key.lastIndexOf('::') + 2);
+    const anchor = [...members].sort((left, right) => left.id.localeCompare(right.id))[0];
+    const topicLabel = topicKey === '__none'
+      ? ''
+      : String(members.find((member) => String(member.topicLabel || '').trim())?.topicLabel || '').trim();
+    buckets.push({
+      key,
+      topicKey,
+      topicLabel,
+      anchor,
+      members,
+      enabled: members.every((member) => member.enabled),
+    });
+  }
+  return buckets.sort((left, right) => {
+    const byName = left.anchor.name.localeCompare(right.anchor.name, 'fa');
+    return byName || left.topicLabel.localeCompare(right.topicLabel, 'fa');
+  });
+}
+
 /** One catalog row per source group (multiple RSS URLs share sourceGroupId). */
 export function groupCatalogFeedsBySource<T extends { id: string; name: string; sourceGroupId?: string | null; url?: string }>(
   feeds: readonly T[],

@@ -9,7 +9,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
-import { topicLabelsForSourceGroup } from '@/components/publishing/feed-channel-fields';
+import { groupFeedsBySourceTopic } from '@/components/publishing/feed-channel-fields';
+import { normalizeFeedTopicKey } from '@/components/publishing/feed-source-filters';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
@@ -20,7 +21,6 @@ import { matchesFeedCatalogFilters } from '@/components/publishing/feed-source-f
 import {
   FEED_CATALOG_GROUPS,
   resolveCatalogGroup,
-  sortFeedsByName,
   type FeedCatalogGroup,
   type FeedSourceType,
 } from '@/lib/feed-source-types';
@@ -97,16 +97,16 @@ export function PlatformFeedsSection({
   const { activeTenant } = useTenant();
   const canManage = isSuperAdmin || ['owner', 'admin', 'manager', 'senior_specialist'].includes(activeTenant?.memberRole || '');
   const feeds = useMemo(() => (Array.isArray(data) ? data.filter((feed) => feed.platformEnabled !== false) : []), [data]);
-  const visibleFeeds = useMemo(
-    () => sortFeedsByName(feeds.filter((feed) => {
+  const visibleBuckets = useMemo(() => {
+    const matched = feeds.filter((feed) => {
       if (!includeDisabled && !feed.enabled) return false;
       if (!matchesFeedCatalogFilters(feed, selectedCatalogGroups, selectedTopics, labelOptions)) return false;
       return matchesFeedNameSearch(feed, searchQuery);
-    })),
-    [feeds, includeDisabled, labelOptions, searchQuery, selectedCatalogGroups, selectedTopics],
-  );
+    });
+    return groupFeedsBySourceTopic(matched, (feed) => normalizeFeedTopicKey(feed.topicLabel, labelOptions));
+  }, [feeds, includeDisabled, labelOptions, searchQuery, selectedCatalogGroups, selectedTopics]);
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
-  const editingIdRef = useRef<string | null>(null);
+  const editingIdsRef = useRef<string[]>([]);
   const [form, setForm] = useState<FeedSettingsForm>({
     settingsMode: 'default',
     includeWords: '',
@@ -134,8 +134,8 @@ export function PlatformFeedsSection({
 
   async function saveSettings(event: React.FormEvent) {
     event.preventDefault();
-    const feedId = editingIdRef.current;
-    if (!feedId || !editing) return;
+    const feedIds = editingIdsRef.current;
+    if (!feedIds.length || !editing) return;
     const interval = Number(form.pollIntervalMinutes);
     if (form.settingsMode === 'custom' && (!Number.isInteger(interval) || interval < 5 || interval > 1440)) {
       setNotice({ type: 'error', text: 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.' });
@@ -143,7 +143,7 @@ export function PlatformFeedsSection({
     }
     const feedName = editing.name;
     await run('save', async () => {
-      await apiFetch(`/publishing/platform-feeds/${feedId}`, {
+      await Promise.all(feedIds.map((feedId) => apiFetch(`/publishing/platform-feeds/${feedId}`, {
         method: 'PATCH',
         body: {
           settingsMode: form.settingsMode,
@@ -155,9 +155,9 @@ export function PlatformFeedsSection({
           autoPublish: form.autoPublish,
           autoSendSocial: form.autoSendSocial,
         },
-      });
+      })));
       setEditing(null);
-      editingIdRef.current = null;
+      editingIdsRef.current = [];
       setNotice({ type: 'success', text: `تنظیمات «${feedName}» ذخیره شد.` });
       await refetch();
     });
@@ -169,8 +169,8 @@ export function PlatformFeedsSection({
         <h2 className="text-lg font-bold text-slate-900">فیدهای کاتالوگ</h2>
         <p className="mt-1 text-sm text-slate-500">
           {includeDisabled
-            ? 'فیدهای مطابق فیلتر؛ منابع خاموش را روشن کنید تا خبرشان به اتاق خبر بیاید.'
-            : 'فقط فیدهای روشن. برای مرور کاتالوگ، نوع رسانه یا موضوع را بالا تیک بزنید.'}
+            ? 'هر کارت یک منبع و یک موضوع است. اگر چند فید همان موضوع را داشته باشند، با هم روشن یا خاموش می‌شوند.'
+            : 'فقط موضوع‌های روشن. برای دیدن و روشن کردن بقیه، نوع رسانه یا موضوع را بالا تیک بزنید.'}
         </p>
       </div>
 
@@ -184,22 +184,31 @@ export function PlatformFeedsSection({
       <Card className="overflow-hidden">
         {isLoading ? (
           <div className="grid min-h-40 place-items-center"><span className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
-        ) : visibleFeeds.length === 0 ? (
+        ) : visibleBuckets.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm text-slate-500">
             {feeds.length === 0 ? 'فید پیش‌فرضی ثبت نشده است.' : 'فیدی با این نوع رسانه و موضوع پیدا نشد.'}
           </div>
         ) : (
           <FeedSourceCardGrid>
-            {visibleFeeds.map((feed) => (
+            {visibleBuckets.map((bucket) => {
+              const feed = bucket.anchor;
+              const nextEnabled = !bucket.enabled;
+              const toggleTitle = bucket.members.length > 1
+                ? (bucket.enabled ? 'خاموش کردن همه فیدهای این موضوع' : 'روشن کردن همه فیدهای این موضوع')
+                : (bucket.enabled ? 'غیرفعال کردن' : 'فعال کردن');
+              return (
               <FeedSourceCard
-                key={feed.id}
+                key={bucket.key}
                 name={feed.name}
-                url={feed.url}
+                url={bucket.members.length === 1 ? feed.url : undefined}
                 logoUrl={feed.logoUrl}
                 sourceType={feed.sourceType}
-                enabled={feed.enabled}
-                topicLabels={topicLabelsForSourceGroup(feed, feeds)}
+                enabled={bucket.enabled}
+                topicLabels={bucket.topicLabel ? [bucket.topicLabel] : []}
                 badge={<Badge variant="default" className="shrink-0 text-[10px]">{FEED_CATALOG_GROUPS[resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage)].label}</Badge>}
+                footer={bucket.members.length > 1 ? (
+                  <p className="text-[11px] font-medium text-slate-500">{formatPersianDigits(bucket.members.length)} فید این موضوع</p>
+                ) : null}
                 actions={
                   canManage ? (
                     <>
@@ -210,7 +219,7 @@ export function PlatformFeedsSection({
                         aria-label="تنظیمات پایش"
                         onClick={() => {
                           setEditing(feed);
-                          editingIdRef.current = feed.id;
+                          editingIdsRef.current = bucket.members.map((member) => member.id);
                           const mode = feed.settingsMode ?? 'default';
                           setForm({
                             settingsMode: mode,
@@ -234,15 +243,19 @@ export function PlatformFeedsSection({
                       <Button
                         size="sm"
                         variant="ghost"
-                        title={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'}
-                        aria-label={feed.enabled ? 'غیرفعال کردن' : 'فعال کردن'}
-                        isLoading={busy === `toggle-${feed.id}`}
-                        onClick={() => run(`toggle-${feed.id}`, async () => {
-                          await apiFetch(`/publishing/platform-feeds/${feed.id}/toggle`, { method: 'POST', body: { enabled: !feed.enabled } });
+                        title={toggleTitle}
+                        aria-label={toggleTitle}
+                        isLoading={busy === `toggle-${bucket.key}`}
+                        onClick={() => run(`toggle-${bucket.key}`, async () => {
+                          const pending = bucket.members.filter((member) => member.enabled !== nextEnabled);
+                          await Promise.all(pending.map((member) => apiFetch(`/publishing/platform-feeds/${member.id}/toggle`, {
+                            method: 'POST',
+                            body: { enabled: nextEnabled },
+                          })));
                           await refetch();
                         })}
                       >
-                        <Power className={feedTogglePowerClass(feed.enabled)} />
+                        <Power className={feedTogglePowerClass(bucket.enabled)} />
                       </Button>
                     </>
                   ) : (
@@ -250,15 +263,16 @@ export function PlatformFeedsSection({
                   )
                 }
               />
-            ))}
+              );
+            })}
           </FeedSourceCardGrid>
         )}
       </Card>
 
-      <Modal open={!!editing} onClose={() => { setEditing(null); editingIdRef.current = null; }} size="md" closeOnBackdrop={!busy}>
+      <Modal open={!!editing} onClose={() => { setEditing(null); editingIdsRef.current = []; }} size="md" closeOnBackdrop={!busy}>
         {editing && (
           <form onSubmit={saveSettings} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <ModalHeader title={`تنظیمات «${editing.name}»`} description="نام، آدرس و زبان این منبع فقط در کاتالوگ مدیر کل تغییر می‌کند." onClose={() => { setEditing(null); editingIdRef.current = null; }} />
+            <ModalHeader title={`تنظیمات «${editing.name}»`} description={editingIdsRef.current.length > 1 ? `این تنظیمات روی هر ${formatPersianDigits(editingIdsRef.current.length)} فید این موضوع اعمال می‌شود.` : 'نام، آدرس و زبان این منبع فقط در کاتالوگ مدیر کل تغییر می‌کند.'} onClose={() => { setEditing(null); editingIdsRef.current = []; }} />
             <ModalBody className="space-y-4 p-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">{editing.name}</p>
@@ -302,7 +316,7 @@ export function PlatformFeedsSection({
               })}
             </ModalBody>
             <ModalFooter className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => { setEditing(null); editingIdRef.current = null; }}>انصراف</Button>
+              <Button type="button" variant="outline" onClick={() => { setEditing(null); editingIdsRef.current = []; }}>انصراف</Button>
               <Button type="submit" isLoading={busy === 'save'}>ذخیره</Button>
             </ModalFooter>
           </form>
