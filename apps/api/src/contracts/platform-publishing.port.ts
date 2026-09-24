@@ -3,6 +3,7 @@ import type { ProbeFeedDto } from '../modules/smart-publishing/dto/feed.dto';
 import type { TestGapGptConnectionDto } from '../modules/smart-publishing/dto/publishing-settings.dto';
 import type { UpdatePlatformAiSettingsDto } from '../platform/admin/dto/platform-ai-settings.dto';
 import type { UpdatePlatformCatalogHealthSettingsDto } from '../platform/admin/dto/platform-catalog-health-settings.dto';
+import type { UpdateFeedTopicLabelsDto } from '../platform/admin/dto/platform-topic-labels.dto';
 import type { UpdatePlatformSourceFetchSettingsDto } from '../platform/admin/dto/platform-source-fetch-settings.dto';
 
 export const PLATFORM_PUBLISHING_PORT = Symbol('PLATFORM_PUBLISHING_PORT');
@@ -24,6 +25,8 @@ export interface PlatformPublishingPort {
   catalogHealthStatus(): unknown;
   catalogHealthSettings(): Promise<unknown>;
   saveCatalogHealth(body: UpdatePlatformCatalogHealthSettingsDto): Promise<unknown>;
+  feedTopicLabels(): Promise<unknown>;
+  saveFeedTopicLabels(body: UpdateFeedTopicLabelsDto): Promise<unknown>;
   aiSettings(): Promise<unknown>;
   saveAiSettings(body: UpdatePlatformAiSettingsDto): Promise<unknown>;
   testGapGpt(body: TestGapGptConnectionDto): Promise<unknown>;

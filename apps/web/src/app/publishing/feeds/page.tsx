@@ -48,6 +48,7 @@ interface Feed {
   url: string;
   sourceType?: FeedSourceType;
   catalogGroup?: FeedCatalogGroup;
+  topicLabel?: string;
   logoUrl?: string;
   sourceLanguage?: SourceLanguage;
   resolvedFeedUrl?: string;
@@ -134,6 +135,8 @@ export default function FeedsPage() {
   const feeds = useMemo(() => Array.isArray(data) ? data : [], [data]);
   const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
   const [query, setQuery] = useState('');
+  const [topicLabel, setTopicLabel] = useState('');
+  const { data: topicLabels } = useApi<string[]>('/publishing/feed-topic-labels');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalGroup, setModalGroup] = useState<FeedCatalogGroup>('media-domestic');
   const [editing, setEditing] = useState<Feed | null>(null);
@@ -166,11 +169,12 @@ export default function FeedsPage() {
   const visibleFeeds = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
     return feedsByGroup[activeGroup].filter((feed) => {
+      if (topicLabel && feed.topicLabel !== topicLabel) return false;
       if (!normalized) return true;
       return feed.name.toLocaleLowerCase('fa').includes(normalized)
         || feed.url.toLocaleLowerCase('fa').includes(normalized);
     });
-  }, [activeGroup, feedsByGroup, query]);
+  }, [activeGroup, feedsByGroup, query, topicLabel]);
 
   const modalSourceTypes = FEED_CATALOG_GROUPS[modalGroup].sourceTypes;
   const showSourceTypePicker = modalSourceTypes.length > 1;
@@ -351,6 +355,15 @@ export default function FeedsPage() {
                 className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
               />
             </label>
+            <select
+              value={topicLabel}
+              onChange={(event) => setTopicLabel(event.target.value)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-primary-500"
+              aria-label="فیلتر لیبل"
+            >
+              <option value="">همه لیبل‌ها</option>
+              {(topicLabels ?? []).map((label) => <option key={label} value={label}>{label}</option>)}
+            </select>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Radio className="h-4 w-4" />
               {query.trim()
@@ -364,6 +377,7 @@ export default function FeedsPage() {
           activeGroup={activeGroup}
           onActiveGroupChange={setActiveGroup}
           searchQuery={query}
+          topicLabel={topicLabel}
           tenantActiveCountsByGroup={tenantActiveCountsByGroup}
         />
 
@@ -406,6 +420,7 @@ export default function FeedsPage() {
                   logoUrl={feed.logoUrl}
                   sourceType={feed.sourceType}
                   enabled={feed.enabled}
+                  badge={feed.topicLabel ? <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{feed.topicLabel}</span> : undefined}
                   footer={
                     feed.lastFetchedAt ? (
                       <p className="text-[10px] text-slate-400">

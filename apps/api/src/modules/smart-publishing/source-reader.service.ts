@@ -18,6 +18,7 @@ import { isIP } from 'node:net';
 import { load } from 'cheerio';
 import { XMLParser } from 'fast-xml-parser';
 import type { SourceType } from './dto/feed.dto';
+import { cleanExtractedArticleText } from './article-body-cleanup';
 
 export interface ReadSourceOptions {
   resolvedFeedUrl?: string;
@@ -489,7 +490,7 @@ export class SourceReaderService {
       );
       const rawContent = explicitRawContent || rawSummary;
       const summaryText = this.htmlToText(rawSummary).slice(0, 12_000);
-      const contentText = this.htmlToText(rawContent).slice(0, 80_000);
+      let contentText = this.htmlToText(rawContent).slice(0, 80_000);
       // A populated content field is not necessarily a full article: many
       // feeds copy their short description into content:encoded. Mark it as
       // full only when it has enough substance beyond the RSS summary.
@@ -497,6 +498,7 @@ export class SourceReaderService {
         contentText.length >= 1_200
         || (contentText.length >= 400 && contentText.length >= Math.max(1, summaryText.length) * 1.35)
       );
+      if (contentIsFull) contentText = cleanExtractedArticleText(contentText);
       const enclosure = entry.enclosure as Record<string, unknown> | Record<string, unknown>[] | undefined;
       const mediaItems = array((entry['media:content'] ?? entry['media:thumbnail']) as unknown).map((item) => item as Record<string, unknown>);
       const enclosureItems = array(enclosure as unknown).map((item) => item as Record<string, unknown>);
@@ -822,7 +824,7 @@ export class SourceReaderService {
         } catch { /* ignore malformed JSON-LD */ }
       });
 
-      const content = body || summary;
+      const content = cleanExtractedArticleText(body || summary);
       const published = $('meta[property="article:published_time"]').attr('content')
         || $('[itemprop="datePublished"]').attr('content')
         || $('time[datetime]').first().attr('datetime') || '';
@@ -1171,7 +1173,8 @@ export class SourceReaderService {
     // themes render ACF `uptitle` and the post title inside that element.
     const metadata$ = load(html);
     const $ = load(html);
-    $('script,style,noscript,svg,iframe,form,nav,header,footer,aside,.advertisement,.ads,.social-share,.related-posts').remove();
+    $('script,style,noscript,svg,iframe,form,nav,header,footer,aside,.advertisement,.ads,.social-share,.related-posts,[class*="related"],[class*="teaser"],[class*="consent"],[class*="embed-placeholder"],[class*="reading-time"],[class*="read-time"],[class*="bookmark"],[class*="newsletter"],[data-component*="Related"],[role="complementary"]').remove();
+    $('button,[role="button"]').remove();
 
     const selectors = [
       '[itemprop="articleBody"]',
@@ -1229,6 +1232,9 @@ export class SourceReaderService {
         if (articleText.length >= 200) break;
       }
     }
+    if (articleText.length < 200) throw new BadRequestException('متن کامل خبر از صفحه منبع قابل استخراج نبود');
+
+    articleText = cleanExtractedArticleText(articleText);
     if (articleText.length < 200) throw new BadRequestException('متن کامل خبر از صفحه منبع قابل استخراج نبود');
 
     const title = (metadata$('meta[property="og:title"]').attr('content') || structuredTitle || metadata$('h1').first().text() || metadata$('title').text()).replace(/\s+/g, ' ').trim();
@@ -1495,7 +1501,7 @@ export class SourceReaderService {
     try {
       return await this.readArticle(articleUrl);
     } catch (error) {
-      const fallbackText = this.htmlToText(fallback.text || '');
+      const fallbackText = cleanExtractedArticleText(this.htmlToText(fallback.text || ''));
       if (!fallbackText) throw error;
       let hostname = 'source';
       try { hostname = new URL(articleUrl).hostname; } catch { /* keep a safe generic log label */ }

@@ -47,6 +47,8 @@ export function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -64,7 +66,7 @@ export function Modal({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panelRef.current) return;
@@ -88,7 +90,7 @@ export function Modal({
       restoreFocusRef.current?.focus();
       restoreFocusRef.current = null;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

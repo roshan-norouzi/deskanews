@@ -153,6 +153,11 @@ export default function PlatformFeedsPage() {
     setForm(EMPTY_FORM);
   }
 
+  const handleCloseModal = useCallback(() => {
+    if (busy) return;
+    closeModal();
+  }, [busy]);
+
   function openCreate(group: FeedCatalogGroup = activeGroup) {
     setEditing(null);
     editingIdRef.current = null;
@@ -388,11 +393,11 @@ export default function PlatformFeedsPage() {
           )}
         </Card>
 
-        <Modal open={modalOpen} onClose={closeModal} size="lg" closeOnBackdrop={!busy}>
+        <Modal open={modalOpen} onClose={handleCloseModal} size="lg" closeOnBackdrop={!busy}>
           <form onSubmit={saveFeed} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <ModalHeader
               title={editing ? 'ویرایش منبع پیش‌فرض' : 'افزودن منبع پیش‌فرض'}
-              onClose={closeModal}
+              onClose={handleCloseModal}
             />
             <ModalBody className="space-y-4 p-6">
                 <Input label="نام" required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} />
@@ -436,7 +441,7 @@ export default function PlatformFeedsPage() {
             <ModalFooter className="flex items-center justify-between gap-2">
               <Button type="button" variant="outline" isLoading={busy === 'probe'} onClick={() => void probeSource()}><HeartPulse className="h-4 w-4" /> آزمایش منبع</Button>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={closeModal}>انصراف</Button>
+                <Button type="button" variant="outline" onClick={handleCloseModal}>انصراف</Button>
                 <Button type="submit" isLoading={busy === 'save'}>ذخیره</Button>
               </div>
             </ModalFooter>

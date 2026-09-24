@@ -17,7 +17,7 @@ import {
   normalizeCatalogHealthIntervalHours,
   parseCatalogHealthEnabled,
 } from './platform-feed-health';
-import { mergeSourceLanguageCatalog, normalizeSourceLanguage } from '@deska/shared';
+import { DEFAULT_FEED_TOPIC_LABELS, mergeSourceLanguageCatalog, normalizeSourceLanguage } from '@deska/shared';
 import { DEFAULT_NEWS_PROCESSING_PROMPTS } from './news-processing-prompts';
 import {
   fallbackCoverTemplateFromSample,
@@ -378,6 +378,18 @@ function normalizeFontLibrary(value: string): string {
     // to the safe built-in font; custom fonts can be added again from the UI.
     return JSON.stringify([{ id: 'vazirmatn', name: 'Vazirmatn', variant: 'regular', weight: 400 }]);
   }
+}
+
+function normalizeTopicLabelList(values: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const value of values ?? []) {
+    const label = String(value || '').trim().slice(0, 48);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    labels.push(label);
+  }
+  return labels.slice(0, 40);
 }
 
 @Injectable()
@@ -942,6 +954,63 @@ export class PublishingSettingsService implements OnModuleInit {
       this.logger.warn(`Platform catalog health settings could not be loaded: ${error instanceof Error ? error.message : 'unknown error'}`);
       return {};
     }
+  }
+
+  async listFeedTopicLabels(): Promise<string[]> {
+    const stored = await this.loadPlatformTopicLabels();
+    return stored.length ? stored : [...DEFAULT_FEED_TOPIC_LABELS];
+  }
+
+  async saveFeedTopicLabels(input: { labels?: string[]; renameFrom?: string[]; renameTo?: string[] }): Promise<string[]> {
+    const previous = await this.listFeedTopicLabels();
+    const labels = normalizeTopicLabelList(input.labels);
+    if (!labels.length) throw new BadRequestException('حداقل یک لیبل لازم است');
+    const from = input.renameFrom ?? [];
+    const to = input.renameTo ?? [];
+    for (let index = 0; index < Math.min(from.length, to.length); index += 1) {
+      const source = from[index].trim();
+      const target = to[index].trim();
+      if (!source || !target || source === target || !labels.includes(target)) continue;
+      await this.prisma.platformFeed.updateMany({ where: { topicLabel: source }, data: { topicLabel: target } });
+      await this.prisma.newsFeed.updateMany({ where: { topicLabel: source }, data: { topicLabel: target } });
+    }
+    const removed = previous.filter((label) => !labels.includes(label) && !to.includes(label));
+    if (removed.length) {
+      await this.prisma.platformFeed.updateMany({ where: { topicLabel: { in: removed } }, data: { topicLabel: '' } });
+      await this.prisma.newsFeed.updateMany({ where: { topicLabel: { in: removed } }, data: { topicLabel: '' } });
+    }
+    await this.writePlatformSettings({ feed_topic_labels: labels });
+    return this.listFeedTopicLabels();
+  }
+
+  async getPlatformAiSettings(): Promise<PublishingSettings> {
+    return this.getGlobalAiRaw();
+  }
+
+  private async loadPlatformTopicLabels(): Promise<string[]> {
+    const settings = await this.readPlatformSettings();
+    const raw = settings.feed_topic_labels;
+    if (!Array.isArray(raw)) return [];
+    return normalizeTopicLabelList(raw.map((item) => String(item)));
+  }
+
+  private async readPlatformSettings(): Promise<Record<string, unknown>> {
+    if (!this.prisma.platformConfig?.findUnique) return {};
+    try {
+      const row = await this.prisma.platformConfig.findUnique({ where: { id: 'default' } });
+      return cleanObject(row?.settings);
+    } catch {
+      return {};
+    }
+  }
+
+  private async writePlatformSettings(patch: Record<string, unknown>) {
+    const settings = { ...(await this.readPlatformSettings()), ...patch };
+    await this.prisma.platformConfig?.upsert?.({
+      where: { id: 'default' },
+      create: { settings: inputJson(settings) },
+      update: { settings: inputJson(settings) },
+    });
   }
 
   async getGlobalCatalogHealthPublic(): Promise<Record<string, string>> {

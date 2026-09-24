@@ -141,6 +141,7 @@ export class SmartPublishingController {
 
   @Get('feeds') @RequirePermission('publishing.feeds') feeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.feeds(tenant.tenantId); }
   @Get('source-languages') sourceLanguages() { return this.newsroom.listSourceLanguages(); }
+  @Get('feed-topic-labels') @RequirePermission('publishing.feeds') feedTopicLabels() { return this.settingsService.listFeedTopicLabels(); }
   @Get('platform-feeds') @RequirePermission('publishing.feeds') platformFeeds(@TenantCtx() tenant: TenantContext) { return this.newsroom.listPlatformFeeds(tenant.tenantId); }
   @Patch('platform-feeds/:id') @RequirePermission('publishing.feeds') updatePlatformFeedSubscription(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateTenantPlatformFeedDto) {
     return this.newsroom.updatePlatformFeedSubscription(tenant.tenantId, id, body);
@@ -213,6 +214,13 @@ export class SmartPublishingController {
     @Param('id') id: string,
   ) {
     return this.newsroom.reject(tenant.tenantId, id, this.memberNewsroomAccess(user, tenant));
+  }
+  @Post('news/articles/:id/restore') @RequirePermission('publishing.news') restoreRejectedNews(
+    @TenantCtx() tenant: TenantContext,
+    @User() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.newsroom.restoreRejected(tenant.tenantId, id, this.memberNewsroomAccess(user, tenant));
   }
   @Post('news/articles/:id/send-to-social') @RequirePermission('publishing.news') sendNewsToSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.sendNewsToStudio(tenant.tenantId, id); }
   @Post('news/articles/:id/translate-full') @RequirePermission('publishing.news') translateNewsFull(

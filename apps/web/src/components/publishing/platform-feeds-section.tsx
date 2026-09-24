@@ -33,6 +33,7 @@ interface PlatformFeed {
   sourceType?: FeedSourceType;
   catalogGroup?: FeedCatalogGroup;
   logoUrl?: string;
+  topicLabel?: string;
   pollIntervalMinutes?: number | null;
   pollIntervalOverride?: number | null;
   catalogPollIntervalMinutes?: number | null;
@@ -71,6 +72,7 @@ interface PlatformFeedsSectionProps {
   activeGroup: FeedCatalogGroup;
   onActiveGroupChange: (group: FeedCatalogGroup) => void;
   searchQuery?: string;
+  topicLabel?: string;
   /** فعال‌های منابع اختصاصی سازمان — به شمارش تب‌ها اضافه می‌شود */
   tenantActiveCountsByGroup?: Record<FeedCatalogGroup, number>;
 }
@@ -86,6 +88,7 @@ export function PlatformFeedsSection({
   activeGroup,
   onActiveGroupChange,
   searchQuery = '',
+  topicLabel = '',
   tenantActiveCountsByGroup,
 }: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
@@ -107,8 +110,8 @@ export function PlatformFeedsSection({
     return grouped;
   }, [feeds]);
   const visibleFeeds = useMemo(
-    () => feedsByGroup[activeGroup].filter((feed) => matchesFeedNameSearch(feed, searchQuery)),
-    [activeGroup, feedsByGroup, searchQuery],
+    () => feedsByGroup[activeGroup].filter((feed) => matchesFeedNameSearch(feed, searchQuery) && (!topicLabel || feed.topicLabel === topicLabel)),
+    [activeGroup, feedsByGroup, searchQuery, topicLabel],
   );
   const activeCountsByGroup = useMemo(() => {
     const counts = {} as Record<FeedCatalogGroup, number>;
@@ -272,7 +275,7 @@ export function PlatformFeedsSection({
                 logoUrl={feed.logoUrl}
                 sourceType={feed.sourceType}
                 enabled={feed.enabled}
-                badge={<Badge variant="default" className="shrink-0 text-[10px]">پیش‌فرض</Badge>}
+                badge={<span className="flex flex-wrap gap-1"><Badge variant="default" className="shrink-0 text-[10px]">پیش‌فرض</Badge>{feed.topicLabel ? <Badge variant="default" className="shrink-0 text-[10px]">{feed.topicLabel}</Badge> : null}</span>}
                 actions={
                   canManage ? (
                     <>

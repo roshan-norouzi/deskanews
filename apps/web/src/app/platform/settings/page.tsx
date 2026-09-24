@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Bot, Cloud, Coins, CreditCard, Gauge, HeartPulse, Settings } from 'lucide-react';
+import { Bot, Cloud, Coins, CreditCard, Gauge, HeartPulse, Settings, Tags } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { PlatformAiSettingsPanel } from '@/components/settings/platform-ai-settings-panel';
 import { PlatformCatalogHealthSettingsPanel } from '@/components/settings/platform-catalog-health-settings-panel';
+import { PlatformTopicLabelsPanel } from '@/components/settings/platform-topic-labels-panel';
 import { PlatformSourceFetchSettingsPanel } from '@/components/settings/platform-source-fetch-settings-panel';
 import { PlatformUsageMetricsPanel } from '@/components/settings/platform-usage-metrics-panel';
 import { PlatformPaymentSettingsPanel } from '@/components/settings/platform-payment-settings-panel';
@@ -13,7 +14,7 @@ import { PlatformOrganizationWalletPanel } from '@/components/settings/platform-
 import { useAuth } from '@/lib/auth-context';
 import { cn } from '@/lib/utils';
 
-type PlatformSettingsTab = 'ai' | 'source-fetch' | 'usage' | 'catalog-health' | 'payments' | 'wallet';
+type PlatformSettingsTab = 'ai' | 'source-fetch' | 'usage' | 'catalog-health' | 'topic-labels' | 'payments' | 'wallet';
 
 const TAB_DEFINITIONS: Array<{
   id: PlatformSettingsTab;
@@ -44,6 +45,12 @@ const TAB_DEFINITIONS: Array<{
     label: 'سلامت کاتالوگ',
     icon: HeartPulse,
     description: 'تست خودکار سلامت منابع پیش‌فرض و فاصله اجرای دوره‌ای.',
+  },
+  {
+    id: 'topic-labels',
+    label: 'لیبل منابع',
+    icon: Tags,
+    description: 'برچسب موضوعی منابع خبری، جدا از دستهٔ کاتالوگ.',
   },
   {
     id: 'payments',
@@ -129,6 +136,7 @@ function PlatformSettingsPageContent() {
           {activeTab === 'source-fetch' && <PlatformSourceFetchSettingsPanel />}
           {activeTab === 'usage' && <PlatformUsageMetricsPanel />}
           {activeTab === 'catalog-health' && <PlatformCatalogHealthSettingsPanel />}
+          {activeTab === 'topic-labels' && <PlatformTopicLabelsPanel />}
           {activeTab === 'payments' && <PlatformPaymentSettingsPanel />}
           {activeTab === 'wallet' && <PlatformOrganizationWalletPanel />}
         </div>

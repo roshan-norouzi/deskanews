@@ -10,6 +10,7 @@ import type { ProbeFeedDto } from './dto/feed.dto';
 import type { TestGapGptConnectionDto } from './dto/publishing-settings.dto';
 import type { UpdatePlatformAiSettingsDto } from '../../platform/admin/dto/platform-ai-settings.dto';
 import type { UpdatePlatformCatalogHealthSettingsDto } from '../../platform/admin/dto/platform-catalog-health-settings.dto';
+import type { UpdateFeedTopicLabelsDto } from '../../platform/admin/dto/platform-topic-labels.dto';
 import type { UpdatePlatformSourceFetchSettingsDto } from '../../platform/admin/dto/platform-source-fetch-settings.dto';
 
 @Injectable()
@@ -37,6 +38,8 @@ export class PlatformPublishingFacade implements PlatformPublishingPort {
   catalogHealthStatus() { return this.platformFeeds.getCatalogHealthRunStatus(); }
   catalogHealthSettings() { return this.settings.getGlobalCatalogHealthPublic(); }
   saveCatalogHealth(body: UpdatePlatformCatalogHealthSettingsDto) { return this.settings.saveGlobalCatalogHealth(body); }
+  feedTopicLabels() { return this.settings.listFeedTopicLabels(); }
+  saveFeedTopicLabels(body: UpdateFeedTopicLabelsDto) { return this.settings.saveFeedTopicLabels(body); }
   aiSettings() { return this.settings.getGlobalAiPublic(); }
   saveAiSettings(body: UpdatePlatformAiSettingsDto) { return this.settings.saveGlobalAi(body); }
   async testGapGpt(body: TestGapGptConnectionDto) {

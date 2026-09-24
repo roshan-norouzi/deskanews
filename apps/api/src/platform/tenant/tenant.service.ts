@@ -107,6 +107,7 @@ export class TenantService {
     });
 
     await this.tenantPublishing.ensureTenantSubscriptions(tenant.id);
+    await this.billing.credit(tenant.id, 1000, `organization-gift:${tenant.id}`);
     return tenant;
   }
 

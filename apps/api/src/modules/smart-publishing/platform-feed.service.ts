@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { DEFAULT_PLATFORM_FEEDS, FEED_CATALOG_GROUP_ORDER, PLATFORM_FEED_CATALOG_VERSION, USAGE_METRIC_KEYS, detectSourceLanguageFromItems, feedCatalogGroupFromSourceType, mergeSourceLanguageCatalog, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, shouldUsePersianRewrite, sourceLanguageLabel, type FeedCatalogGroup } from '@deska/shared';
+import { DEFAULT_PLATFORM_FEEDS, FEED_CATALOG_GROUP_ORDER, PLATFORM_FEED_CATALOG_VERSION, USAGE_METRIC_KEYS, detectSourceLanguageFromItems, feedCatalogGroupFromSourceType, inferFeedTopicLabel, mergeSourceLanguageCatalog, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, shouldUsePersianRewrite, sourceLanguageLabel, type FeedCatalogGroup } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SourceReaderService } from './source-reader.service';
@@ -45,6 +45,7 @@ function mapCatalogFeed(feed: {
   url: string;
   sourceType: string;
   catalogGroup: string;
+  topicLabel?: string;
   resolvedFeedUrl: string;
   sourceLanguage: string;
   logoUrl: string;
@@ -65,6 +66,7 @@ function mapCatalogFeed(feed: {
     url: feed.url,
     sourceType: feed.sourceType,
     catalogGroup: feed.catalogGroup,
+    topicLabel: feed.topicLabel || '',
     resolvedFeedUrl: feed.resolvedFeedUrl,
     sourceLanguage: feed.sourceLanguage,
     logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl, feed.sourceType),
@@ -100,6 +102,7 @@ function mapTenantPlatformFeedRow(row: {
     url: string;
     sourceType: string;
     catalogGroup: string;
+    topicLabel?: string;
     resolvedFeedUrl: string;
     sourceLanguage: string;
     logoUrl: string;
@@ -117,6 +120,7 @@ function mapTenantPlatformFeedRow(row: {
     url: row.platformFeed.url,
     sourceType: row.platformFeed.sourceType,
     catalogGroup: row.platformFeed.catalogGroup,
+    topicLabel: row.platformFeed.topicLabel || '',
     resolvedFeedUrl: row.platformFeed.resolvedFeedUrl,
     logoUrl: resolveFeedLogoUrl(row.platformFeed.url, row.platformFeed.logoUrl, row.platformFeed.sourceType),
     includeWords: resolved.includeWords,
@@ -174,6 +178,7 @@ const PLATFORM_FEED_LIST_SELECT = {
   url: true,
   sourceType: true,
   catalogGroup: true,
+  topicLabel: true,
   resolvedFeedUrl: true,
   sourceLanguage: true,
   logoUrl: true,
@@ -219,9 +224,11 @@ export class PlatformFeedService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    void this.ensureDefaultPlatformFeeds().catch((error) => {
-      this.logger.warn(`Default platform feeds could not be ensured: ${error instanceof Error ? error.message : 'unknown error'}`);
-    });
+    void this.ensureDefaultPlatformFeeds()
+      .then(() => this.assignMissingTopicLabels())
+      .catch((error) => {
+        this.logger.warn(`Default platform feeds could not be ensured: ${error instanceof Error ? error.message : 'unknown error'}`);
+      });
   }
 
   private async organizationPollMinutes(tenantId: string): Promise<number> {
@@ -266,11 +273,19 @@ export class PlatformFeedService implements OnModuleInit {
       const existing = await this.prisma.platformFeed.findUnique({ where: { url: seed.url } });
       if (existing) {
         await this.ensureSubscriptionsForAllTenants(existing.id);
+        if (!existing.topicLabel) {
+          const topicLabel = inferFeedTopicLabel(existing.name, existing.url, existing.catalogGroup);
+          if (topicLabel) await this.prisma.platformFeed.update({ where: { id: existing.id }, data: { topicLabel } });
+        }
         continue;
       }
       const existingByName = await this.prisma.platformFeed.findFirst({ where: { name: seed.name } });
       if (existingByName) {
         await this.ensureSubscriptionsForAllTenants(existingByName.id);
+        if (!existingByName.topicLabel) {
+          const topicLabel = inferFeedTopicLabel(existingByName.name, existingByName.url, existingByName.catalogGroup);
+          if (topicLabel) await this.prisma.platformFeed.update({ where: { id: existingByName.id }, data: { topicLabel } });
+        }
         continue;
       }
       if (!addMissingFromCode && storedVersion > 0) continue;
@@ -286,6 +301,7 @@ export class PlatformFeedService implements OnModuleInit {
           url: seed.url,
           sourceType: seed.sourceType,
           catalogGroup: seed.catalogGroup,
+          topicLabel: inferFeedTopicLabel(seed.name, seed.url, seed.catalogGroup),
           resolvedFeedUrl,
         sourceLanguage: seed.sourceLanguage,
         pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
@@ -301,6 +317,48 @@ export class PlatformFeedService implements OnModuleInit {
 
     if (addMissingFromCode) {
       await this.writeStoredCatalogVersion();
+    }
+  }
+
+  private topicLabelRunning = false;
+
+  @Interval('platform-feed-topic-labels', 10 * 60_000)
+  labelTopicInterval() {
+    void this.assignMissingTopicLabels();
+  }
+
+  private async assignMissingTopicLabels() {
+    if (this.topicLabelRunning) return;
+    this.topicLabelRunning = true;
+    try {
+      const allowed = await this.settings.listFeedTopicLabels();
+      const allowedSet = new Set(allowed);
+      const [platformFeeds, newsFeeds] = await Promise.all([
+        this.prisma.platformFeed.findMany({ where: { topicLabel: '' }, select: { id: true, name: true, url: true, catalogGroup: true }, take: 40 }),
+        this.prisma.newsFeed.findMany({ where: { topicLabel: '' }, select: { id: true, name: true, url: true, catalogGroup: true }, take: 40 }),
+      ]);
+      const pending = [
+        ...platformFeeds.map((feed) => ({ ...feed, kind: 'platform' as const })),
+        ...newsFeeds.map((feed) => ({ ...feed, kind: 'news' as const })),
+      ];
+      let aiCalls = 0;
+      const aiSettings = await this.settings.getPlatformAiSettings();
+      const aiReady = Boolean(String(aiSettings.gapgpt_api_key || '').trim() && String(aiSettings.gapgpt_base_url || '').trim());
+      for (const feed of pending) {
+        let label = inferFeedTopicLabel(feed.name, feed.url, feed.catalogGroup);
+        if (!allowedSet.has(label)) label = '';
+        if (!label && aiReady && aiCalls < 8) {
+          aiCalls += 1;
+          label = await this.gapGpt.chooseFeedTopicLabel(aiSettings, { name: feed.name, url: feed.url, labels: allowed }).catch(() => '');
+        }
+        if (!label || !allowedSet.has(label)) continue;
+        if (feed.kind === 'platform') await this.prisma.platformFeed.update({ where: { id: feed.id }, data: { topicLabel: label } });
+        else await this.prisma.newsFeed.update({ where: { id: feed.id }, data: { topicLabel: label } });
+      }
+    } catch (error) {
+      this.logger.warn(`Topic labels could not be assigned: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      this.topicLabelRunning = false;
     }
   }
 
@@ -348,6 +406,7 @@ export class PlatformFeedService implements OnModuleInit {
         url,
         sourceType,
         catalogGroup: normalizeCatalogGroup(sourceType, data.catalogGroup, sourceLanguage),
+        topicLabel: inferFeedTopicLabel(name, url, normalizeCatalogGroup(sourceType, data.catalogGroup, sourceLanguage)),
         resolvedFeedUrl,
         includeWords: [],
         excludeWords: [],

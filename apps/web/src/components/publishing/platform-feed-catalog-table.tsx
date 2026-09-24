@@ -18,6 +18,7 @@ export interface PlatformFeedRow {
   sourceType: string;
   resolvedFeedUrl?: string;
   sourceLanguage?: string;
+  topicLabel?: string;
   logoUrl?: string;
   enabled: boolean;
   lastFetchedAt: string | null;
@@ -110,6 +111,7 @@ export function PlatformFeedCatalogTable({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
                         <span>{feed.name}</span>
+                        {feed.topicLabel ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{feed.topicLabel}</span> : null}
                         <SourceHealthBadge status={healthStatus} title={healthTitle} />
                       </div>
                       {feed.healthCheckedAt && (

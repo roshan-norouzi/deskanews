@@ -11,6 +11,7 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
+  RotateCcw,
   Send,
   Share2,
   Trash2,
@@ -96,6 +97,7 @@ interface NewsArticleCardProps {
   onTranslateFull: (id: string) => void;
   onSendToSocial: (id: string) => void;
   onReject: (id: string) => void;
+  onRestore?: (id: string) => void;
 }
 
 function isBusy(busyKey: string | null, articleId: string, action: string) {
@@ -116,6 +118,7 @@ export function NewsArticleCard({
   onTranslateFull,
   onSendToSocial,
   onReject,
+  onRestore,
 }: NewsArticleCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -160,21 +163,24 @@ export function NewsArticleCard({
     variant: ['new', 'failed'].includes(article.status) ? 'primary' : 'outline',
   } : null;
 
+  const publishPrepPending = publishPrepInProgress && !hasPublishText;
   const translateAction: CardAction | null = canPublish ? {
     key: 'translate',
-    label: publishPrepInProgress && !hasPublishText
-      ? 'در حال آماده‌سازی...'
-      : hasPublishText
-        ? 'آماده برای انتشار'
+    label: hasPublishText
+      ? 'آماده برای انتشار'
+      : publishPrepPending
+        ? (translateBusy ? 'در حال ارسال...' : 'ارسال‌شده برای آماده‌سازی')
         : (article.status === 'publish_failed' ? 'آماده‌سازی مجدد' : 'آماده‌سازی برای انتشار'),
-    icon: hasPublishText ? CheckCircle2 : Languages,
+    icon: hasPublishText ? CheckCircle2 : publishPrepPending ? Clock3 : Languages,
     onClick: () => onTranslateFull(article.id),
-    loading: publishPrepInProgress && !hasPublishText,
-    disabled: publishPrepInProgress && !hasPublishText,
-    variant: hasPublishText ? 'primary' : 'primary',
+    loading: translateBusy,
+    disabled: publishPrepPending,
+    variant: hasPublishText ? 'primary' : publishPrepPending ? 'outline' : 'primary',
     className: hasPublishText
       ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700'
-      : undefined,
+      : publishPrepPending
+        ? 'cursor-default border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-200 hover:bg-blue-50'
+        : undefined,
   } : null;
 
   const socialAction: CardAction | null = canSendToSocial ? {
@@ -197,13 +203,23 @@ export function NewsArticleCard({
     className: 'text-red-600 hover:bg-red-50 hover:text-red-700',
   } : null;
 
+  const restoreAction: CardAction | null = article.status === 'rejected' && onRestore ? {
+    key: 'restore',
+    label: 'بازگردانی به اتاق خبر',
+    icon: RotateCcw,
+    onClick: () => onRestore(article.id),
+    loading: isBusy(busyKey, article.id, 'restore'),
+    variant: 'primary',
+    className: 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700',
+  } : null;
+
   const primaryKeys = new Set(
-    [summarizeAction, translateAction, socialAction]
+    [summarizeAction, translateAction, socialAction, restoreAction]
       .filter((action) => action?.variant === 'primary')
       .map((action) => action!.key),
   );
 
-  const visibleActions = [summarizeAction, translateAction, socialAction, rejectAction]
+  const visibleActions = [summarizeAction, translateAction, socialAction, restoreAction, rejectAction]
     .filter((action): action is CardAction => Boolean(action));
 
   const menuActions = visibleActions.filter((action) => !primaryKeys.has(action.key) && action.key !== 'reject');

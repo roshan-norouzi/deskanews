@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { USAGE_METRIC_KEYS, detectSourceLanguageFromItems, normalizeFeedCatalogGroupForSource, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, resolveNewsroomServiceAccess, shouldUsePersianRewrite } from '@deska/shared';
+import { USAGE_METRIC_KEYS, detectSourceLanguageFromItems, inferFeedTopicLabel, normalizeFeedCatalogGroupForSource, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, resolveNewsroomServiceAccess, shouldUsePersianRewrite } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FEED_PURPOSES, type CreateFeedDto, type FeedPurpose, type ProbeFeedDto, type UpdateFeedDto, type UpdateTenantPlatformFeedDto, type SourceType } from './dto/feed.dto';
@@ -8,6 +8,7 @@ import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
+import { cleanExtractedArticleText } from './article-body-cleanup';
 import { WordPressClient } from './wordpress.client';
 import { parseWordPressCategories } from './wordpress-category';
 import { AutomationJobService } from '../../common/services/automation-job.service';
@@ -323,6 +324,7 @@ export class NewsroomService {
       url,
       sourceType,
       catalogGroup,
+      topicLabel: inferFeedTopicLabel(name, url, catalogGroup),
       resolvedFeedUrl,
       logoUrl: profilePhoto,
       includeWords: parseWordList(data.includeWords),
@@ -821,6 +823,32 @@ export class NewsroomService {
     return updated;
   }
 
+  async restoreRejected(tenantId: string, id: string, access?: MemberNewsroomAccess) {
+    const article = await this.findArticle(tenantId, id);
+    assertNewsroomArticleAccess(article, access);
+    if (article.status !== 'rejected') throw new BadRequestException('فقط خبر ردشده قابل بازگردانی به اتاق خبر است');
+    const nextStatus = article.titleFa?.trim() && article.summaryFa?.trim() ? 'ready' : 'new';
+    const updated = await this.prisma.newsArticle.update({
+      where: { id },
+      data: {
+        status: nextStatus,
+        rejectedAt: null,
+        purgeAfter: null,
+        processingStartedAt: null,
+        lastError: '',
+      },
+    });
+    await this.recordWorkflow({
+      tenantId,
+      id,
+      fromStatus: 'rejected',
+      toStatus: nextStatus,
+      action: 'restored-from-rejected',
+      title: `خبر «${updated.titleFa || updated.originalTitle}» به اتاق خبر بازگردانده شد`,
+    });
+    return updated;
+  }
+
   async translateFull(tenantId: string, id: string, access?: MemberNewsroomAccess) {
     const article = await this.findArticle(tenantId, id);
     assertNewsroomArticleAccess(article, access);
@@ -828,7 +856,23 @@ export class NewsroomService {
       throw new BadRequestException('ترجمه کامل در وضعیت فعلی مجاز نیست');
     }
     const deferred = await this.deferHeavyWork(tenantId, 'news.translate', { articleId: id }, `news:${id}:translate`);
-    if (deferred) return deferred;
+    if (deferred) {
+      const claimed = await this.prisma.newsArticle.updateMany({
+        where: { id, tenantId, status: { in: ['ready', 'publish_failed'] } },
+        data: { status: 'processing', processingStartedAt: new Date(), lastError: '' },
+      });
+      if (claimed.count) {
+        await this.recordWorkflow({
+          tenantId,
+          id,
+          fromStatus: article.status,
+          toStatus: 'processing',
+          action: 'full-text-translation-queued',
+          title: `استخراج و ترجمه متن کامل «${article.titleFa || article.originalTitle}» به صف پردازش رفت`,
+        });
+      }
+      return deferred;
+    }
     const claimed = await this.prisma.newsArticle.updateMany({
       where: { id, tenantId, status: { in: ['ready', 'publish_failed'] } },
       data: { status: 'processing', processingStartedAt: new Date(), lastError: '' },
@@ -1013,7 +1057,7 @@ export class NewsroomService {
       fullTextAvailable: article.originalContentIsFull
         || looksLikeFullStoredFeedContent(article.originalContent, article.originalSummary),
     });
-    const originalContent = source.text;
+    const originalContent = cleanExtractedArticleText(source.text);
     const featuredImageUrl = source.featuredImageUrl || article.featuredImageUrl;
     if (!originalContent.trim()) throw new Error('متن کامل خبر از منبع دریافت نشد');
     if (source.contentSource === 'feed' && source.isFullText === false) {
@@ -1043,7 +1087,7 @@ export class NewsroomService {
     return {
       originalContent,
       originalContentIsFull: source.isFullText,
-      contentFa: translated.join('\n\n'),
+      contentFa: cleanExtractedArticleText(translated.join('\n\n')),
       featuredImageUrl,
     };
   }

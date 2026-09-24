@@ -27,6 +27,7 @@ model NewsFeed {
   purpose             String          @default("news-room")
   sourceLanguage      String          @default("auto")
   catalogGroup        String          @default("media-domestic")
+  topicLabel          String          @default("")
   logoUrl             String          @default("")
   rightsMode          String          @default("quote_ok")
   adapterConfig       Json            @default("{}")
@@ -55,6 +56,7 @@ model PlatformFeed {
   url                 String                 @unique
   sourceType          String                 @default("rss")
   catalogGroup        String                 @default("media-domestic")
+  topicLabel          String                 @default("")
   resolvedFeedUrl     String                 @default("")
   includeWords        String[]               @default([])
   excludeWords        String[]               @default([])

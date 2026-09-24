@@ -21,6 +21,7 @@ import { UpdateUsageMetricsDto } from '../usage/dto/update-usage-metrics.dto';
 import { UpdatePlatformAiSettingsDto } from './dto/platform-ai-settings.dto';
 import { UpdatePlatformSourceFetchSettingsDto } from './dto/platform-source-fetch-settings.dto';
 import { UpdatePlatformCatalogHealthSettingsDto } from './dto/platform-catalog-health-settings.dto';
+import { UpdateFeedTopicLabelsDto } from './dto/platform-topic-labels.dto';
 import { UpdatePlatformPaymentSettingsDto } from './dto/update-platform-payment-settings.dto';
 
 @Controller('platform')
@@ -274,6 +275,18 @@ export class PlatformAdminController {
   catalogHealthRunStatus(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);
     return this.publishing.catalogHealthStatus();
+  }
+
+  @Get('feed-topic-labels')
+  feedTopicLabels(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.publishing.feedTopicLabels();
+  }
+
+  @Put('feed-topic-labels')
+  saveFeedTopicLabels(@User() actor: AuthUser, @Body() body: UpdateFeedTopicLabelsDto) {
+    this.assertSuperAdmin(actor);
+    return this.publishing.saveFeedTopicLabels(body);
   }
 
   @Get('catalog-health-settings')

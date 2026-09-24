@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Newspaper, RefreshCw, Rss, Settings2, Trash2 } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
@@ -76,6 +76,24 @@ export default function NewsPage() {
     [categoriesApi.data],
   );
   const articles = useMemo(() => (Array.isArray(articleData?.items) ? articleData.items : []), [articleData]);
+
+  useEffect(() => {
+    setTranslatePendingIds((current) => {
+      const ids = Object.keys(current);
+      if (!ids.length) return current;
+      let changed = false;
+      const next = { ...current };
+      for (const id of ids) {
+        const article = articles.find((item) => item.id === id);
+        if (!article) continue;
+        if (article.contentFa?.trim() || ['failed', 'publish_failed'].includes(article.status)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [articles]);
 
   const activeFilter = newsroomFilterMeta(status);
 
@@ -172,16 +190,16 @@ export default function NewsPage() {
       });
       await articlesApi.refetch();
     } catch (error) {
-      setNotice({
-        type: 'error',
-        text: error instanceof ApiError ? error.message : 'آماده‌سازی برای انتشار انجام نشد؛ دوباره تلاش کنید.',
-      });
-    } finally {
       setTranslatePendingIds((current) => {
         const next = { ...current };
         delete next[id];
         return next;
       });
+      setNotice({
+        type: 'error',
+        text: error instanceof ApiError ? error.message : 'آماده‌سازی برای انتشار انجام نشد؛ دوباره تلاش کنید.',
+      });
+    } finally {
       setBusy(null);
     }
   }, [articles, articlesApi, openPublishModal]);
@@ -245,18 +263,19 @@ export default function NewsPage() {
     }
   }, [articlesApi]);
 
-  const reject = async (id: string) => {
-    const ok = await confirm({
-      title: 'رد این خبر؟',
-      description: 'خبر به بخش ردشده‌ها منتقل می‌شود و پس از ۳ روز برای همیشه حذف خواهد شد.',
-      confirmLabel: 'رد خبر',
-      variant: 'danger',
-    });
-    if (!ok) return;
+  const reject = (id: string) => {
     void run(
       `reject-${id}`,
       () => apiFetch(`/publishing/news/articles/${id}/reject`, { method: 'POST' }),
       'خبر به بخش ردشده‌ها منتقل شد.',
+    );
+  };
+
+  const restoreRejected = (id: string) => {
+    void run(
+      `restore-${id}`,
+      () => apiFetch(`/publishing/news/articles/${id}/restore`, { method: 'POST' }),
+      'خبر به اتاق خبر بازگردانده شد.',
     );
   };
 
@@ -423,6 +442,7 @@ export default function NewsPage() {
                 onTranslateFull={(id) => { void translateFull(id); }}
                 onSendToSocial={sendToSocial}
                 onReject={reject}
+                onRestore={restoreRejected}
               />
             ))}
             {(cursor || articleData?.nextCursor) && (
