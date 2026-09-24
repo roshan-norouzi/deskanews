@@ -1,5 +1,15 @@
 export const DEFAULT_PLATFORM_POLL_MINUTES = 240;
 
+/** Effective org default from publishing settings (`news_poll_interval_minutes`). */
+export function resolveOrganizationPollMinutes(raw?: string | number | null): number {
+  const fallback = DEFAULT_PLATFORM_POLL_MINUTES;
+  const parsed = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim() || String(fallback));
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded < 5 || rounded > 1440) return fallback;
+  return rounded;
+}
+
 export type TenantFeedSettingsMode = 'default' | 'custom';
 
 export type TenantSubscriptionSettings = {
@@ -11,21 +21,27 @@ export type TenantSubscriptionSettings = {
   autoPoll?: boolean | null;
 };
 
-export function resolveTenantFeedSettings(subscription: TenantSubscriptionSettings | null | undefined) {
+export function resolveTenantFeedSettings(
+  subscription: TenantSubscriptionSettings | null | undefined,
+  organizationPollMinutes?: number,
+) {
+  const orgPoll = organizationPollMinutes === undefined
+    ? DEFAULT_PLATFORM_POLL_MINUTES
+    : resolveOrganizationPollMinutes(organizationPollMinutes);
   if (subscription?.settingsMode === 'custom') {
     const poll = subscription.pollIntervalMinutes;
     return {
       settingsMode: 'custom' as const,
       includeWords: subscription.includeWords ?? [],
       excludeWords: subscription.excludeWords ?? [],
-      pollIntervalMinutes: typeof poll === 'number' && poll >= 5 ? poll : DEFAULT_PLATFORM_POLL_MINUTES,
+      pollIntervalMinutes: typeof poll === 'number' && poll >= 5 ? poll : orgPoll,
     };
   }
   return {
     settingsMode: 'default' as const,
     includeWords: [] as string[],
     excludeWords: [] as string[],
-    pollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
+    pollIntervalMinutes: orgPoll,
   };
 }
 

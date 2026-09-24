@@ -2,23 +2,34 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   DEFAULT_PLATFORM_POLL_MINUTES,
+  resolveOrganizationPollMinutes,
   resolveTenantFeedSettings,
   isAutoPollingSubscription,
   isSubscriptionDue,
   shouldRefreshSharedCatalog,
 } = require('../dist/modules/smart-publishing/tenant-platform-feed-settings');
 
-test('default org settings ignore leftover catalog words and use the system poll interval', () => {
+test('default org settings ignore leftover catalog words and use the organization poll interval', () => {
   const resolved = resolveTenantFeedSettings({
     settingsMode: 'default',
     includeWords: ['نباید-اعمال-شود'],
     excludeWords: ['هم-این'],
     pollIntervalMinutes: 15,
-  });
+  }, 60);
   assert.deepEqual(resolved.includeWords, []);
   assert.deepEqual(resolved.excludeWords, []);
-  assert.equal(resolved.pollIntervalMinutes, DEFAULT_PLATFORM_POLL_MINUTES);
+  assert.equal(resolved.pollIntervalMinutes, 60);
   assert.equal(resolved.settingsMode, 'default');
+});
+
+test('default org settings fall back to the platform poll interval when org interval is omitted', () => {
+  const resolved = resolveTenantFeedSettings({ settingsMode: 'default' });
+  assert.equal(resolved.pollIntervalMinutes, DEFAULT_PLATFORM_POLL_MINUTES);
+});
+
+test('resolveOrganizationPollMinutes clamps publishing settings', () => {
+  assert.equal(resolveOrganizationPollMinutes('60'), 60);
+  assert.equal(resolveOrganizationPollMinutes('3'), DEFAULT_PLATFORM_POLL_MINUTES);
 });
 
 test('custom org settings keep that organization words and poll interval', () => {

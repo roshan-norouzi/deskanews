@@ -336,6 +336,12 @@ function isWorkerTransportFailure(error: unknown): boolean {
   return /ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPROTO|fetch failed|socket|اتصال امن|مهلت|timeout|Worker منبع با خطای HTTP/u.test(message);
 }
 
+function serverCouldNotReachArticle(error: unknown): boolean {
+  const message = httpErrorMessage(error);
+  if (/upstream_http_|host_not_allowed|unauthorized|Worker منبع|از طریق Worker ناموفق/u.test(message)) return false;
+  return /10\.10\.34|فیلترینگ|HTTP 403|HTTP 451|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|مهلت|timeout|socket/u.test(message);
+}
+
 /** News feeds may succeed via direct server fetch when the fetch service gets blocked by the publisher. */
 function shouldRetryNewsFetchDirectly(bridgeError: unknown, social: boolean): boolean {
   if (social) return false;
@@ -1078,23 +1084,82 @@ export class SourceReaderService {
   }
 
   async readArticle(articleUrl: string): Promise<SourceArticle> {
+    let html = '';
     let directError: unknown;
     try {
-      const html = await this.safeFetchText(articleUrl, MAX_ARTICLE_BYTES, ['text/html', 'application/xhtml+xml']);
-      return this.extractArticleHtml(articleUrl, html);
+      html = await this.safeFetchText(articleUrl, MAX_ARTICLE_BYTES, ['text/html', 'application/xhtml+xml']);
     } catch (error) {
       directError = error;
     }
 
+    if (html) {
+      try {
+        return await this.extractArticleOrLinked(articleUrl, html);
+      } catch (error) {
+        directError = error;
+      }
+    } else if (serverCouldNotReachArticle(directError)) {
+      try {
+        const bridged = await this.fetchArticleHtmlViaBridge(articleUrl);
+        if (bridged) return await this.extractArticleOrLinked(articleUrl, bridged);
+      } catch (error) {
+        directError = error;
+      }
+    }
+
     try {
       const rendered = await this.renderArticlePage(articleUrl);
-      return this.extractArticleHtml(rendered.url, rendered.html);
+      return await this.extractArticleOrLinked(rendered.url || articleUrl, rendered.html);
     } catch (browserError) {
       const directMessage = directError instanceof Error ? directError.message : 'استخراج مستقیم ناموفق بود';
       const browserMessage = browserError instanceof Error ? browserError.message : 'استخراج مرورگری ناموفق بود';
       this.logger.warn(`Article extraction failed after direct and browser attempts: ${directMessage}; ${browserMessage}`);
       throw new BadRequestException(`${directMessage}؛ بازیابی مرورگری نیز ناموفق بود: ${browserMessage}`);
     }
+  }
+
+  /**
+   * Summary-only feeds still have a source URL. If that page only exposes a
+   * lead, follow its AMP or print link; those are usually static full text.
+   */
+  private async extractArticleOrLinked(articleUrl: string, html: string): Promise<SourceArticle> {
+    try {
+      return this.extractArticleHtml(articleUrl, html);
+    } catch (error) {
+      const linked = await this.readLinkedArticle(articleUrl, html).catch(() => null);
+      if (linked) return linked;
+      throw error;
+    }
+  }
+
+  private async readLinkedArticle(articleUrl: string, html: string): Promise<SourceArticle | null> {
+    const $ = load(html);
+    const hrefs = [
+      $('link[rel="amphtml"]').attr('href') || '',
+      $('a[rel="amphtml"]').attr('href') || '',
+      $('link[rel="alternate"][href*="print" i]').attr('href') || '',
+      $('a[href*="/print" i], a[href*="print=1" i]').first().attr('href') || '',
+    ];
+    const seen = new Set<string>([articleUrl]);
+    for (const href of hrefs) {
+      const url = normalizeUrl(href, articleUrl);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      if (seen.size > 3) break;
+      try {
+        const linked = await this.safeFetchText(url, MAX_ARTICLE_BYTES, ['text/html', 'application/xhtml+xml']);
+        return this.extractArticleHtml(url, linked);
+      } catch {
+        // The next linked representation may still contain the article.
+      }
+    }
+    return null;
+  }
+
+  private async fetchArticleHtmlViaBridge(articleUrl: string): Promise<string> {
+    const route = await this.resolveSourceFetch();
+    if (!route.url) return '';
+    return this.safeFetchTextViaBridge(articleUrl, MAX_ARTICLE_BYTES, ['text/html', 'application/xhtml+xml']);
   }
 
   private extractArticleHtml(articleUrl: string, html: string): SourceArticle {
@@ -1155,6 +1220,15 @@ export class SourceReaderService {
         scan(JSON.parse(metadata$(node).text()) as unknown);
       } catch { /* malformed JSON-LD is ignored */ }
     });
+    if (articleText.length < 200) {
+      for (const selector of selectors) {
+        $(selector).each((_, element) => {
+          const candidate = this.htmlToText($(element).html() || '');
+          if (candidate.length > articleText.length && candidate.length <= 120_000) articleText = candidate;
+        });
+        if (articleText.length >= 200) break;
+      }
+    }
     if (articleText.length < 200) throw new BadRequestException('متن کامل خبر از صفحه منبع قابل استخراج نبود');
 
     const title = (metadata$('meta[property="og:title"]').attr('content') || structuredTitle || metadata$('h1').first().text() || metadata$('title').text()).replace(/\s+/g, ' ').trim();

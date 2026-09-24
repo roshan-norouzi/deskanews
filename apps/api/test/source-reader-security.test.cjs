@@ -611,3 +611,51 @@ test('SourceReader skips browser rendering when ordinary HTML already contains t
   assert.equal(source.title, 'خبر عادی');
   assert.match(source.text, /بدون اجرای مرورگر/);
 });
+
+test('SourceReader reads the full article from the source AMP link when the page only has a summary', async () => {
+  const service = new SourceReaderService();
+  const full = 'متن کامل خبر که فقط در نسخه AMP صفحه منبع وجود دارد و برای انتشار کافی است. '.repeat(6);
+  service.safeFetchText = async (url) => {
+    if (String(url).includes('/amp')) {
+      return `<html><head><title>خبر کامل</title></head><body><article><p>${full}</p></article></body></html>`;
+    }
+    return '<html><head><link rel="amphtml" href="https://news.example/story/amp"><meta property="og:description" content="فقط چکیده"></head><body><article><p>فقط چکیده</p></article></body></html>';
+  };
+  service.renderArticlePage = async () => { throw new Error('browser should not run'); };
+
+  const source = await service.readArticle('https://news.example/story');
+
+  assert.match(source.text, /نسخه AMP/);
+  assert.equal(source.contentSource, 'page');
+  assert.equal(source.isFullText, true);
+});
+
+test('SourceReader fetches the article page through the worker when the server cannot reach the source', async () => {
+  const service = new SourceReaderService({
+    getSourceFetchPolicy: async () => ({ url: 'https://deska.example.workers.dev', secret: '', newsViaBridge: false }),
+  });
+  const full = 'متن کامل خبر که سرور به‌خاطر فیلترینگ مستقیم ندید و از Worker آمد. '.repeat(6);
+  service.safeFetchText = async () => {
+    throw new BadRequestException('دامنه در DNS سرور به آدرس داخلی فیلترینگ (10.10.34.x) نگاشت شده است؛ دریافت این منبع را از طریق Worker انجام دهید');
+  };
+  service.safeFetchTextViaBridge = async () => `<html><head><title>از ورکر</title></head><body><article><p>${full}</p></article></body></html>`;
+  service.renderArticlePage = async () => { throw new Error('browser should not run'); };
+
+  const source = await service.readArticle('https://news.example/filtered');
+
+  assert.match(source.text, /از Worker آمد/);
+  assert.equal(source.contentSource, 'page');
+  assert.equal(source.isFullText, true);
+});
+
+test('SourceReader extracts a full article stored as plain text inside the body container', async () => {
+  const service = new SourceReaderService();
+  const full = 'متن کامل خبر داخل یک بلوک بدون پاراگراف جداگانه ذخیره شده است. '.repeat(8);
+  service.safeFetchText = async () => `<html><head><title>بلوک</title></head><body><div class="article-content">${full}</div></body></html>`;
+  service.renderArticlePage = async () => { throw new Error('browser should not run'); };
+
+  const source = await service.readArticle('https://news.example/block');
+
+  assert.match(source.text, /بدون پاراگراف/);
+  assert.equal(source.contentSource, 'page');
+});

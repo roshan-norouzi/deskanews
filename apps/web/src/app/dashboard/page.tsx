@@ -1,26 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  Activity,
-  AlertTriangle,
-  Bell,
-  Bot,
-  RefreshCw,
-  Rss,
-  Send,
-} from 'lucide-react';
+import { AlertTriangle, LayoutDashboard, RefreshCw } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
-import { Card } from '@/components/ui/card';
-import { StatCard } from '@/components/ui/stat-card';
+import { OrganizationsDashboardSection } from '@/components/organizations/organizations-dashboard-section';
+import { WorkQueueCard } from '@/components/dashboard/work-queue-card';
 import { Button } from '@/components/ui/button';
 import { PageContainer } from '@/components/ui/page-container';
+import { PageHeader } from '@/components/ui/page-header';
 import { NoticeBanner } from '@/components/ui/notice-banner';
 import { PageLoading } from '@/components/ui/page-loading';
 import { useApi } from '@/hooks/use-api';
 import { formatJalaliDateTime } from '@/lib/date';
-import { OrganizationsDashboardSection } from '@/components/organizations/organizations-dashboard-section';
+import { useTenant } from '@/lib/tenant-context';
 
 interface DashboardStats {
   publishing: {
@@ -46,6 +39,7 @@ interface DashboardStats {
 
 function DashboardContent() {
   const { data, isLoading, error, refetch } = useApi<DashboardStats>('/dashboard/stats');
+  const { activeTenant } = useTenant();
 
   if (isLoading) {
     return <PageLoading className="py-24" />;
@@ -64,120 +58,102 @@ function DashboardContent() {
 
   if (!data) return null;
 
-  const stats = [
-    { label: 'در پردازش (اتاق خبر)', value: data.publishing.newsroom.processing, icon: Rss, tone: 'bg-primary-50 text-primary-600', href: '/publishing/news' },
-    { label: 'ورودی استودیو', value: data.publishing.social.inbox, icon: Send, tone: 'bg-primary-50 text-primary-700', href: '/publishing/social' },
-    { label: 'کارهای صف', value: data.publishing.queue.queued + data.publishing.queue.running, icon: Bot, tone: 'bg-cyan-50 text-cyan-600', href: '/publishing/operations' },
-    {
-      label: 'فرایندهای متوقف',
-      value: data.publishing.queue.dead,
-      icon: Activity,
-      tone: data.publishing.queue.dead ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600',
+  const alerts: Array<{ text: string; href: string }> = [];
+  if (data.publishing.newsroom.failed > 0) {
+    alerts.push({
+      text: `${formatPersianDigits(data.publishing.newsroom.failed)} خبر خطادار در اتاق خبر منتظر رسیدگی است.`,
+      href: '/publishing/news',
+    });
+  }
+  if (data.publishing.social.failed > 0) {
+    alerts.push({
+      text: `${formatPersianDigits(data.publishing.social.failed)} مطلب اجتماعی خطادار است.`,
+      href: '/publishing/social',
+    });
+  }
+  if (data.publishing.queue.dead > 0) {
+    alerts.push({
+      text: `${formatPersianDigits(data.publishing.queue.dead)} فرایند متوقف‌شده در صف وجود دارد.`,
       href: '/publishing/operations',
-    },
-    {
-      label: 'اتصال ناسالم',
-      value: data.publishing.unhealthyIntegrations,
-      icon: AlertTriangle,
-      tone: data.publishing.unhealthyIntegrations ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600',
+    });
+  }
+  if (data.publishing.unhealthyIntegrations > 0) {
+    alerts.push({
+      text: `${formatPersianDigits(data.publishing.unhealthyIntegrations)} اتصال ناسالم است.`,
       href: '/publishing/operations',
-    },
-    {
-      label: 'اعلان خوانده‌نشده',
-      value: data.notifications.unread,
-      icon: Bell,
-      tone: data.notifications.unread ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600',
-    },
-  ];
+    });
+  }
 
   return (
-    <PageContainer className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="ds-page-title">داشبورد</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            آخرین بروزرسانی: {formatJalaliDateTime(data.generatedAt)}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => void refetch()}>
-            <RefreshCw className="h-4 w-4" />
-            بروزرسانی
-          </Button>
-          <Link href="/publishing/operations">
-            <Button size="sm">مرکز عملیات</Button>
-          </Link>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="داشبورد"
+        icon={LayoutDashboard}
+        description={
+          activeTenant
+            ? `${activeTenant.name} · آخرین بروزرسانی ${formatJalaliDateTime(data.generatedAt)}`
+            : `آخرین بروزرسانی ${formatJalaliDateTime(data.generatedAt)}`
+        }
+        actions={(
+          <>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              <RefreshCw className="h-4 w-4" />
+              بروزرسانی
+            </Button>
+            <Link href="/publishing/operations">
+              <Button variant="outline" size="sm">مرکز عملیات</Button>
+            </Link>
+            <Link href="/publishing/news">
+              <Button size="sm">اتاق خبر</Button>
+            </Link>
+          </>
+        )}
+      />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {stats.map((item) => (
-          <StatCard key={item.label} {...item} />
-        ))}
+      {alerts.length > 0 && (
+        <NoticeBanner tone="error">
+          <div className="space-y-1">
+            {alerts.map((alert) => (
+              <p key={alert.text} className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <Link href={alert.href} className="font-medium underline-offset-2 hover:underline">
+                  {alert.text}
+                </Link>
+              </p>
+            ))}
+          </div>
+        </NoticeBanner>
+      )}
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <WorkQueueCard
+          title="اتاق خبر"
+          href="/publishing/news"
+          actionLabel="باز کردن"
+          metrics={[
+            { label: 'آماده اقدام', value: data.publishing.newsroom.action, href: '/publishing/news', tone: data.publishing.newsroom.failed > 0 ? 'default' : 'action' },
+            { label: 'خطادار', value: data.publishing.newsroom.failed, href: '/publishing/news', tone: 'danger' },
+            { label: 'در پردازش', value: data.publishing.newsroom.processing, href: '/publishing/news' },
+            { label: 'در حال انجام', value: data.publishing.newsroom.preparing, href: '/publishing/news' },
+            { label: 'منتشر امروز', value: data.publishing.newsroom.publishedToday, href: '/publishing/news' },
+          ]}
+        />
+        <WorkQueueCard
+          title="استودیوی اجتماعی"
+          href="/publishing/social"
+          actionLabel="باز کردن"
+          metrics={[
+            { label: 'آماده انتشار', value: data.publishing.social.ready, href: '/publishing/social', tone: 'action' },
+            { label: 'خطادار', value: data.publishing.social.failed, href: '/publishing/social', tone: 'danger' },
+            { label: 'ورودی', value: data.publishing.social.inbox, href: '/publishing/social' },
+            { label: 'در حال کار', value: data.publishing.social.preparing, href: '/publishing/social' },
+            { label: 'منتشر امروز', value: data.publishing.social.publishedToday, href: '/publishing/social' },
+          ]}
+        />
       </section>
 
       <OrganizationsDashboardSection />
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <PublishingSummary
-          title="اتاق خبر"
-          href="/publishing/news"
-          icon={<Rss className="h-5 w-5 text-blue-600" />}
-          values={[
-            ['در پردازش', data.publishing.newsroom.processing],
-            ['در حال انجام', data.publishing.newsroom.preparing],
-            ['آماده اقدام', data.publishing.newsroom.action],
-            ['خطادار', data.publishing.newsroom.failed],
-            ['آرشیو', data.publishing.newsroom.archive],
-            ['امروز', data.publishing.newsroom.publishedToday],
-          ]}
-        />
-        <PublishingSummary
-          title="استودیوی اجتماعی"
-          href="/publishing/social"
-          icon={<Send className="h-5 w-5 text-violet-600" />}
-          values={[
-            ['ورودی', data.publishing.social.inbox],
-            ['در حال کار', data.publishing.social.preparing],
-            ['آماده', data.publishing.social.ready],
-            ['خطادار', data.publishing.social.failed],
-            ['امروز', data.publishing.social.publishedToday],
-          ]}
-        />
-      </section>
     </PageContainer>
-  );
-}
-
-function PublishingSummary({
-  title,
-  href,
-  icon,
-  values,
-}: {
-  title: string;
-  href: string;
-  icon: React.ReactNode;
-  values: Array<[string, number]>;
-}) {
-  return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h3 className="font-semibold text-slate-900">{title}</h3>
-        </div>
-        <Link href={href} className="text-sm font-medium text-primary-600 hover:text-primary-700">مشاهده</Link>
-      </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {values.map(([label, value]) => (
-          <div key={label} className="rounded-lg bg-slate-100 p-3 text-center">
-            <p className="text-xs text-slate-500">{label}</p>
-            <p className="mt-1 text-xl font-bold text-slate-900">{formatPersianDigits(value)}</p>
-          </div>
-        ))}
-      </div>
-    </Card>
   );
 }
 

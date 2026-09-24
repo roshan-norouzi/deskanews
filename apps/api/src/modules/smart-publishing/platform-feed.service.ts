@@ -12,6 +12,7 @@ import {
   DEFAULT_PLATFORM_POLL_MINUTES,
   isAutoPollingSubscription,
   isSubscriptionDue,
+  resolveOrganizationPollMinutes,
   resolveTenantFeedSettings,
   shouldRefreshSharedCatalog,
 } from './tenant-platform-feed-settings';
@@ -106,8 +107,8 @@ function mapTenantPlatformFeedRow(row: {
     lastFetchedAt: Date | null;
     lastError: string;
   };
-}) {
-  const resolved = resolveTenantFeedSettings(row);
+}, organizationPollMinutes: number) {
+  const resolved = resolveTenantFeedSettings(row, organizationPollMinutes);
   return {
     id: row.platformFeed.id,
     scope: 'platform' as const,
@@ -125,7 +126,7 @@ function mapTenantPlatformFeedRow(row: {
     settingsMode: resolved.settingsMode,
     customIncludeWords: row.includeWords,
     customExcludeWords: row.excludeWords,
-    catalogPollIntervalMinutes: DEFAULT_PLATFORM_POLL_MINUTES,
+    catalogPollIntervalMinutes: organizationPollMinutes,
     sourceLanguage: row.platformFeed.sourceLanguage,
     purpose: 'news-room' as const,
     enabled: row.enabled,
@@ -221,6 +222,11 @@ export class PlatformFeedService implements OnModuleInit {
     void this.ensureDefaultPlatformFeeds().catch((error) => {
       this.logger.warn(`Default platform feeds could not be ensured: ${error instanceof Error ? error.message : 'unknown error'}`);
     });
+  }
+
+  private async organizationPollMinutes(tenantId: string): Promise<number> {
+    const publicSettings = await this.settings.getPublic(tenantId);
+    return resolveOrganizationPollMinutes(publicSettings.news_poll_interval_minutes);
   }
 
   private async readStoredCatalogVersion(): Promise<number> {
@@ -820,7 +826,8 @@ export class PlatformFeedService implements OnModuleInit {
       orderBy: { platformFeed: { name: 'asc' } },
     });
     this.scheduleSocialPhotoBackfill(rows.map((row) => row.platformFeed));
-    return rows.map((row) => mapTenantPlatformFeedRow(row));
+    const organizationPollMinutes = await this.organizationPollMinutes(tenantId);
+    return rows.map((row) => mapTenantPlatformFeedRow(row, organizationPollMinutes));
   }
 
   private scheduleSocialPhotoBackfill(
@@ -903,7 +910,8 @@ export class PlatformFeedService implements OnModuleInit {
       await this.queueSharedPreparation(platformFeedId, 10, tenantId);
     }
 
-    return mapTenantPlatformFeedRow(updated);
+    const organizationPollMinutes = await this.organizationPollMinutes(tenantId);
+    return mapTenantPlatformFeedRow(updated, organizationPollMinutes);
   }
 
   async toggleForTenant(tenantId: string, platformFeedId: string, enabled?: boolean) {
@@ -972,7 +980,8 @@ export class PlatformFeedService implements OnModuleInit {
     const subscription = await this.prisma.tenantPlatformFeed.findUnique({
       where: { tenantId_platformFeedId: { tenantId, platformFeedId } },
     });
-    const tenantSettings = resolveTenantFeedSettings(subscription ?? {});
+    const organizationPollMinutes = await this.organizationPollMinutes(tenantId);
+    const tenantSettings = resolveTenantFeedSettings(subscription ?? {}, organizationPollMinutes);
     const articles = await this.prisma.platformFeedArticle.findMany({
       where: { platformFeedId },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
@@ -1153,15 +1162,28 @@ export class PlatformFeedService implements OnModuleInit {
         },
         orderBy: { lastFetchedAt: 'asc' },
       });
+      const organizationPollByTenant = new Map<string, number>();
+      const orgPollForTenant = async (tenantId: string) => {
+        let cached = organizationPollByTenant.get(tenantId);
+        if (cached === undefined) {
+          cached = await this.organizationPollMinutes(tenantId);
+          organizationPollByTenant.set(tenantId, cached);
+        }
+        return cached;
+      };
       for (const feed of feeds) {
-        const due = feed.subscriptions.filter((subscription) => {
-          if (!isAutoPollingSubscription(subscription)) return false;
-          const settings = resolveTenantFeedSettings(subscription);
-          return isSubscriptionDue(subscription.lastSyncedAt, settings.pollIntervalMinutes);
-        });
+        const due = [];
+        for (const subscription of feed.subscriptions) {
+          if (!isAutoPollingSubscription(subscription)) continue;
+          const orgPoll = await orgPollForTenant(subscription.tenantId);
+          const settings = resolveTenantFeedSettings(subscription, orgPoll);
+          if (isSubscriptionDue(subscription.lastSyncedAt, settings.pollIntervalMinutes)) {
+            due.push({ subscription, pollIntervalMinutes: settings.pollIntervalMinutes });
+          }
+        }
         if (!due.length) continue;
-        const dueTenantIds = due.map((subscription) => subscription.tenantId);
-        const dueIntervals = due.map((subscription) => resolveTenantFeedSettings(subscription).pollIntervalMinutes);
+        const dueTenantIds = due.map(({ subscription }) => subscription.tenantId);
+        const dueIntervals = due.map(({ pollIntervalMinutes }) => pollIntervalMinutes);
         try {
           if (shouldRefreshSharedCatalog(feed.lastFetchedAt, dueIntervals)) {
             await this.fetch(feed.id, { tenantIds: dueTenantIds });

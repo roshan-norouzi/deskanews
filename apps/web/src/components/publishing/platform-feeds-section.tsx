@@ -13,6 +13,7 @@ import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
+import { newsOrganizationAutomation } from '@/lib/news-feed-automation';
 import { sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
 import {
   FEED_CATALOG_GROUPS,
@@ -66,8 +67,6 @@ function wordsToString(words?: string[]) {
   return (words || []).join('، ');
 }
 
-const DEFAULT_ORG_POLL_MINUTES = 240;
-
 interface PlatformFeedsSectionProps {
   activeGroup: FeedCatalogGroup;
   onActiveGroupChange: (group: FeedCatalogGroup) => void;
@@ -90,6 +89,8 @@ export function PlatformFeedsSection({
   tenantActiveCountsByGroup,
 }: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
+  const { data: orgSettings } = useApi<Record<string, string>>('/publishing/settings');
+  const orgPollMinutes = Number(newsOrganizationAutomation(orgSettings ?? {}).pollIntervalMinutes) || 240;
   const { isSuperAdmin } = useAuth();
   const { activeTenant } = useTenant();
   const canManage = isSuperAdmin || ['owner', 'admin', 'manager', 'senior_specialist'].includes(activeTenant?.memberRole || '');
@@ -125,7 +126,7 @@ export function PlatformFeedsSection({
     settingsMode: 'default',
     includeWords: '',
     excludeWords: '',
-    pollIntervalMinutes: '240',
+    pollIntervalMinutes: String(orgPollMinutes),
     autoPoll: true,
     autoPrepare: true,
     autoPublish: false,
@@ -283,15 +284,15 @@ export function PlatformFeedsSection({
                         onClick={() => {
                           setEditing(feed);
                           editingIdRef.current = feed.id;
+                          const mode = feed.settingsMode ?? 'default';
                           setForm({
-                            settingsMode: feed.settingsMode ?? 'default',
+                            settingsMode: mode,
                             includeWords: wordsToString(feed.customIncludeWords ?? feed.includeWords),
                             excludeWords: wordsToString(feed.customExcludeWords ?? feed.excludeWords),
                             pollIntervalMinutes: String(
-                              feed.pollIntervalOverride
-                              ?? feed.pollIntervalMinutes
-                              ?? feed.catalogPollIntervalMinutes
-                              ?? 240,
+                              mode === 'custom'
+                                ? (feed.pollIntervalOverride ?? feed.pollIntervalMinutes ?? orgPollMinutes)
+                                : orgPollMinutes,
                             ),
                             autoPoll: feed.autoPoll ?? true,
                             autoPrepare: feed.autoPrepare ?? true,
@@ -346,8 +347,8 @@ export function PlatformFeedsSection({
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium text-slate-700">نوع تنظیمات</legend>
                 <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
-                  <input type="radio" name="settingsMode" checked={form.settingsMode === 'default'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'default' }))} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-slate-900">پیش‌فرض سازمان</span><span className="mt-1 block text-xs text-slate-500">بدون فیلتر کلمه؛ فاصله پایش {formatPersianDigits(DEFAULT_ORG_POLL_MINUTES)} دقیقه</span></span>
+                  <input type="radio" name="settingsMode" checked={form.settingsMode === 'default'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'default', pollIntervalMinutes: String(orgPollMinutes) }))} className="mt-1" />
+                  <span><span className="block text-sm font-semibold text-slate-900">پیش‌فرض سازمان</span><span className="mt-1 block text-xs text-slate-500">بدون فیلتر کلمه؛ فاصله پایش {formatPersianDigits(orgPollMinutes)} دقیقه</span></span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
                   <input type="radio" name="settingsMode" checked={form.settingsMode === 'custom'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'custom' }))} className="mt-1" />
