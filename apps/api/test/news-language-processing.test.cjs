@@ -178,13 +178,14 @@ test('source settings are stored independently for each source', async () => {
   const prisma = {
     newsFeed: {
       findFirst: async ({ where }) => where.id ? feed : null,
-      create: async ({ data }) => { created = data; return { ...feed, ...data }; },
-      update: async ({ data }) => { updated = data; return { ...feed, ...data }; },
+      findMany: async () => [],
+      create: async ({ data }) => { created = data; return { ...feed, ...data, id: feed.id }; },
+      update: async ({ data }) => { updated = { ...(updated || {}), ...data }; Object.assign(feed, data); return { ...feed, ...data }; },
     },
     platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
   const sourceReader = { discoverFeedUrl: async () => 'https://source.example/rss.xml' };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
+  const newsroom = new NewsroomService(prisma, { chosenTopicLabel: async (label) => label ?? '' }, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   await newsroom.addFeed('tenant-a', { name: 'منبع اختصاصی', url: 'https://source.example', purpose: 'news-room', sourceType: 'website', includeWords: ['فناوری'], pollIntervalMinutes: 15, autoPoll: true, autoPrepare: false, autoPublish: true, autoSendSocial: false });
   await newsroom.updateFeed('tenant-a', feed.id, { includeWords: ['اقتصاد'], pollIntervalMinutes: 30, autoPoll: false, autoPrepare: true, autoPublish: false, autoSendSocial: true });
@@ -227,6 +228,7 @@ test('updating a source url and type reuses the same feed record', async () => {
         if (where.url && where.NOT?.id) return null;
         return null;
       },
+      findMany: async () => [],
       create: async () => {
         createCount += 1;
         throw new Error('create should not run while editing an existing source');
@@ -241,7 +243,7 @@ test('updating a source url and type reuses the same feed record', async () => {
     platformFeed: { findUnique: async () => null, findFirst: async () => null },
   };
   const sourceReader = { discoverFeedUrl: async () => '' };
-  const newsroom = new NewsroomService(prisma, {}, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
+  const newsroom = new NewsroomService(prisma, { chosenTopicLabel: async (label) => label ?? '' }, {}, sourceReader, {}, {}, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
 
   await newsroom.updateFeed('tenant-a', feed.id, {
     url: 'https://www.tasnimnews.com/rss',
@@ -249,7 +251,7 @@ test('updating a source url and type reuses the same feed record', async () => {
   });
 
   assert.equal(createCount, 0);
-  assert.equal(updateCount, 1);
+  assert.equal(updateCount, 2);
   assert.equal(feed.url, 'https://www.tasnimnews.com/rss');
   assert.equal(feed.sourceType, 'rss');
   assert.equal(feed.resolvedFeedUrl, '');
@@ -426,6 +428,103 @@ test('news automation durably queues social routing instead of publishing to Wor
   assert.deepEqual(queuedJobs[0].payload, { articleId: 'news-a' });
   assert.equal(queuedJobs[0].dedupeKey, 'news:news-a:send-social');
   assert.deepEqual(result, { prepared: 0, sentToSocial: 1, published: 0 });
+});
+
+test('news automation queues social routing for per-source autoSendSocial without org default', async () => {
+  const queuedJobs = [];
+  const prisma = {
+    newsArticle: {
+      findMany: async () => [{
+        id: 'news-catalog',
+        feed: null,
+        platformFeedArticle: {
+          platformFeed: {
+            subscriptions: [{ enabled: true, autoSendSocial: true, autoPublish: false }],
+          },
+        },
+      }],
+    },
+  };
+  const settings = {
+    getRaw: async () => ({
+      news_auto_prepare: 'false',
+      news_auto_send_social: 'false',
+      news_auto_publish: 'true',
+    }),
+  };
+  const jobs = {
+    enqueue: async (job) => {
+      queuedJobs.push(job);
+      return { created: true, job: { id: 'job-b' } };
+    },
+  };
+  const newsroom = new NewsroomService(prisma, settings, {}, {}, {}, jobs, integrationHealth, workflow, platformFeeds, usageTracking, destinationCategories, noopScheduler);
+
+  const result = await newsroom.queueAutomation('tenant-a', 3);
+
+  assert.equal(queuedJobs.length, 1);
+  assert.equal(queuedJobs[0].type, 'news.send-social');
+  assert.deepEqual(result, { prepared: 0, sentToSocial: 1, published: 0 });
+});
+
+test('sendNewsToStudio accepts catalog-synced news articles without tenant feed', async () => {
+  let capturedWhere;
+  const prisma = {
+    newsArticle: {
+      findFirst: async ({ where }) => {
+        capturedWhere = where;
+        return {
+          id: 'news-catalog',
+          tenantId: 'tenant-a',
+          feedId: null,
+          canonicalUrl: 'https://news.example/story',
+          originalUrl: 'https://news.example/story',
+          originalTitle: 'Original',
+          originalSummary: 'Summary',
+          originalContent: '',
+          titleFa: 'تیتر',
+          summaryFa: 'خلاصه',
+          sourceName: 'رسانه کاتالوگ',
+          publishedAtSource: new Date('2026-09-01T08:00:00Z'),
+          featuredImageUrl: '',
+          status: 'ready',
+          feed: null,
+          platformFeedArticle: { platformFeed: { name: 'رسانه کاتالوگ' } },
+        };
+      },
+      updateMany: async () => ({ count: 1 }),
+    },
+    socialArticle: {
+      findUnique: async () => null,
+      findMany: async () => [],
+      upsert: async (query) => ({ id: 'social-catalog', ...query.create }),
+    },
+  };
+  const settings = { getRaw: async () => ({ social_caption_template: '{title}' }) };
+  const gapGpt = {
+    prepareNewsForSocial: async () => ({ title: 'تیتر', lead: 'لید', summary: 'خلاصه' }),
+  };
+  const sourceReader = {
+    readArticleOrFallback: async () => ({ text: 'Summary', author: 'نویسنده', category: 'خبر' }),
+  };
+  const studio = new SocialStudioService(
+    prisma,
+    settings,
+    gapGpt,
+    sourceReader,
+    { enqueue: async () => ({ created: false, job: { id: 'noop' } }) },
+    integrationHealth,
+    workflow,
+    usageTracking,
+    noopScheduler,
+  );
+
+  const result = await studio.sendNewsToStudio('tenant-a', 'news-catalog');
+
+  assert.equal(capturedWhere.id, 'news-catalog');
+  assert.equal(capturedWhere.tenantId, 'tenant-a');
+  assert.ok(Array.isArray(capturedWhere.OR));
+  assert.equal(result.ok, true);
 });
 
 test('automatic social publishing records delivery and does not resend to the same network', async () => {

@@ -4,6 +4,7 @@ const {
   computeNewsroomDashboardStats,
   isNewsInProcessing,
   isNewsReadyForAction,
+  newsroomArticleWhere,
   newsroomStatsFromCounts,
 } = require('../dist/modules/smart-publishing/newsroom-article-stats');
 
@@ -46,6 +47,13 @@ test('dashboard counts match the in-memory newsroom stats', () => {
     publishedToday: 3,
   });
   assert.deepEqual(fromCounts, fromRows);
+});
+
+test('newsroomArticleWhere includes catalog-synced articles without tenant feed', () => {
+  const where = newsroomArticleWhere('tenant-1');
+  assert.equal(where.tenantId, 'tenant-1');
+  assert.ok(Array.isArray(where.OR));
+  assert.ok(where.OR.some((clause) => clause.platformFeedArticleId?.not === null));
 });
 
 test('ready without persian summary counts as processing not action', () => {

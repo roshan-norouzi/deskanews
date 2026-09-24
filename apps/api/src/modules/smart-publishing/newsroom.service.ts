@@ -1259,12 +1259,10 @@ export class NewsroomService {
       ? await this.enqueuePending(tenantId, limit, true)
       : 0;
     const routeToSocial = settingEnabled(settings.news_auto_send_social);
-    const sentToSocial = routeToSocial
-      ? await this.enqueueReady(tenantId, 'news.send-social', limit, 'autoSendSocial')
-      : 0;
-    const published = !routeToSocial && settingEnabled(settings.news_auto_publish)
-      ? await this.enqueueReady(tenantId, 'news.publish', limit, 'autoPublish')
-      : 0;
+    const sentToSocial = await this.enqueueReady(tenantId, 'news.send-social', limit, 'autoSendSocial');
+    const published = routeToSocial
+      ? 0
+      : await this.enqueueReady(tenantId, 'news.publish', limit, 'autoPublish');
     return { prepared, sentToSocial, published };
   }
 

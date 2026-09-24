@@ -14,6 +14,7 @@ import { decodeArticleCursor, encodeArticleCursor } from '../../common/article-p
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
+import { newsroomArticleWhere } from './newsroom-article-stats';
 
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -258,8 +259,16 @@ export class SocialStudioService {
 
   async sendNewsToStudio(tenantId: string, newsArticleId: string) {
     const news = await this.prisma.newsArticle.findFirst({
-      where: { id: newsArticleId, tenantId, feed: { purpose: 'news-room' } },
-      include: { feed: { select: { id: true, name: true } } },
+      where: {
+        id: newsArticleId,
+        ...newsroomArticleWhere(tenantId),
+      },
+      include: {
+        feed: { select: { id: true, name: true } },
+        platformFeedArticle: {
+          select: { platformFeed: { select: { name: true } } },
+        },
+      },
     });
     if (!news) throw new NotFoundException('خبر یافت نشد');
 
@@ -298,10 +307,10 @@ export class SocialStudioService {
           title: news.titleFa || news.originalTitle,
           canonicalUrl: news.canonicalUrl,
           featuredImageUrl: news.featuredImageUrl,
-          author: news.sourceName || news.feed?.name || '',
+          author: news.sourceName || news.feed?.name || news.platformFeedArticle?.platformFeed.name || '',
         }).catch(() => null),
       ]);
-      const sourceName = news.sourceName || news.feed?.name || '';
+      const sourceName = news.sourceName || news.feed?.name || news.platformFeedArticle?.platformFeed.name || '';
       const text = news.summaryFa || news.originalSummary || news.originalContent || news.originalTitle;
       const aiStartedAt = Date.now();
       let prepared: { title: string; lead: string; summary: string };
