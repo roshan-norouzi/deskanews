@@ -314,8 +314,24 @@ export default function PublishingSettingsPage() {
     });
   };
 
-  function setCoverTemplateLibrary(library: CoverTemplateLibrary) {
-    set('social_image_templates', JSON.stringify(library));
+  function setCoverTemplateLibrary(updater: CoverTemplateLibrary | ((prev: CoverTemplateLibrary) => CoverTemplateLibrary)) {
+    hasLocalEdits.current = true;
+    setValues((current) => {
+      const prevLibrary = parseTemplateLibrary(current.social_image_templates, current.social_image_template);
+      const library = typeof updater === 'function' ? updater(prevLibrary) : updater;
+      const json = JSON.stringify(library);
+      writeSettingsDraft(activeTenantId, { ...readSettingsDraft(activeTenantId), social_image_templates: json });
+      return { ...current, social_image_templates: json };
+    });
+  }
+
+  function updateSelectedCoverTemplate(patch: Partial<(typeof coverTemplateLibrary.templates)[number]>) {
+    const templateId = selectedCoverTemplateId || coverTemplateLibrary.defaultTemplateId;
+    if (!templateId) return;
+    setCoverTemplateLibrary((library) => ({
+      ...library,
+      templates: library.templates.map((item) => item.id === templateId ? { ...item, ...patch } : item),
+    }));
   }
 
   function addCoverTemplate(copyCurrent = false) {
@@ -367,11 +383,6 @@ export default function PublishingSettingsPage() {
     } finally {
       setBusy(null);
     }
-  }
-
-  function updateSelectedCoverTemplate(patch: Partial<(typeof coverTemplateLibrary.templates)[number]>) {
-    if (!selectedCoverTemplate) return;
-    setCoverTemplateLibrary({ ...coverTemplateLibrary, templates: coverTemplateLibrary.templates.map((item) => item.id === selectedCoverTemplate.id ? { ...item, ...patch } : item) });
   }
 
   async function removeSelectedCoverTemplate() {

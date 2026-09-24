@@ -343,9 +343,13 @@ function serverCouldNotReachArticle(error: unknown): boolean {
   return /10\.10\.34|فیلترینگ|HTTP 403|HTTP 451|ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|مهلت|timeout|socket/u.test(message);
 }
 
+function isFilteredDnsBlockedError(error: unknown): boolean {
+  return /10\.10\.34|آدرس داخلی فیلترینگ/u.test(httpErrorMessage(error));
+}
+
 /** News feeds may succeed via direct server fetch when the fetch service gets blocked by the publisher. */
-function shouldRetryNewsFetchDirectly(bridgeError: unknown, social: boolean): boolean {
-  if (social) return false;
+function shouldRetryNewsFetchDirectly(bridgeError: unknown, social: boolean, newsViaBridge: boolean): boolean {
+  if (social || newsViaBridge) return false;
   return isWorkerTransportFailure(bridgeError) || isWorkerUpstreamPublisherError(bridgeError);
 }
 
@@ -1523,14 +1527,23 @@ export class SourceReaderService {
   }
 
   async proxyImage(imageUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
-    const result = await this.fetchPublicResource(imageUrl, {
+    const options = {
       accept: 'image/*',
       maxBytes: 15 * 1024 * 1024,
       allowedTypes: ['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp'],
-    });
-    if (result.status < 200 || result.status >= 300) throw new BadRequestException(`تصویر با خطای HTTP ${result.status} پاسخ داد`);
-    if (!result.buffer.length) throw new BadRequestException('پاسخ تصویر خالی است');
-    return { buffer: result.buffer, contentType: result.contentType };
+    };
+    const route = await this.resolveSourceFetch();
+    try {
+      const result = await this.fetchPublicResourceDirect(imageUrl, options);
+      if (result.status < 200 || result.status >= 300) throw new BadRequestException(`تصویر با خطای HTTP ${result.status} پاسخ داد`);
+      if (!result.buffer.length) throw new BadRequestException('پاسخ تصویر خالی است');
+      return { buffer: result.buffer, contentType: result.contentType };
+    } catch (error) {
+      if (route.url && (route.newsViaBridge || isFilteredDnsBlockedError(error))) {
+        return this.fetchImageViaBridge(imageUrl, options.maxBytes, options.allowedTypes);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1538,6 +1551,16 @@ export class SourceReaderService {
    * to the validated address. Non-2xx responses are returned without a body.
    */
   async fetchPublicResource(url: string, options: {
+    accept: string;
+    maxBytes: number;
+    allowedTypes?: string[];
+    timeoutMs?: number;
+    readBody?: boolean;
+  }): Promise<{ status: number; contentType: string; buffer: Buffer }> {
+    return this.fetchPublicResourceDirect(url, options);
+  }
+
+  private async fetchPublicResourceDirect(url: string, options: {
     accept: string;
     maxBytes: number;
     allowedTypes?: string[];
@@ -1880,6 +1903,61 @@ export class SourceReaderService {
     return body;
   }
 
+  private async fetchImageViaBridge(
+    imageUrl: string,
+    maxBytes: number,
+    allowedTypes: string[],
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const { url: bridgeUrl, secret } = await this.resolveSourceFetchBridge();
+    if (!bridgeUrl) throw new BadRequestException(SOURCE_FETCH_BRIDGE_MISSING_MESSAGE);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (secret) headers['X-Bridge-Secret'] = secret;
+
+    const response = await this.safeRequest(`${bridgeUrl}/`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        url: imageUrl,
+        accept: allowedTypes.join(', '),
+        user_agent: BROWSER_FETCH_USER_AGENT,
+      }),
+      acceptedTypes: ['application/json'],
+      timeoutMs: this.bridgeNetworkTimeoutMs,
+      maxResponseBytes: bridgeHttpResponseLimit(maxBytes),
+      allowLocalhostInDevelopment: true,
+    });
+
+    const payload = response.json<{
+      ok?: boolean;
+      error?: string;
+      body_base64?: string;
+      content_type?: string;
+    }>();
+    if (!response.ok || !payload.ok) {
+      const code = String(payload.error || '');
+      if (code.startsWith('upstream_http_')) {
+        throw new BadRequestException(`دریافت تصویر از طریق Worker ناموفق بود: ${code}`);
+      }
+      throw new BadRequestException(describeWorkerFetchFailure(code || `Worker منبع با خطای HTTP ${response.status} پاسخ داد`));
+    }
+
+    const encoded = String(payload.body_base64 || '').trim();
+    if (!encoded) throw new BadRequestException('Worker منبع پاسخ تصویر خالی برگرداند');
+    const buffer = Buffer.from(encoded, 'base64');
+    if (!buffer.length || buffer.length > maxBytes) {
+      throw new BadRequestException('حجم تصویر دریافتی از Worker بیش از حد مجاز است');
+    }
+    const contentType = String(payload.content_type || '').split(';')[0].trim().toLowerCase();
+    if (!allowedTypes.includes(contentType)) {
+      throw new BadRequestException('نوع تصویر دریافتی از Worker قابل قبول نیست');
+    }
+    return { buffer, contentType };
+  }
+
   private async safeFetchTextDirect(initialUrl: string, maxBytes: number, acceptedTypes: string[]): Promise<string> {
     let target = await this.assertPublicUrl(initialUrl);
     for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
@@ -1945,7 +2023,7 @@ export class SourceReaderService {
       try {
         return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
       } catch (bridgeError) {
-        if (shouldRetryNewsFetchDirectly(bridgeError, social)) {
+        if (shouldRetryNewsFetchDirectly(bridgeError, social, route.newsViaBridge)) {
           const status = workerUpstreamStatusCode(bridgeError);
           this.logger.warn(
             `Fetch service failed for ${hostname}${status ? ` (HTTP ${status})` : ''}; trying a direct fetch`,
@@ -1969,6 +2047,15 @@ export class SourceReaderService {
     try {
       return await this.safeFetchTextDirect(initialUrl, maxBytes, acceptedTypes);
     } catch (directError) {
+      if (route.url && isFilteredDnsBlockedError(directError)) {
+        try {
+          return await this.safeFetchTextViaBridge(initialUrl, maxBytes, acceptedTypes);
+        } catch (bridgeError) {
+          throw new BadRequestException(
+            `${httpErrorMessage(directError)} دریافت از طریق Worker هم ناموفق بود: ${describeWorkerFetchFailure(bridgeError)}`,
+          );
+        }
+      }
       if (isWorkerTransportFailure(directError)) {
         const hint = route.url
           ? 'اگر این سایت از شبکهٔ سرور باز نمی‌شود، در پلتفرم → تنظیمات پلتفرم → دریافت منبع گزینه «منابع خبری هم از این سرویس» را روشن کنید.'

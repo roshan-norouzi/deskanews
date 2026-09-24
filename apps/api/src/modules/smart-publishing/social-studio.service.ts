@@ -15,6 +15,7 @@ import { IntegrationHealthService } from '../../common/services/integration-heal
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { newsroomArticleWhere } from './newsroom-article-stats';
+import { canonicalMediaPath } from '../../common/media-signature';
 
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -628,7 +629,7 @@ export class SocialStudioService {
   async rememberGeneratedImage(tenantId: string, id: string, url: string) {
     const article = await this.prisma.socialArticle.findFirst({ where: { id, tenantId }, select: { id: true } });
     if (!article) throw new NotFoundException('مطلب اجتماعی یافت نشد');
-    await this.prisma.socialArticle.update({ where: { id }, data: { generatedImageUrl: url } });
+    await this.prisma.socialArticle.update({ where: { id }, data: { generatedImageUrl: canonicalMediaPath(url) } });
     return { ok: true };
   }
 

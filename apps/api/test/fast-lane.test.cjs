@@ -20,7 +20,7 @@ test('fast lane keeps news.prepare and social.cover off the Postgres poller', as
 
   await jobs.claim('worker-a', 1);
 
-  assert.deepEqual(where.type, { notIn: ['news.prepare', 'social.cover'] });
+  assert.deepEqual(where.type, { notIn: ['news.prepare', 'social.cover', 'social.publish'] });
 });
 
 test('without Redis the Postgres poller still claims every queued job', async () => {

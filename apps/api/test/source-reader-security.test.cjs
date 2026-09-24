@@ -429,7 +429,7 @@ test('SourceReader surfaces Worker host_not_allowed without a direct fallback', 
   );
 });
 
-test('SourceReader falls back to direct fetch when fetch service gets upstream HTTP 520 for news', async () => {
+test('SourceReader keeps news on Worker when bridge is configured for news feeds', async () => {
   const order = [];
   const service = new SourceReaderService({
     getSourceFetchPolicy: async () => ({
@@ -442,15 +442,44 @@ test('SourceReader falls back to direct fetch when fetch service gets upstream H
     order.push('bridge');
     throw new BadRequestException('دریافت منبع از طریق Worker ناموفق بود: upstream_http_520');
   };
+  service.safeFetchTextDirect = async () => {
+    order.push('direct');
+    throw new Error('direct fetch must not run when news feeds are pinned to Worker');
+  };
+
+  await assert.rejects(
+    () => service.readFeed('https://www.isna.ir/rss'),
+    (error) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.match(error.getResponse().message, /520/u);
+      return true;
+    },
+  );
+  assert.deepEqual(order, ['bridge']);
+});
+
+test('SourceReader uses Worker after filtered DNS blocks a direct news fetch', async () => {
+  const order = [];
+  const service = new SourceReaderService({
+    getSourceFetchPolicy: async () => ({
+      url: 'https://deska.example.workers.dev',
+      secret: '',
+      newsViaBridge: false,
+    }),
+  });
   service.safeFetchTextDirect = async (url) => {
     order.push('direct');
     assert.match(url, /isna\.ir/u);
+    throw new BadRequestException('دامنه در DNS سرور به آدرس داخلی فیلترینگ (10.10.34.x) نگاشت شده است؛ دریافت این منبع را از طریق Worker انجام دهید');
+  };
+  service.safeFetchTextViaBridge = async () => {
+    order.push('bridge');
     return `<?xml version="1.0"?><rss version="2.0"><channel><item><title>OK</title><link>https://www.isna.ir/1</link></item></channel></rss>`;
   };
 
   const entries = await service.readFeed('https://www.isna.ir/rss');
-  assert.deepEqual(order, ['bridge', 'direct']);
-  assert.match(entries[0].title, /OK/);
+  assert.deepEqual(order, ['direct', 'bridge']);
+  assert.equal(entries.length, 1);
 });
 
 test('SourceReader uses Worker first for international RSS when bridge is configured', async () => {

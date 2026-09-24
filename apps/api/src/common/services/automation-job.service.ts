@@ -21,7 +21,7 @@ export const AUTOMATION_JOB_STATUSES = ['queued', 'running', 'completed', 'dead'
 export type AutomationJobStatus = (typeof AUTOMATION_JOB_STATUSES)[number];
 
 /** Executed on Redis when REDIS_URL is set. Postgres row stays the audit record. */
-export const FAST_LANE_JOB_TYPES = ['news.prepare', 'social.cover'] as const;
+export const FAST_LANE_JOB_TYPES = ['news.prepare', 'social.cover', 'social.publish'] as const;
 
 type FastLane = {
   enabled(): boolean;

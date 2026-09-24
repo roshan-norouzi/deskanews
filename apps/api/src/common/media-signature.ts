@@ -8,9 +8,23 @@ export function mediaSignatureRequired(): boolean {
   return mediaKey().length > 0;
 }
 
+/** Strip signature query params and optional `/api` prefix for storage and server-side lookups. */
+export function canonicalMediaPath(url: string): string {
+  const trimmed = String(url || '').trim();
+  if (!trimmed) return '';
+  const pathOnly = trimmed.split('?')[0] ?? trimmed;
+  return pathOnly.startsWith('/api/') ? pathOnly.slice(4) : pathOnly;
+}
+
+export function socialMediaFilename(url: string | null | undefined): string | undefined {
+  const pathOnly = canonicalMediaPath(url || '');
+  if (!pathOnly) return undefined;
+  return pathOnly.match(/\/publishing\/social\/media\/([a-f0-9-]+\.(?:png|jpg|webp))$/iu)?.[1];
+}
+
 export function signMediaPath(pathname: string, ttlSeconds = 3600): string {
   const key = mediaKey();
-  const [pathOnly] = pathname.split('?');
+  const pathOnly = canonicalMediaPath(pathname);
   if (!key || !pathOnly) return pathname;
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const sig = createHmac('sha256', key).update(`${pathOnly}\n${exp}`).digest('base64url');

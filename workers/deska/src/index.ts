@@ -457,6 +457,34 @@ export default {
         finalUrl = xResult.finalUrl;
       } else {
         upstream = await fetchUpstream(normalized.url, accept, userAgent);
+        const upstreamContentType = upstream.headers.get('content-type') || 'text/plain';
+        const imageType = upstreamContentType.toLowerCase().split(';')[0].trim();
+        if (imageType.startsWith('image/')) {
+          const bytes = new Uint8Array(await upstream.arrayBuffer());
+          if (bytes.length > 8_000_000) {
+            return json(413, { ok: false, error: 'image_too_large' });
+          }
+          let binary = '';
+          for (let index = 0; index < bytes.length; index += 1) {
+            binary += String.fromCharCode(bytes[index]!);
+          }
+          if (!upstream.ok) {
+            return json(upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502, {
+              ok: false,
+              error: `upstream_http_${upstream.status}`,
+              status: upstream.status,
+              content_type: upstreamContentType,
+            });
+          }
+          return json(200, {
+            ok: true,
+            status: upstream.status,
+            content_type: upstreamContentType,
+            body_base64: btoa(binary),
+            final_url: normalized.url.toString(),
+            worker: 'deska',
+          });
+        }
         body = await upstream.text();
       }
     } catch (error) {

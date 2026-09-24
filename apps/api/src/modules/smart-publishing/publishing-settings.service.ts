@@ -32,7 +32,7 @@ import type { SourceReaderService } from './source-reader.service';
 
 type PublicResourceFetcher = Pick<SourceReaderService, 'fetchPublicResource'>;
 import { ObjectStorage } from '../../common/object-storage';
-import { signEmbeddedMediaUrls, signMediaPath } from '../../common/media-signature';
+import { canonicalMediaPath, signEmbeddedMediaUrls, signMediaPath } from '../../common/media-signature';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -245,6 +245,7 @@ function normalizeCoverTemplate(value: string): string {
 
   const allowedTypes = new Set(['featured-image', 'author-image', 'text', 'image', 'gradient']);
   const allowedBindings = new Set(['title', 'lead', 'author', 'category', 'reading_time', 'summary', 'link', 'source', 'custom']);
+  const sanitizedLayers: unknown[] = [];
   for (const item of layers) {
     const layer = cleanObject(item);
     if (typeof layer.id !== 'string' || !layer.id || typeof layer.name !== 'string' || !allowedTypes.has(String(layer.type))) {
@@ -263,8 +264,9 @@ function normalizeCoverTemplate(value: string): string {
       throw new BadRequestException('متن دلخواه هر لایه حداکثر ۲۰۰۰ کاراکتر است');
     }
     if (typeof layer.imageUrl === 'string' && layer.imageUrl) {
-      const localImage = layer.imageUrl.startsWith('/publishing/settings/images/file/') && !layer.imageUrl.includes('..');
-      if (!localImage) normalizeHttpUrl(layer.imageUrl, 'آدرس تصویر دلخواه');
+      const canonical = canonicalMediaPath(layer.imageUrl);
+      const localImage = canonical.startsWith('/publishing/settings/images/file/') && !canonical.includes('..');
+      layer.imageUrl = localImage ? canonical : normalizeHttpUrl(layer.imageUrl, 'آدرس تصویر دلخواه');
     }
     if (layer.type === 'gradient') {
       for (const key of ['gradientFromOpacity', 'gradientToOpacity']) {
@@ -277,6 +279,7 @@ function normalizeCoverTemplate(value: string): string {
         if (typeof layer[key] !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(String(layer[key]))) throw new BadRequestException('رنگ گرادینت معتبر نیست');
       }
     }
+    sanitizedLayers.push(layer);
   }
 
   const width = Number(template.width);
@@ -284,7 +287,7 @@ function normalizeCoverTemplate(value: string): string {
   if (![1080].includes(width) || ![1080, 1350, 1920].includes(height)) {
     throw new BadRequestException('اندازه خروجی قالب تصویری معتبر نیست');
   }
-  return JSON.stringify({ ...template, width, height, layers });
+  return JSON.stringify({ ...template, width, height, layers: sanitizedLayers });
 }
 
 function normalizeCoverTemplateLibrary(value: string, legacyTemplate: string): string {

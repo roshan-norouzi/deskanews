@@ -304,13 +304,10 @@ export class SmartPublishingController {
   @Post('social/articles/:id/archive') @RequirePermission('publishing.manage') archiveSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.archive(tenant.tenantId, id); }
   @Post('social/articles/:id/prepare') @RequirePermission('publishing.manage') prepareSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.socialStudio.prepare(tenant.tenantId, id); }
   @Post('social/articles/:id/publish/:network') @RequirePermission('publishing.publish') async publishSocial(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Param('network') network: string, @Body() body: PublishSocialArticleDto) {
-    if (this.socialStudio.defersHeavyWork()) {
-      if (body.caption?.trim()) await this.socialStudio.updateCaption(tenant.tenantId, id, body.caption);
-      if (body.imageDataUrl?.trim()) {
-        const stored = await this.socialPublisher.storeGeneratedMedia(Buffer.from(body.imageDataUrl.replace(/^data:image\/\w+;base64,/u, ''), 'base64'));
-        await this.socialStudio.rememberGeneratedImage(tenant.tenantId, id, stored.url);
-      }
-      return this.socialStudio.enqueueNetworkPublish(tenant.tenantId, id, network);
+    if (body.caption?.trim()) await this.socialStudio.updateCaption(tenant.tenantId, id, body.caption);
+    if (body.imageDataUrl?.trim()) {
+      const stored = await this.socialPublisher.storeGeneratedMedia(Buffer.from(body.imageDataUrl.replace(/^data:image\/\w+;base64,/u, ''), 'base64'));
+      await this.socialStudio.rememberGeneratedImage(tenant.tenantId, id, stored.url);
     }
     return this.socialPublisher.publish(tenant.tenantId, id, network, body.caption, body.imageDataUrl);
   }

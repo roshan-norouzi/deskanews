@@ -669,7 +669,7 @@ test('server cover renderer stores the selected visual template result on the ar
   assert.match(capturedHtml, /تیتر اجتماعی/);
   assert.match(capturedHtml, /background:#112233/);
   assert.equal(updateData.generatedImageTemplateId, 'telegram');
-  assert.equal(updateData.generatedImageUrl, '/api/publishing/social/media/generated.png');
+  assert.equal(updateData.generatedImageUrl, '/publishing/social/media/generated.png');
 });
 
 test('automatic publisher prefers a generated cover over the source image', async () => {

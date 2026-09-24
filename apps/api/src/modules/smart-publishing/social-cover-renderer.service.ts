@@ -7,6 +7,7 @@ import { PublishingSettingsService } from './publishing-settings.service';
 import { SocialNetworkPublisherService } from './social-network-publisher.service';
 import { SourceReaderService } from './source-reader.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
+import { canonicalMediaPath } from '../../common/media-signature';
 
 type LayerType = 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient';
 type Binding = 'title' | 'lead' | 'author' | 'category' | 'reading_time' | 'summary' | 'link' | 'source' | 'custom';
@@ -98,7 +99,7 @@ export class SocialCoverRendererService {
     const stored = await this.publisher.storeGeneratedMedia(buffer);
     const updated = await this.prisma.socialArticle.update({
       where: { id: article.id },
-      data: { generatedImageUrl: stored.url, generatedImageTemplateId: selected.id, lastError: '' },
+      data: { generatedImageUrl: canonicalMediaPath(stored.url), generatedImageTemplateId: selected.id, lastError: '' },
     });
     await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.SOCIAL_COVER, 1);
     return updated;
@@ -120,13 +121,14 @@ export class SocialCoverRendererService {
 
   private async imageDataUrl(tenantId: string, url: string): Promise<string> {
     if (/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/iu.test(url)) return url;
-    const tenantMatch = url.match(/^\/publishing\/settings\/images\/file\/([^/]+)\/([a-f0-9-]+\.(?:jpe?g|png|webp|avif))$/iu);
+    const pathOnly = canonicalMediaPath(url);
+    const tenantMatch = pathOnly.match(/^\/publishing\/settings\/images\/file\/([^/]+)\/([a-f0-9-]+\.(?:jpe?g|png|webp|avif))$/iu);
     if (tenantMatch) {
       if (tenantMatch[1] !== tenantId) throw new BadRequestException('تصویر قالب متعلق به سازمان دیگری است');
       const image = await this.settingsService.imageFile(tenantId, tenantMatch[2]);
       return `data:${image.contentType};base64,${image.buffer.toString('base64')}`;
     }
-    const legacyMatch = url.match(/^\/publishing\/settings\/images\/file\/([a-f0-9-]+\.(?:jpe?g|png|webp|avif))$/iu);
+    const legacyMatch = pathOnly.match(/^\/publishing\/settings\/images\/file\/([a-f0-9-]+\.(?:jpe?g|png|webp|avif))$/iu);
     if (legacyMatch) {
       const image = await this.settingsService.legacyImageFile(legacyMatch[1]);
       return `data:${image.contentType};base64,${image.buffer.toString('base64')}`;
@@ -150,8 +152,9 @@ export class SocialCoverRendererService {
         || candidates.sort((a, b) => Math.abs((a.weight || 400) - weight) - Math.abs((b.weight || 400) - weight))[0];
       if (!font?.url) continue;
       try {
-        const tenantMatch = font.url.match(/^\/publishing\/settings\/fonts\/file\/([^/]+)\/([a-f0-9-]+\.(?:woff2?|ttf|otf))$/iu);
-        const legacyMatch = font.url.match(/^\/publishing\/settings\/fonts\/file\/([a-f0-9-]+\.(?:woff2?|ttf|otf))$/iu);
+        const fontPath = canonicalMediaPath(font.url);
+        const tenantMatch = fontPath.match(/^\/publishing\/settings\/fonts\/file\/([^/]+)\/([a-f0-9-]+\.(?:woff2?|ttf|otf))$/iu);
+        const legacyMatch = fontPath.match(/^\/publishing\/settings\/fonts\/file\/([a-f0-9-]+\.(?:woff2?|ttf|otf))$/iu);
         const file = tenantMatch && tenantMatch[1] === tenantId
           ? await this.settingsService.fontFile(tenantId, tenantMatch[2])
           : legacyMatch ? await this.settingsService.legacyFontFile(legacyMatch[1]) : null;

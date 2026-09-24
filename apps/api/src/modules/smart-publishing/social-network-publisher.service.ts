@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PublishingSettingsService, SOURCE_FETCH_BRIDGE_MISSING_MESSAGE } from './publishing-settings.service';
-import { signMediaPath } from '../../common/media-signature';
+import { canonicalMediaPath, signMediaPath, socialMediaFilename } from '../../common/media-signature';
 import { ObjectStorage } from '../../common/object-storage';
 import type { PublishingSettings } from './dto/publishing-settings.dto';
 import { SourceReaderService } from './source-reader.service';
@@ -270,7 +270,7 @@ export class SocialNetworkPublisherService {
     try {
       const generatedFilename = useFeaturedImage
         ? undefined
-        : article.generatedImageUrl?.match(/\/publishing\/social\/media\/([a-f0-9-]+\.(?:png|jpg|webp))$/iu)?.[1];
+        : socialMediaFilename(article.generatedImageUrl);
       let image: ImagePayload | null = null;
       let generatedImageFailed = !useFeaturedImage && Boolean(article.generatedImageUrl) && !generatedFilename;
       if (generatedFilename) {
