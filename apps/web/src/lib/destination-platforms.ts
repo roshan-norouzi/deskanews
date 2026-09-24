@@ -56,7 +56,7 @@ export const DESTINATION_PLATFORMS: Record<DestinationPlatformId, DestinationPla
   nastooh: {
     id: 'nastooh',
     label: 'نستوه',
-    description: 'اتاق خبر نستوه — اتصال از طریق سرویس‌های RESTful سامانه.',
+    description: 'میز خبر نستوه — اتصال از طریق سرویس‌های RESTful سامانه.',
     fields: [
       { key: 'ns_site_url', label: 'آدرس سایت', type: 'url', placeholder: 'https://news.example.ir', hint: 'نشانی عمومی سایت خبری روی نستوه.' },
       { key: 'ns_api_base_url', label: 'آدرس پایه REST API', type: 'url', placeholder: 'https://news.example.ir/api/rest', hint: 'مسیر پایه REST که توسط پشتیبانی نستوه اعلام می‌شود.' },

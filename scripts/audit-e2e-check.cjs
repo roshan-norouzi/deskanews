@@ -156,9 +156,9 @@ async function main() {
   try {
     const news = await json('GET', '/api/publishing/news/articles', { cookie, headers: tenantHeaders });
     if (news.status !== 200) throw new Error(`HTTP ${news.status}`);
-    record(9, 'اتاق خبر (لیست)', 'OK', `${Array.isArray(news.data) ? news.data.length : 0} مطلب`);
+    record(9, 'میز خبر (لیست)', 'OK', `${Array.isArray(news.data) ? news.data.length : 0} مطلب`);
   } catch (e) {
-    record(9, 'اتاق خبر (لیست)', 'FAIL', e.message);
+    record(9, 'میز خبر (لیست)', 'FAIL', e.message);
   }
 
   // 10. Social studio

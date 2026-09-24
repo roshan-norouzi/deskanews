@@ -205,7 +205,7 @@ export function NewsArticleCard({
 
   const restoreAction: CardAction | null = article.status === 'rejected' && onRestore ? {
     key: 'restore',
-    label: 'بازگردانی به اتاق خبر',
+    label: 'بازگردانی به میز خبر',
     icon: RotateCcw,
     onClick: () => onRestore(article.id),
     loading: isBusy(busyKey, article.id, 'restore'),

@@ -161,7 +161,7 @@ export function OrganizationsDashboardSection() {
               </p>
             </div>
             <Button size="sm" onClick={() => enterWorkspace(selectedOrg.id)}>
-              ورود به اتاق خبر
+              ورود به میز خبر
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </div>

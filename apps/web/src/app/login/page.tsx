@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PLATFORM_NAME, PLATFORM_TAGLINE } from '@deska/shared';
+import { PLATFORM_DESCRIPTION, PLATFORM_NAME, PLATFORM_TAGLINE } from '@deska/shared';
 import { useAuth } from '@/lib/auth-context';
 import { clearTenantId, setTenantId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -70,10 +70,10 @@ export default function LoginPage() {
           <span className="text-xl font-bold">{PLATFORM_NAME}</span>
         </div>
         <div className="max-w-md">
-          <h1 className="text-3xl font-bold leading-tight">اتاق خبر هوشمند برای رسانه‌های ایران</h1>
-          <p className="mt-4 text-sm leading-7 text-indigo-100">{PLATFORM_TAGLINE}</p>
+          <h1 className="text-3xl font-bold leading-tight">{PLATFORM_TAGLINE}</h1>
+          <p className="mt-4 text-sm leading-7 text-indigo-100">{PLATFORM_DESCRIPTION}</p>
         </div>
-        <p className="text-xs text-indigo-200">پلتفرم مدیریت محتوا و انتشار خبری</p>
+        <p className="text-xs text-indigo-200">{PLATFORM_NAME} · {PLATFORM_TAGLINE}</p>
       </div>
 
       <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">

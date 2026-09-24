@@ -61,7 +61,7 @@ function DashboardContent() {
   const alerts: Array<{ text: string; href: string }> = [];
   if (data.publishing.newsroom.failed > 0) {
     alerts.push({
-      text: `${formatPersianDigits(data.publishing.newsroom.failed)} خبر خطادار در اتاق خبر منتظر رسیدگی است.`,
+      text: `${formatPersianDigits(data.publishing.newsroom.failed)} خبر خطادار در میز خبر منتظر رسیدگی است.`,
       href: '/publishing/news',
     });
   }
@@ -104,7 +104,7 @@ function DashboardContent() {
               <Button variant="outline" size="sm">مرکز عملیات</Button>
             </Link>
             <Link href="/publishing/news">
-              <Button size="sm">اتاق خبر</Button>
+              <Button size="sm">میز خبر</Button>
             </Link>
           </>
         )}
@@ -127,7 +127,7 @@ function DashboardContent() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <WorkQueueCard
-          title="اتاق خبر"
+          title="میز خبر"
           href="/publishing/news"
           actionLabel="باز کردن"
           metrics={[

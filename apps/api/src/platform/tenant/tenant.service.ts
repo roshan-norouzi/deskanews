@@ -671,7 +671,7 @@ export class TenantService {
     });
     const valid = new Set(allowed.map((row) => row.id));
     const next = normalized.filter((id) => valid.has(id));
-    if (!next.length) throw new BadRequestException('دسترسی سرویس اتاق خبر نامعتبر است');
+    if (!next.length) throw new BadRequestException('دسترسی سرویس میز خبر نامعتبر است');
     return next;
   }
 

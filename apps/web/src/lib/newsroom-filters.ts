@@ -63,7 +63,7 @@ export const NEWSROOM_FILTERS: Array<{
   {
     key: 'all',
     label: 'همه',
-    description: 'تمام خبرهای اتاق خبر',
+    description: 'تمام خبرهای میز خبر',
     tone: 'text-slate-900',
     matches: () => true,
   },

@@ -102,9 +102,9 @@ export function PermissionPicker({
 
       {hasNewsroomAccess ? (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
-          <h4 className="text-sm font-semibold text-slate-900">سرویس‌های اتاق خبر</h4>
+          <h4 className="text-sm font-semibold text-slate-900">سرویس‌های میز خبر</h4>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            مشخص کنید این کاربر در اتاق خبر به کدام سرویس‌ها دسترسی دارد.
+            مشخص کنید این کاربر در میز خبر به کدام سرویس‌ها دسترسی دارد.
           </p>
           <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2.5 text-sm">
             <input
@@ -116,7 +116,7 @@ export function PermissionPicker({
             />
             <span>
               <span className="block font-medium text-slate-900">همه سرویس‌ها</span>
-              <span className="mt-0.5 block text-xs text-slate-500">دسترسی به تمام سرویس‌های تأییدشده اتاق خبر</span>
+              <span className="mt-0.5 block text-xs text-slate-500">دسترسی به تمام سرویس‌های تأییدشده میز خبر</span>
             </span>
           </label>
           {selectableServices.length ? (

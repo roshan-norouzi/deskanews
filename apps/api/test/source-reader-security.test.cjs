@@ -319,7 +319,7 @@ test('SourceReader resolves telegram profile photo from public userpic url', asy
 test('SourceReader parses embedded X syndication JSON when legacy DOM selectors are absent', async () => {
   const service = new SourceReaderService();
   const syndicationHtml = `<!DOCTYPE html><html><body><script>
-    window.__INITIAL_STATE__ = {"id_str":"9876543210","full_text":"خبر مهم از X برای اتاق خبر","permalink":"\\/news\\/status\\/9876543210"};
+    window.__INITIAL_STATE__ = {"id_str":"9876543210","full_text":"خبر مهم از X برای میز خبر","permalink":"\\/news\\/status\\/9876543210"};
   </script></body></html>`;
   service.safeFetchText = async () => syndicationHtml;
 

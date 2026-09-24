@@ -7,7 +7,7 @@
 
 ## ۱. خلاصه اجرایی
 
-پلتفرم Deska News (SaaS اتاق خبر B2B) از نظر معماری، امنیت پایه، Worker دریافت منبع، و جداسازی tenant در وضعیت **قابل قبول و پایدار** است. در این ممیزی:
+پلتفرم Deska News (SaaS میز خبر B2B) از نظر معماری، امنیت پایه، Worker دریافت منبع، و جداسازی tenant در وضعیت **قابل قبول و پایدار** است. در این ممیزی:
 
 | حوزه | قبل | بعد |
 |------|-----|-----|
@@ -38,7 +38,7 @@
 - بدون Worker → `SOURCE_FETCH_BRIDGE_MISSING_MESSAGE` (راهنما به `/platform/source-fetch`).
 - **P2:** probe BBC از شبکه لوکال `ECONNRESET`؛ IRNA/ISNA پایدارتر.
 
-### D) اتاق خبر — OK
+### D) میز خبر — OK
 - چرخه وضعیت، automation jobs، GapGPT overlay سراسری.
 
 ### E) استودیوی اجتماعی — OK
@@ -129,7 +129,7 @@
 | 6 | Website (isna.ir) | ✅ | |
 | 7 | Telegram (t.me/s/telegram) | ✅ | |
 | 8 | X (x.com/nasa) | ⚠️ P2 | `upstream_http_429` — rate limit موقت |
-| 9 | اتاق خبر | ✅ | |
+| 9 | میز خبر | ✅ | |
 | 10 | استودیوی اجتماعی | ✅ | |
 | 11 | منابع پیش‌فرض | ✅ | ۴۰ مورد |
 | 12 | تنظیمات بدون نشت secret | ✅ | |

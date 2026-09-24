@@ -57,11 +57,11 @@ function assertNewsroomArticleAccess(
   const resolved = resolveNewsroomServiceAccess(access.permissions, access.newsroomServiceIds);
   if (resolved === 'all') return;
   if (resolved === 'none') {
-    throw new ForbiddenException('دسترسی به این سرویس اتاق خبر مجاز نیست');
+    throw new ForbiddenException('دسترسی به این سرویس میز خبر مجاز نیست');
   }
   if (article.destinationCategory?.isGeneral) return;
   if (!article.destinationCategoryId || !resolved.includes(article.destinationCategoryId)) {
-    throw new ForbiddenException('دسترسی به این سرویس اتاق خبر مجاز نیست');
+    throw new ForbiddenException('دسترسی به این سرویس میز خبر مجاز نیست');
   }
 }
 
@@ -379,7 +379,7 @@ export class NewsroomService {
       }
     }
     if (normalizePurpose(feed.purpose) !== purpose) {
-      throw new BadRequestException('کاربرد منبع (اتاق خبر / استودیوی اجتماعی) پس از ایجاد قابل تغییر نیست');
+      throw new BadRequestException('کاربرد منبع (میز خبر / استودیوی اجتماعی) پس از ایجاد قابل تغییر نیست');
     }
 
     let resolvedFeedUrl = feed.resolvedFeedUrl;
@@ -536,7 +536,7 @@ export class NewsroomService {
     if (categoryId) {
       const resolved = access ? resolveNewsroomServiceAccess(access.permissions, access.newsroomServiceIds) : 'all';
       if (resolved !== 'all' && resolved !== 'none' && !resolved.includes(categoryId)) {
-        throw new ForbiddenException('دسترسی به این سرویس اتاق خبر مجاز نیست');
+        throw new ForbiddenException('دسترسی به این سرویس میز خبر مجاز نیست');
       }
       if (resolved === 'none') return { items: [], nextCursor: null };
     }
@@ -799,7 +799,7 @@ export class NewsroomService {
     });
     if (!feeds.length && !enabledPlatformFeeds) {
       throw new BadRequestException(
-        'هیچ منبع فعالی برای اتاق خبر ثبت نشده است. از بخش «منابع پیش‌فرض» یا «منابع اختصاصی» حداقل یک منبع را فعال کنید.',
+        'هیچ منبع فعالی برای میز خبر ثبت نشده است. از بخش «منابع پیش‌فرض» یا «منابع اختصاصی» حداقل یک منبع را فعال کنید.',
       );
     }
 
@@ -828,7 +828,7 @@ export class NewsroomService {
       automation,
       message: failed.length
         ? `${failed.length} منبع دریافت نشد؛ جزئیات در صفحه منابع خبری ثبت شده است`
-        : 'همه منابع فعال اتاق خبر با موفقیت پایش شدند',
+        : 'همه منابع فعال میز خبر با موفقیت پایش شدند',
     };
   }
 
@@ -938,7 +938,7 @@ export class NewsroomService {
   async restoreRejected(tenantId: string, id: string, access?: MemberNewsroomAccess) {
     const article = await this.findArticle(tenantId, id);
     assertNewsroomArticleAccess(article, access);
-    if (article.status !== 'rejected') throw new BadRequestException('فقط خبر ردشده قابل بازگردانی به اتاق خبر است');
+    if (article.status !== 'rejected') throw new BadRequestException('فقط خبر ردشده قابل بازگردانی به میز خبر است');
     const nextStatus = article.titleFa?.trim() && article.summaryFa?.trim() ? 'ready' : 'new';
     const updated = await this.prisma.newsArticle.update({
       where: { id },
@@ -956,7 +956,7 @@ export class NewsroomService {
       fromStatus: 'rejected',
       toStatus: nextStatus,
       action: 'restored-from-rejected',
-      title: `خبر «${updated.titleFa || updated.originalTitle}» به اتاق خبر بازگردانده شد`,
+      title: `خبر «${updated.titleFa || updated.originalTitle}» به میز خبر بازگردانده شد`,
     });
     return updated;
   }

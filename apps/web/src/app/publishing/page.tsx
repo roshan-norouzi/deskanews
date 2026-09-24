@@ -24,7 +24,7 @@ const sections = [
   },
   {
     href: '/publishing/news',
-    title: 'اتاق خبر',
+    title: 'میز خبر',
     text: 'دریافت، خلاصه‌سازی و انتشار کنترل‌شده خبرها.',
     icon: Newspaper,
     tone: 'bg-blue-50 text-blue-700',
@@ -65,7 +65,7 @@ export default function PublishingPage() {
       <main className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
         <PageHeader
           title="مرکز انتشار"
-          description="خبر را از منبع بگیر، در اتاق خبر آماده کن، در سایت یا شبکه‌ها منتشر کن."
+          description="خبر را از منبع بگیر، در میز خبر آماده کن، در سایت یا شبکه‌ها منتشر کن."
           icon={Rss}
         />
 

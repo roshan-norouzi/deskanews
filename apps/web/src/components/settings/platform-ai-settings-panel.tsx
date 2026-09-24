@@ -154,7 +154,7 @@ export function PlatformAiSettingsPanel() {
             <Field label="مدل پیش‌فرض" hint="برای فعالیت‌هایی که مدل اختصاصی ندارند.">
               <select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select>
             </Field>
-            <Field label="مدل خلاصه‌سازی خبر" hint="برای آماده‌سازی عنوان و خلاصه در اتاق خبر.">
+            <Field label="مدل خلاصه‌سازی خبر" hint="برای آماده‌سازی عنوان و خلاصه در میز خبر.">
               <select dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.gapgpt_model_news_summary || values.gapgpt_model || 'gpt-4o-mini'} onChange={(e) => set('gapgpt_model_news_summary', e.target.value)}>{availableGapGptModels.map((model) => <option key={model} value={model}>{model}</option>)}</select>
             </Field>
             <Field label="مدل پردازش متن کامل خبر" hint="برای ترجمه یا بازنویسی هنگام انتشار.">

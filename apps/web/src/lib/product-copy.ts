@@ -1,5 +1,12 @@
 /** User-facing product terminology and reusable microcopy. */
 
+export {
+  NEWS_DESK_LABEL,
+  PLATFORM_DESCRIPTION,
+  PLATFORM_NAME,
+  PLATFORM_TAGLINE,
+} from '@deska/shared';
+
 export const QUEUED_JOB_SUCCESS =
   'کار در صف پردازش قرار گرفت. چند لحظه دیگر فهرست را تازه کنید یا صبر کنید تا به‌روزرسانی خودکار انجام شود.';
 

@@ -34,8 +34,8 @@ Deska News/
 | `/organizations` | زنده | انتخاب/ساخت سازمان |
 | `/invitations/accept` | زنده | پذیرش دعوت |
 | `/settings` | زنده | حساب / سازمان / کاربران |
-| `/publishing/feeds` | زنده | منابع خبری (پیش‌فرض + اختصاصی اتاق خبر) |
-| `/publishing/news` | زنده | اتاق خبر |
+| `/publishing/feeds` | زنده | منابع خبری (پیش‌فرض + اختصاصی میز خبر) |
+| `/publishing/news` | زنده | میز خبر |
 | `/publishing/social` | زنده | استودیوی اجتماعی |
 | `/publishing/social/feeds` | زنده | منابع اختصاصی استودیو |
 | `/publishing/settings` | زنده | تنظیمات انتشار سازمان |
@@ -110,7 +110,7 @@ Deska News/
 | **PlatformFeed** | منبع پیش‌فرض سراسری + catalogGroup |
 | **TenantPlatformFeed** | اشتراک/اتوماسیون سازمان به منبع پیش‌فرض |
 | **PlatformFeedArticle** | ingest مرکزی منابع پیش‌فرض |
-| **NewsArticle** | اتاق خبر — چرخه summarize → publish/social |
+| **NewsArticle** | میز خبر — چرخه summarize → publish/social |
 | **SocialArticle** | استودیو — prepare → cover → publish شبکه |
 | **PlatformConfig** | singleton: `settings.ai`, `settings.source_fetch` |
 | **AutomationJob** | صف durable (بدون Bull) |
@@ -130,7 +130,7 @@ Deska News/
 
 [Tenant UI /publishing/feeds]
     → GET /api/publishing/platform-feeds  (اشتراک)
-    → GET/POST /api/publishing/news/feeds (منابع اختصاصی اتاق خبر)
+    → GET/POST /api/publishing/news/feeds (منابع اختصاصی میز خبر)
 
 [Ingest منبع t.me / x.com]
     → SourceReaderService.safeFetchTextViaBridge
@@ -141,7 +141,7 @@ Deska News/
     → SourceReaderService (SSRF-safe fetch مستقیم)
     → NewsFeed poll (AutomationJob: news.feed.fetch)
 
-[اتاق خبر]
+[میز خبر]
     → GapGPT (PlatformConfig.ai) → summarize
     → WordPress (tenant settings) → publish
     → یا SocialStudio → send-to-social

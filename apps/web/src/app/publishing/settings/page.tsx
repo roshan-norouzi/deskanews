@@ -676,13 +676,13 @@ export default function PublishingSettingsPage() {
           <div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-700"><Clock3 className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-900">پیش‌فرض پایش و اتوماسیون خبر</h2><p className="mt-1 text-sm text-slate-500">این مقادیر برای همه منابعی که در «منابع خبری» روی پیش‌فرض سازمان هستند اعمال می‌شود.</p></div></div>
           {subTab === 'schedule' && <div className="mt-6 space-y-5">
             <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-sm leading-6 text-amber-900">
-              با ذخیره این بخش، منابع اتاق خبر و اشتراک‌های کاتالوگ که «پیش‌فرض سازمان» دارند بلافاصله از مقادیر جدید پیروی می‌کنند. برای تفاوت روی یک منبع، در «منابع خبری» حالت اختصاصی را فعال کنید.
+              با ذخیره این بخش، منابع میز خبر و اشتراک‌های کاتالوگ که «پیش‌فرض سازمان» دارند بلافاصله از مقادیر جدید پیروی می‌کنند. برای تفاوت روی یک منبع، در «منابع خبری» حالت اختصاصی را فعال کنید.
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="فاصله پایش (دقیقه)" hint="مقدار معتبر بین ۵ تا ۱۴۴۰ دقیقه است."><input type="number" min="5" max="1440" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.news_poll_interval_minutes || '240'} onChange={(e) => set('news_poll_interval_minutes', e.target.value)} /></Field>
               <Field label="حداکثر قدمت خبر (روز)" hint="خبرهای قدیمی‌تر هنگام دریافت نادیده گرفته می‌شوند."><input type="number" min="1" max="90" inputMode="numeric" dir="ltr" className="rounded-xl border px-3 py-2.5" value={values.news_max_age_days || '10'} onChange={(e) => set('news_max_age_days', e.target.value)} /></Field>
             </div>
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><h3 className="font-bold text-slate-900">اتوماسیون اتاق خبر</h3><p className="mt-1 text-xs leading-5 text-slate-600">زبان هر خبر پیش از آماده‌سازی تشخیص داده می‌شود؛ خبر فارسی بازنویسی و خبر خارجی ترجمه خواهد شد.</p><div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><h3 className="font-bold text-slate-900">اتوماسیون میز خبر</h3><p className="mt-1 text-xs leading-5 text-slate-600">زبان هر خبر پیش از آماده‌سازی تشخیص داده می‌شود؛ خبر فارسی بازنویسی و خبر خارجی ترجمه خواهد شد.</p><div className="mt-4 grid gap-3 md:grid-cols-2">
               <AutomationToggle title="پایش خودکار خبرها" description="منابع فعال طبق فاصله زمانی بالا بدون دخالت کاربر پایش شوند." enabled={values.news_auto_poll !== 'false'} onChange={(enabled) => set('news_auto_poll', String(enabled))} />
               <AutomationToggle title="آماده‌سازی خودکار خبرها" description="تیتر و خلاصه خبرهای تازه با پرامپت متناسب با زبان آماده شود." enabled={values.news_auto_prepare !== 'false'} onChange={(enabled) => set('news_auto_prepare', String(enabled))} />
               <AutomationToggle title="انتشار خودکار در سایت" description="خبر آماده مستقیماً با متن کامل پردازش‌شده به سایت مقصد ارسال شود؛ اتصال سایت باید کامل باشد." enabled={values.news_auto_publish === 'true'} onChange={(enabled) => { set('news_auto_publish', String(enabled)); if (enabled) set('news_auto_send_social', 'false'); }} />
@@ -717,7 +717,7 @@ export default function PublishingSettingsPage() {
           <section className="mt-6 rounded-2xl border border-sky-100 bg-sky-50/60 p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-slate-800">دسته‌بندی‌های اتاق خبر</p>
+                <p className="font-semibold text-slate-800">دسته‌بندی‌های میز خبر</p>
                 <p className="mt-1 text-xs leading-5 text-slate-600">
                   {destinationPlatform === 'wordpress'
                     ? 'فقط دسته‌بندی‌های اصلی WordPress (بدون زیردسته) خوانده می‌شوند.'

@@ -23,7 +23,7 @@ export default function PublishingMediaPage() {
           </span>
           <h2 className="mt-4 text-lg font-semibold text-slate-900">هنوز فایلی اینجا نیست</h2>
           <p className="mt-2 max-w-md text-sm leading-7 text-slate-500">
-            تصاویر کاور و فایل‌های تولیدشده در استودیوی اجتماعی و اتاق خبر اینجا نمایش داده می‌شوند.
+            تصاویر کاور و فایل‌های تولیدشده در استودیوی اجتماعی و میز خبر اینجا نمایش داده می‌شوند.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Link href="/publishing/social">
@@ -33,7 +33,7 @@ export default function PublishingMediaPage() {
               </Button>
             </Link>
             <Link href="/publishing/news">
-              <Button variant="outline">رفتن به اتاق خبر</Button>
+              <Button variant="outline">رفتن به میز خبر</Button>
             </Link>
           </div>
         </Card>

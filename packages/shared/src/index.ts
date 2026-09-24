@@ -1,6 +1,12 @@
 // Platform branding
 export const PLATFORM_NAME = 'دسکا';
-export const PLATFORM_TAGLINE = 'اتاق خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران';
+/** Product title shown in marketing and login hero. */
+export const PLATFORM_TAGLINE = 'میز خبر هوشمند';
+/** Longer line for meta description and secondary copy. */
+export const PLATFORM_DESCRIPTION =
+  'میز خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران — پایش منبع، آماده‌سازی و انتشار.';
+/** Menu label for the site publishing workflow (/publishing/news). */
+export const NEWS_DESK_LABEL = 'میز خبر';
 
 // Platform roles
 export const PLATFORM_ROLES = {
@@ -71,7 +77,7 @@ export const NEWSROOM_ALL_SERVICES = '*';
 export const ORGANIZATION_MENU_PERMISSIONS = [
   { key: 'dashboard.view', label: 'داشبورد', group: 'خانه', href: '/dashboard' },
   { key: 'publishing.feeds', label: 'منابع خبری', group: 'محتوا', href: '/publishing/feeds' },
-  { key: 'publishing.news', label: 'اتاق خبر', group: 'محتوا', href: '/publishing/news' },
+  { key: 'publishing.news', label: NEWS_DESK_LABEL, group: 'محتوا', href: '/publishing/news' },
   { key: 'publishing.social', label: 'استودیوی اجتماعی', group: 'محتوا', href: '/publishing/social' },
   { key: 'publishing.media', label: 'فایل‌ها', group: 'محتوا', href: '/publishing/media' },
   { key: 'publishing.settings', label: 'تنظیمات انتشار', group: 'پیکربندی', href: '/publishing/settings' },
@@ -105,7 +111,7 @@ export const APP_PERMISSIONS = [
   { key: 'settings.manage', label: 'تنظیمات سازمان', moduleId: 'platform' },
   { key: 'users.manage', label: 'مدیریت کاربران', moduleId: 'platform' },
   { key: 'publishing.feeds', label: 'منابع خبری', moduleId: 'smart-publishing' },
-  { key: 'publishing.news', label: 'اتاق خبر', moduleId: 'smart-publishing' },
+  { key: 'publishing.news', label: NEWS_DESK_LABEL, moduleId: 'smart-publishing' },
   { key: 'publishing.social', label: 'استودیوی اجتماعی', moduleId: 'smart-publishing' },
   { key: 'publishing.media', label: 'فایل‌ها', moduleId: 'smart-publishing' },
   { key: 'publishing.operations', label: 'مرکز عملیات', moduleId: 'smart-publishing' },

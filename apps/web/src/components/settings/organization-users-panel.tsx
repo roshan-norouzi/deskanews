@@ -131,7 +131,7 @@ export function OrganizationUsersPanel({
       return;
     }
     if (selectedPermissions.includes('publishing.news') && !selectedNewsroomServiceIds.length) {
-      setSaveError('برای دسترسی به اتاق خبر، حداقل یک سرویس انتخاب کنید');
+      setSaveError('برای دسترسی به میز خبر، حداقل یک سرویس انتخاب کنید');
       return;
     }
 

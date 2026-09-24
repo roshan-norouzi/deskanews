@@ -40,7 +40,7 @@ pnpm verify        # typecheck + build + test + runtime
 | ☐ | 7 | Website | probe | isna.ir — بدون crash |
 | ☐ | 8 | Telegram | probe `t.me/s/telegram` | مطلب بدون bot token |
 | ☐ | 9 | X | probe `x.com/nasa` | مطلب (یا 429 موقت — retry) |
-| ☐ | 10 | اتاق خبر | `/publishing/news` | تغییر وضعیت / آماده‌سازی |
+| ☐ | 10 | میز خبر | `/publishing/news` | تغییر وضعیت / آماده‌سازی |
 | ☐ | 11 | استودیو | `/publishing/social` | لیست + prepare (بدون publish واقعی OK) |
 | ☐ | 12 | منابع پیش‌فرض | `/publishing/feeds` بخش پلتفرم | فعال/غیرفعال tenant |
 | ☐ | 13 | کاتالوگ admin | `/platform/feeds` | CRUD super admin |
@@ -68,7 +68,7 @@ pnpm verify        # typecheck + build + test + runtime
 
 ```
 منبع → ingest (job/news article)
-اتاق خبر → ارسال به استودیو
+میز خبر → ارسال به استودیو
 استودیو → prepare (GapGPT)
 Worker config → فقط همان URL برای t.me/x.com
 حذف منبع → بدون orphan FK (Prisma onDelete)

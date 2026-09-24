@@ -151,7 +151,7 @@ export default function OrganizationsPage() {
       <PageContainer>
         <PageHeader
           title="سازمان‌های من"
-          description="سازمان موردنظر را انتخاب کن، مصرف را ببین و وارد اتاق خبر شو."
+          description="سازمان موردنظر را انتخاب کن، مصرف را ببین و وارد میز خبر شو."
           icon={Building2}
         />
 
@@ -368,7 +368,7 @@ export default function OrganizationsPage() {
               <CardContent className="space-y-2 p-5 text-sm leading-6 text-slate-600">
                 <p className="font-semibold text-slate-800">درباره مصرف</p>
                 <p>
-                  مصرف بر اساس فرایندهای اتاق خبر و استودیو (پایش، آماده‌سازی، خلاصه‌سازی، بازنویسی، ترجمه، انتشار، کاور و شبکه‌های اجتماعی) محاسبه می‌شود.
+                  مصرف بر اساس فرایندهای میز خبر و استودیو (پایش، آماده‌سازی، خلاصه‌سازی، بازنویسی، ترجمه، انتشار، کاور و شبکه‌های اجتماعی) محاسبه می‌شود.
                   واحد نمایش: {USAGE_UNIT_LABEL}.
                 </p>
               </CardContent>

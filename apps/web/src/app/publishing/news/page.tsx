@@ -138,7 +138,7 @@ export default function NewsPage() {
   const syncNews = () => run(
     'sync',
     () => apiFetch('/publishing/news/sync', { method: 'POST' }),
-    'منابع اتاق خبر پایش شدند؛ خبرهای جدید بر اساس تنظیمات اتوماسیون پردازش می‌شوند.',
+    'منابع میز خبر پایش شدند؛ خبرهای جدید بر اساس تنظیمات اتوماسیون پردازش می‌شوند.',
   );
 
   const summarize = (id: string) => run(
@@ -275,7 +275,7 @@ export default function NewsPage() {
     void run(
       `restore-${id}`,
       () => apiFetch(`/publishing/news/articles/${id}/restore`, { method: 'POST' }),
-      'خبر به اتاق خبر بازگردانده شد.',
+      'خبر به میز خبر بازگردانده شد.',
     );
   };
 
@@ -285,7 +285,7 @@ export default function NewsPage() {
     <ProtectedLayout>
       <PageContainer width="narrow">
         <PageHeader
-          title="اتاق خبر"
+          title="میز خبر"
           description="مدیریت خبرها و فرایند انتشار."
           icon={Newspaper}
           actions={(
@@ -309,7 +309,7 @@ export default function NewsPage() {
                 isLoading={busy === 'delete-all'}
                 onClick={async () => {
                   const ok = await confirm({
-                    title: 'حذف همه خبرهای اتاق خبر؟',
+                    title: 'حذف همه خبرهای میز خبر؟',
                     description:
                       'همه خبرهای فعلی برای همیشه حذف می‌شوند. منابع و تنظیمات باقی می‌مانند و در پایش بعدی خبرها دوباره دریافت می‌شوند.',
                     confirmLabel: 'حذف همه خبرها',
@@ -319,7 +319,7 @@ export default function NewsPage() {
                   void run(
                     'delete-all',
                     () => apiFetch('/publishing/news/articles', { method: 'DELETE' }),
-                    'همه خبرهای اتاق خبر حذف شدند؛ در پایش بعدی دوباره دریافت می‌شوند.',
+                    'همه خبرهای میز خبر حذف شدند؛ در پایش بعدی دوباره دریافت می‌شوند.',
                   );
                 }}
               >
@@ -375,7 +375,7 @@ export default function NewsPage() {
           <label className="ds-field min-w-[12rem]">
             منبع
             <select className="h-10 rounded-lg border border-surface-border bg-white px-3 text-sm" value={feedId} onChange={(event) => setFeedId(event.target.value)}>
-              <option value="">همه منابع اتاق خبر</option>
+              <option value="">همه منابع میز خبر</option>
               {feeds.map((feed) => (
                 <option key={feed.id} value={feed.id}>
                   {feed.name}{feed.enabled ? '' : ' (متوقف)'}
@@ -420,7 +420,7 @@ export default function NewsPage() {
             <EmptyState
               icon={Newspaper}
               title="خبری در این بخش نیست"
-              description="منابع اتاق خبر را در «منابع خبری» اضافه کنید یا دکمه «دریافت خبرهای جدید» را بزنید."
+              description="منابع میز خبر را در «منابع خبری» اضافه کنید یا دکمه «دریافت خبرهای جدید» را بزنید."
               action={(
                 <Link href="/publishing/feeds">
                   <Button variant="outline" size="sm">مدیریت منابع خبری</Button>

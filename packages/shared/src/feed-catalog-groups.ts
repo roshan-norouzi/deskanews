@@ -24,7 +24,7 @@ export const FEED_CATALOG_GROUPS: Record<
   },
   'orgs-companies': {
     label: 'سازمان‌ها و شرکت‌ها',
-    description: 'اتاق خبر رسمی نهادها و شرکت‌ها برای منبع اولیه و روابط عمومی',
+    description: 'میز خبر رسمی نهادها و شرکت‌ها برای منبع اولیه و روابط عمومی',
     sourceTypes: ['website', 'rss'],
   },
   telegram: {

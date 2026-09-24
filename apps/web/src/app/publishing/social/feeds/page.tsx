@@ -121,7 +121,7 @@ export default function SocialFeedsPage() {
           </Link>
           <PageHeader
             title="منابع استودیوی اجتماعی"
-            description="منابع مستقل برای تولید محتوای اجتماعی — بدون ارتباط با اتاق خبر و پایش خبری."
+            description="منابع مستقل برای تولید محتوای اجتماعی — بدون ارتباط با میز خبر و پایش خبری."
             icon={Share2}
             actions={
               <Button onClick={() => { setEditing(null); setForm(EMPTY_FORM); setModalOpen(true); }}>

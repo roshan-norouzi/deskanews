@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Vazirmatn } from 'next/font/google';
-import { PLATFORM_NAME, PLATFORM_TAGLINE } from '@deska/shared';
+import { PLATFORM_DESCRIPTION, PLATFORM_NAME, PLATFORM_TAGLINE } from '@deska/shared';
 import { ConfirmProvider } from '@/components/ui/confirm-provider';
 import { ToastProvider } from '@/components/ui/toast-provider';
 import { AuthProvider } from '@/lib/auth-context';
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     default: PLATFORM_NAME,
     template: `%s | ${PLATFORM_NAME}`,
   },
-  description: PLATFORM_TAGLINE,
+  description: PLATFORM_DESCRIPTION,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

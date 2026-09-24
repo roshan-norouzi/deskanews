@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
+  NEWS_DESK_LABEL,
   ORGANIZATION_MENU_PERMISSIONS,
   memberHasPermission,
 } from '@deska/shared';
@@ -48,7 +49,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'محتوا',
     items: [
       { href: '/publishing/feeds', label: 'منابع خبری', icon: Rss },
-      { href: '/publishing/news', label: 'اتاق خبر', icon: Newspaper },
+      { href: '/publishing/news', label: NEWS_DESK_LABEL, icon: Newspaper },
       { href: '/publishing/social', label: 'استودیوی اجتماعی', icon: Share2 },
       { href: '/publishing/media', label: 'فایل‌ها', icon: ImageIcon },
     ],
