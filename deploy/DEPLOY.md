@@ -85,7 +85,7 @@ https://github.com/settings/tokens → classic → scope های `repo` و `workf
 | PostgreSQL | volume حفظ می‌شود؛ فقط migrationهای جدید اجرا می‌شوند |
 | کاربران و تنظیمات | حفظ؛ seed فقط در اولین نصب |
 | فایل‌های آپلود | volume حفظ می‌شود |
-| بکاپ | قبل از هر deploy در `backups/deployments/` (پنج مورد آخر) |
+| بکاپ | قبل از هر deploy در `backups/deployments/` (دو مورد آخر؛ اگر دیسک کمتر از ۲ گیگ باشد فقط آخرین بکاپ می‌ماند) |
 | ایمیج‌های قدیمی | فقط نسخهٔ جاری و قبلی (برای rollback) نگه داشته می‌شوند |
 
 ## فایل‌ها

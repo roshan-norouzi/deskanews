@@ -18,6 +18,55 @@ deploy_error() {
   printf 'DESKA_DEPLOY_ERROR: %s\n' "$*" >&2
 }
 
+# Keep the running release and the release being installed. Every other api/web
+# tag is an abandoned deploy and is safe to delete before the disk check.
+reclaim_deploy_disk() {
+  local installed='' image_name image_ref
+  if [ -f .deska-installed-version ]; then
+    installed="$(tr -d '[:space:]' < .deska-installed-version)"
+  fi
+  for image_name in api web; do
+    docker image ls --format '{{.Repository}}:{{.Tag}}' "${IMAGE_PREFIX}/${image_name}" 2>/dev/null |
+      while IFS= read -r image_ref; do
+        case "$image_ref" in
+          *":${VERSION}"|*":${installed}"|*":<none>") ;;
+          *) docker image rm "$image_ref" >/dev/null 2>&1 || true ;;
+        esac
+      done || true
+  done
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
+# A disk-full crash leaves the migration marked failed. Prisma will not continue
+# until that row is rolled back. The migration runs in one transaction, so a
+# crash undoes its SQL and it is safe to retry.
+apply_database_migrations() {
+  local migrate_log migration_name
+  migrate_log="$(mktemp)"
+  if run_deployment_stage 'Apply database migrations' 300 \
+    docker compose --env-file "$candidate_env" -f "$incoming_compose" run --rm --no-deps api \
+    /app/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma \
+    2>&1 | tee "$migrate_log"; then
+    rm -f -- "$migrate_log"
+    return 0
+  fi
+  migration_name="$(sed -n 's/.*The `\([^`]*\)` migration started at.*/\1/p' "$migrate_log" | head -n 1)"
+  # Only this migration is known to have failed from a disk-full crash. Its SQL
+  # is one transaction, so rolling it back and running it again is safe.
+  if [ "$migration_name" = '20260924100000_integrity_indexes' ] && grep -q 'P3009' "$migrate_log"; then
+    printf 'DESKA_DEPLOY_STAGE: marking failed migration %s as rolled back so it can be retried\n' "$migration_name"
+    docker compose --env-file "$candidate_env" -f "$incoming_compose" run --rm --no-deps api \
+      /app/node_modules/.bin/prisma migrate resolve --rolled-back "$migration_name" --schema=./prisma/schema.prisma
+    rm -f -- "$migrate_log"
+    run_deployment_stage 'Apply database migrations' 300 \
+      docker compose --env-file "$candidate_env" -f "$incoming_compose" run --rm --no-deps api \
+      /app/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
+    return 0
+  fi
+  rm -f -- "$migrate_log"
+  return 1
+}
+
 run_deployment_stage() {
   local label="$1"
   local maximum_seconds="$2"
@@ -139,9 +188,24 @@ for incoming_file in "$incoming_compose" "$incoming_script" "$incoming_checksum"
   fi
 done
 
+# Old release images and deployment backups are what filled the disk last time.
+# A full disk crashed PostgreSQL mid-migration and left that migration failed.
+reclaim_deploy_disk
 available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
+if printf '%s' "$available_kb" | grep -Eq '^[0-9]+$' && [ "$available_kb" -lt 2097152 ]; then
+  backup_root="$DEPLOY_PATH/backups/deployments"
+  if [ -d "$backup_root" ]; then
+    while IFS= read -r old_backup; do
+      case "$old_backup" in
+        "$backup_root"/*) rm -rf -- "$old_backup" ;;
+        *) deploy_error "refusing to remove unexpected backup path: ${old_backup}"; exit 1 ;;
+      esac
+    done < <(ls -1dt -- "$backup_root"/* 2>/dev/null | tail -n +2 || true)
+  fi
+  available_kb="$(df -Pk "$DEPLOY_PATH" | awk 'NR == 2 { print $4 }')"
+fi
 if ! printf '%s' "$available_kb" | grep -Eq '^[0-9]+$' || [ "$available_kb" -lt 786432 ]; then
-  deploy_error "less than 768 MB of free disk space is available for a safe image update and backup (available: ${available_kb} KB)."
+  deploy_error "less than 768 MB of free disk space is available after removing old images and backups (available: ${available_kb} KB)."
   exit 1
 fi
 
@@ -245,7 +309,7 @@ while IFS= read -r old_backup; do
     "$backup_root"/*) rm -rf -- "$old_backup" ;;
     *) deploy_error "refusing to remove unexpected backup path: ${old_backup}"; exit 1 ;;
   esac
-done < <(ls -1dt -- "$backup_root"/* 2>/dev/null | tail -n +6 || true)
+done < <(ls -1dt -- "$backup_root"/* 2>/dev/null | tail -n +3 || true)
 
 run_deployment_stage 'Pull versioned images' 600 docker compose --env-file "$candidate_env" -f "$incoming_compose" pull api web redis minio
 run_deployment_stage 'Verify API image' 30 docker image inspect --format '{{.Id}}' "${IMAGE_PREFIX}/api:${VERSION}"
@@ -263,7 +327,7 @@ for attempt in $(seq 1 30); do
   fi
   sleep 3
 done
-run_deployment_stage 'Apply database migrations' 300 docker compose --env-file "$candidate_env" -f "$incoming_compose" run --rm --no-deps api /app/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
+apply_database_migrations
 
 mv "$incoming_compose" docker-compose.yml
 mv "$candidate_env" .env
