@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Tags, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/utils';
 
@@ -9,7 +9,7 @@ export function PlatformTopicLabelsPanel() {
   const [labels, setLabels] = useState<string[]>([]);
   const [original, setOriginal] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'save' | 'apply' | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function PlatformTopicLabelsPanel() {
         renameTo.push(next);
       }
     });
-    setBusy(true);
+    setBusy('save');
     setNotice(null);
     try {
       const saved = await apiFetch<string[]>('/platform/feed-topic-labels', {
@@ -54,7 +54,32 @@ export function PlatformTopicLabelsPanel() {
     } catch (reason) {
       setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'ذخیره لیبل‌ها انجام نشد' });
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function applyLabels() {
+    setBusy('apply');
+    setNotice(null);
+    try {
+      const result = await apiFetch<{ assigned: number; remaining: number }>('/platform/feed-topic-labels/apply', {
+        method: 'POST',
+        skipTenant: true,
+      });
+      const assigned = result?.assigned ?? 0;
+      const remaining = result?.remaining ?? 0;
+      setNotice({
+        type: 'success',
+        text: remaining > 0
+          ? `${assigned} منبع برچسب خورد. ${remaining} منبع هنوز بدون لیبل است؛ دوباره بزنید.`
+          : assigned > 0
+            ? `${assigned} منبع برچسب خورد.`
+            : 'منبع بدون لیبلِ قابل‌تشخیصی نماند.',
+      });
+    } catch (reason) {
+      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'برچسب‌گذاری انجام نشد' });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -88,7 +113,12 @@ export function PlatformTopicLabelsPanel() {
         <Button type="button" variant="secondary" onClick={addLabel}><Plus className="h-4 w-4" /> افزودن</Button>
       </div>
       {notice ? <div className={`rounded-xl border px-4 py-3 text-sm ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div> : null}
-      <Button type="button" onClick={() => void save()} isLoading={busy}>ذخیره لیبل‌ها</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" onClick={() => void save()} isLoading={busy === 'save'}>ذخیره لیبل‌ها</Button>
+        <Button type="button" variant="secondary" onClick={() => void applyLabels()} isLoading={busy === 'apply'}>
+          <Tags className="h-4 w-4" /> برچسب‌گذاری منابع بدون لیبل
+        </Button>
+      </div>
     </div>
   );
 }

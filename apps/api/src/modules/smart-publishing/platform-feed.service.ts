@@ -6,7 +6,7 @@ import { SourceReaderService } from './source-reader.service';
 import { GapGptClient } from './gapgpt.client';
 import { PublishingSettingsService } from './publishing-settings.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
-import { entryGuids, reuseKnownGuids } from './feed-dedupe';
+import { entryGuids, omitKnownStories } from './feed-dedupe';
 import { buildLatestFeedPreviewItems } from './feed-preview';
 import {
   DEFAULT_PLATFORM_POLL_MINUTES,
@@ -23,6 +23,7 @@ import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime
 import { DestinationCategoryService } from './destination-category.service';
 import {
   evaluatePlatformFeedHealth,
+  worstPlatformFeedHealthStatus,
   normalizeCatalogHealthIntervalHours,
   orderCatalogHealthCheckFeeds,
   parseCatalogHealthEnabled,
@@ -46,6 +47,7 @@ function mapCatalogFeed(feed: {
   sourceType: string;
   catalogGroup: string;
   topicLabel?: string;
+  sourceGroupId?: string;
   resolvedFeedUrl: string;
   sourceLanguage: string;
   logoUrl: string;
@@ -67,6 +69,7 @@ function mapCatalogFeed(feed: {
     sourceType: feed.sourceType,
     catalogGroup: feed.catalogGroup,
     topicLabel: feed.topicLabel || '',
+    sourceGroupId: feed.sourceGroupId || feed.id,
     resolvedFeedUrl: feed.resolvedFeedUrl,
     sourceLanguage: feed.sourceLanguage,
     logoUrl: resolveFeedLogoUrl(feed.url, feed.logoUrl, feed.sourceType),
@@ -103,6 +106,7 @@ function mapTenantPlatformFeedRow(row: {
     sourceType: string;
     catalogGroup: string;
     topicLabel?: string;
+    sourceGroupId?: string;
     resolvedFeedUrl: string;
     sourceLanguage: string;
     logoUrl: string;
@@ -121,6 +125,7 @@ function mapTenantPlatformFeedRow(row: {
     sourceType: row.platformFeed.sourceType,
     catalogGroup: row.platformFeed.catalogGroup,
     topicLabel: row.platformFeed.topicLabel || '',
+    sourceGroupId: row.platformFeed.sourceGroupId || row.platformFeed.id,
     resolvedFeedUrl: row.platformFeed.resolvedFeedUrl,
     logoUrl: resolveFeedLogoUrl(row.platformFeed.url, row.platformFeed.logoUrl, row.platformFeed.sourceType),
     includeWords: resolved.includeWords,
@@ -179,6 +184,7 @@ const PLATFORM_FEED_LIST_SELECT = {
   sourceType: true,
   catalogGroup: true,
   topicLabel: true,
+  sourceGroupId: true,
   resolvedFeedUrl: true,
   sourceLanguage: true,
   logoUrl: true,
@@ -327,9 +333,11 @@ export class PlatformFeedService implements OnModuleInit {
     void this.assignMissingTopicLabels();
   }
 
-  private async assignMissingTopicLabels() {
-    if (this.topicLabelRunning) return;
+  async assignMissingTopicLabels(): Promise<{ assigned: number; remaining: number }> {
+    if (this.topicLabelRunning) return { assigned: 0, remaining: 0 };
     this.topicLabelRunning = true;
+    let assigned = 0;
+    let remaining = 0;
     try {
       const allowed = await this.settings.listFeedTopicLabels();
       const allowedSet = new Set(allowed);
@@ -354,12 +362,15 @@ export class PlatformFeedService implements OnModuleInit {
         if (!label || !allowedSet.has(label)) continue;
         if (feed.kind === 'platform') await this.prisma.platformFeed.update({ where: { id: feed.id }, data: { topicLabel: label } });
         else await this.prisma.newsFeed.update({ where: { id: feed.id }, data: { topicLabel: label } });
+        assigned += 1;
       }
+      remaining = pending.length - assigned;
     } catch (error) {
       this.logger.warn(`Topic labels could not be assigned: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {
       this.topicLabelRunning = false;
     }
+    return { assigned, remaining };
   }
 
   async listAll() {
@@ -397,6 +408,8 @@ export class PlatformFeedService implements OnModuleInit {
     }
 
     const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage);
+    const catalogGroup = normalizeCatalogGroup(sourceType, data.catalogGroup, sourceLanguage);
+    const chosenLabel = await this.settings.chosenTopicLabel(data.topicLabel);
     const profilePhoto = !options.skipProfilePhoto && (sourceType === 'telegram' || sourceType === 'twitter')
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
       : '';
@@ -405,8 +418,8 @@ export class PlatformFeedService implements OnModuleInit {
         name,
         url,
         sourceType,
-        catalogGroup: normalizeCatalogGroup(sourceType, data.catalogGroup, sourceLanguage),
-        topicLabel: inferFeedTopicLabel(name, url, normalizeCatalogGroup(sourceType, data.catalogGroup, sourceLanguage)),
+        catalogGroup,
+        topicLabel: chosenLabel !== undefined && chosenLabel !== '' ? chosenLabel : inferFeedTopicLabel(name, url, catalogGroup),
         resolvedFeedUrl,
         includeWords: [],
         excludeWords: [],
@@ -422,7 +435,16 @@ export class PlatformFeedService implements OnModuleInit {
     if (sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
     }
-    return mapCatalogFeed(feed);
+    await this.prisma.platformFeed.update({ where: { id: feed.id }, data: { sourceGroupId: feed.id } });
+    if (data.channels && data.channels.length > 1) {
+      for (const channel of data.channels.slice(1)) {
+        const extraUrl = normalizeFeedUrl(channel.url);
+        if (extraUrl === feed.url) continue;
+        const extra = await this.create({ ...data, url: extraUrl, topicLabel: channel.topicLabel, channels: undefined }, options);
+        await this.prisma.platformFeed.update({ where: { id: extra.id }, data: { sourceGroupId: feed.id } });
+      }
+    }
+    return mapCatalogFeed({ ...feed, sourceGroupId: feed.id });
   }
 
   async update(id: string, data: UpdatePlatformFeedDto, options: PlatformFeedWriteOptions = {}) {
@@ -430,8 +452,12 @@ export class PlatformFeedService implements OnModuleInit {
     const name = String(data.name ?? feed.name).trim();
     const url = normalizeFeedUrl(String(data.url ?? feed.url));
     const sourceType = normalizeSourceType(data.sourceType ?? feed.sourceType);
+    const groupKey = feed.sourceGroupId || feed.id;
     const duplicate = await this.prisma.platformFeed.findFirst({ where: { url, NOT: { id } } });
-    if (duplicate) throw new ConflictException('این آدرس قبلاً ثبت شده است');
+    if (duplicate && (duplicate.sourceGroupId || duplicate.id) !== groupKey) {
+      throw new ConflictException('این آدرس قبلاً ثبت شده است');
+    }
+    const urlForRow = duplicate ? feed.url : url;
 
     const urlChanged = data.url !== undefined && url !== feed.url;
     const typeChanged = data.sourceType !== undefined && sourceType !== feed.sourceType;
@@ -443,13 +469,16 @@ export class PlatformFeedService implements OnModuleInit {
     }
 
     const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage ?? feed.sourceLanguage);
+    const chosenLabel = await this.settings.chosenTopicLabel(data.topicLabel);
+    const catalogGroup = normalizeCatalogGroup(sourceType, data.catalogGroup ?? feed.catalogGroup, sourceLanguage);
     const updated = await this.prisma.platformFeed.update({
       where: { id },
       data: {
         name,
-        url,
+        url: urlForRow,
         sourceType,
-        catalogGroup: normalizeCatalogGroup(sourceType, data.catalogGroup ?? feed.catalogGroup, sourceLanguage),
+        catalogGroup,
+        ...(chosenLabel !== undefined ? { topicLabel: chosenLabel } : {}),
         resolvedFeedUrl,
         ...(data.sourceLanguage !== undefined ? { sourceLanguage } : {}),
         ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
@@ -459,7 +488,90 @@ export class PlatformFeedService implements OnModuleInit {
     if (data.sourceLanguage !== undefined && sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
     }
-    return mapCatalogFeed(updated);
+    const groupId = updated.sourceGroupId || updated.id;
+    if (!updated.sourceGroupId) {
+      await this.prisma.platformFeed.update({ where: { id }, data: { sourceGroupId: groupId } });
+    }
+    if (data.catalogGroup !== undefined && catalogGroup !== feed.catalogGroup) {
+      await this.prisma.platformFeed.updateMany({
+        where: { sourceGroupId: groupId },
+        data: { catalogGroup },
+      });
+    }
+    if (data.channels?.length) {
+      const survivorId = await this.syncPlatformChannels(id, data.channels, options);
+      return mapCatalogFeed(await this.findFeed(survivorId));
+    }
+    return mapCatalogFeed(await this.findFeed(id));
+  }
+
+  private async syncPlatformChannels(
+    anchorId: string,
+    channels: Array<{ url: string; topicLabel?: string }>,
+    options: PlatformFeedWriteOptions,
+  ) {
+    const anchor = await this.findFeed(anchorId);
+    const groupId = anchor.sourceGroupId || anchor.id;
+    const members = await this.prisma.platformFeed.findMany({ where: { sourceGroupId: groupId } });
+    const roster = members.some((member) => member.id === anchor.id) ? members : [anchor, ...members];
+    const byUrl = new Map(roster.map((member) => [member.url, member]));
+    const used = new Set<string>();
+    const pending: Array<{ url: string; topicLabel: string }> = [];
+    for (const channel of channels) {
+      const channelUrl = normalizeFeedUrl(channel.url);
+      const existing = byUrl.get(channelUrl);
+      if (existing && !used.has(existing.id)) {
+        const label = await this.settings.chosenTopicLabel(channel.topicLabel);
+        await this.prisma.platformFeed.update({
+          where: { id: existing.id },
+          data: {
+            name: anchor.name,
+            topicLabel: label !== undefined && label !== '' ? label : existing.topicLabel,
+            sourceGroupId: groupId,
+            sourceType: anchor.sourceType,
+            catalogGroup: anchor.catalogGroup,
+            sourceLanguage: anchor.sourceLanguage,
+            enabled: anchor.enabled,
+          },
+        });
+        used.add(existing.id);
+        continue;
+      }
+      pending.push({ url: channelUrl, topicLabel: channel.topicLabel || '' });
+    }
+    const spare = roster.filter((member) => !used.has(member.id));
+    spare.sort((left, right) => Number(right.id === anchor.id) - Number(left.id === anchor.id));
+    for (const channel of pending) {
+      const label = await this.settings.chosenTopicLabel(channel.topicLabel);
+      const topicLabel = label !== undefined && label !== '' ? label : inferFeedTopicLabel(anchor.name, channel.url, anchor.catalogGroup);
+      const reuse = spare.shift();
+      if (reuse) {
+        await this.prisma.platformFeed.update({
+          where: { id: reuse.id },
+          data: { url: channel.url, name: anchor.name, topicLabel, sourceGroupId: groupId },
+        });
+        used.add(reuse.id);
+        continue;
+      }
+      const extra = await this.create({
+        name: anchor.name,
+        url: channel.url,
+        sourceType: anchor.sourceType as CreatePlatformFeedDto['sourceType'],
+        catalogGroup: anchor.catalogGroup as FeedCatalogGroup,
+        sourceLanguage: anchor.sourceLanguage,
+        topicLabel,
+        enabled: anchor.enabled,
+        logoUrl: anchor.logoUrl,
+      }, options);
+      await this.prisma.platformFeed.update({ where: { id: extra.id }, data: { sourceGroupId: groupId } });
+      used.add(extra.id);
+    }
+    for (const member of roster) {
+      if (!used.has(member.id)) await this.delete(member.id);
+    }
+    if (used.has(anchor.id)) return anchor.id;
+    const survivor = await this.prisma.platformFeed.findFirst({ where: { sourceGroupId: groupId }, select: { id: true } });
+    return survivor?.id || anchor.id;
   }
 
   async delete(id: string) {
@@ -495,21 +607,43 @@ export class PlatformFeedService implements OnModuleInit {
 
   async test(id: string) {
     const feed = await this.findFeed(id);
-    const health = await this.sourceReader.runPreviewFetch(() => this.checkFeedHealth(feed));
-    const items = health.items;
+    const groupId = feed.sourceGroupId || feed.id;
+    const members = await this.prisma.platformFeed.findMany({
+      where: { OR: [{ id: groupId }, { sourceGroupId: groupId }] },
+      orderBy: [{ topicLabel: 'asc' }, { url: 'asc' }],
+    });
+    const roster = members.some((member) => member.id === feed.id) ? members : [feed, ...members];
+    const channels = [];
+    for (const member of roster) {
+      const health = await this.sourceReader.runPreviewFetch(() => this.checkFeedHealth(member));
+      channels.push({
+        id: member.id,
+        name: member.name,
+        topicLabel: member.topicLabel || '',
+        url: member.url,
+        healthStatus: health.status,
+        healthError: health.errorMessage,
+        itemCount: health.itemCount,
+        items: health.items,
+      });
+    }
+    const healthStatus = worstPlatformFeedHealthStatus(channels.map((channel) => channel.healthStatus));
+    const focus = channels.find((channel) => channel.healthStatus === healthStatus) ?? channels[0];
     return {
-      ok: health.status === 'healthy',
+      ok: healthStatus === 'healthy',
       source: {
         id: feed.id,
         name: feed.name,
         url: feed.url,
         sourceType: feed.sourceType,
         resolvedFeedUrl: feed.resolvedFeedUrl,
+        channelCount: channels.length,
       },
       discoveredFeedUrl: feed.resolvedFeedUrl || null,
-      healthStatus: health.status,
-      healthError: health.errorMessage,
-      items,
+      healthStatus,
+      healthError: focus?.healthError || '',
+      channels,
+      items: focus?.items || [],
     };
   }
 
@@ -817,16 +951,33 @@ export class PlatformFeedService implements OnModuleInit {
       const recent = entries
         .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
       const guids = entryGuids(recent);
-      const known = guids.length
-        ? await this.prisma.platformFeedArticle.findMany({ where: { platformFeedId: feed.id, guid: { in: guids } }, select: { guid: true, canonicalUrl: true } })
-        : [];
-      const filtered = reuseKnownGuids(recent, known);
-
-      let created = 0;
-      for (const entry of filtered) {
-        const result = await this.prisma.platformFeedArticle.upsert({
-          where: { platformFeedId_canonicalUrl: { platformFeedId: feed.id, canonicalUrl: entry.canonicalUrl } },
-          create: {
+      const urls = [...new Set(recent.map((entry) => entry.canonicalUrl))];
+      const identityOr = [
+        ...(urls.length ? [{ canonicalUrl: { in: urls } }] : []),
+        ...(guids.length ? [{ guid: { in: guids } }] : []),
+      ];
+      const [byLink, bySource] = recent.length
+        ? await Promise.all([
+          identityOr.length
+            ? this.prisma.platformFeedArticle.findMany({
+              where: { OR: identityOr },
+              select: { canonicalUrl: true, guid: true, originalTitle: true },
+            })
+            : Promise.resolve([]),
+          this.prisma.platformFeedArticle.findMany({
+            where: { sourceName: feed.name },
+            select: { canonicalUrl: true, guid: true, originalTitle: true },
+            orderBy: { createdAt: 'desc' },
+            take: 400,
+          }),
+        ])
+        : [[], []];
+      const known = [...byLink, ...bySource];
+      const filtered = omitKnownStories(recent, known);
+      const createdResult = filtered.length
+        ? await this.prisma.platformFeedArticle.createMany({
+          skipDuplicates: true,
+          data: filtered.map((entry) => ({
             platformFeedId: feed.id,
             canonicalUrl: entry.canonicalUrl,
             originalUrl: entry.canonicalUrl,
@@ -838,18 +989,10 @@ export class PlatformFeedService implements OnModuleInit {
             featuredImageUrl: entry.featuredImageUrl,
             sourceName: feed.name,
             publishedAtSource: entry.publishedAt,
-          },
-          update: {
-            originalTitle: entry.title,
-            originalSummary: entry.summary,
-            originalContent: entry.content,
-            originalContentIsFull: entry.contentIsFull,
-            featuredImageUrl: entry.featuredImageUrl || undefined,
-            publishedAtSource: entry.publishedAt,
-          },
-        });
-        if (result.createdAt.getTime() === result.updatedAt.getTime()) created += 1;
-      }
+          })),
+        })
+        : { count: 0 };
+      const created = createdResult.count;
 
       await this.prisma.platformFeed.update({
         where: { id },
@@ -1066,9 +1209,36 @@ export class PlatformFeedService implements OnModuleInit {
       return 0;
     }
 
+    const urls = [...new Set(filtered.map((article) => article.canonicalUrl))];
+    const guids = [...new Set(filtered.map((article) => article.guid).filter(Boolean))];
+    const identityOr = [
+      ...(urls.length ? [{ canonicalUrl: { in: urls } }] : []),
+      ...(guids.length ? [{ guid: { in: guids } }] : []),
+    ];
+    const [byLink, bySource] = await Promise.all([
+      identityOr.length
+        ? this.prisma.newsArticle.findMany({
+          where: { tenantId, OR: identityOr },
+          select: { canonicalUrl: true, guid: true, originalTitle: true },
+        })
+        : Promise.resolve([]),
+      this.prisma.newsArticle.findMany({
+        where: { tenantId, sourceName: feed.name },
+        select: { canonicalUrl: true, guid: true, originalTitle: true },
+        orderBy: { createdAt: 'desc' },
+        take: 400,
+      }),
+    ]);
+    const knownNews = [...byLink, ...bySource];
+    const fresh = omitKnownStories(filtered.map((article) => ({ ...article, title: article.originalTitle })), knownNews);
+    if (!fresh.length) {
+      await markSynced();
+      return 0;
+    }
+
     const result = await this.prisma.newsArticle.createMany({
       skipDuplicates: true,
-      data: filtered.map((article) => ({
+      data: fresh.map((article) => ({
         tenantId,
         platformFeedArticleId: article.id,
         canonicalUrl: article.canonicalUrl,
@@ -1096,7 +1266,7 @@ export class PlatformFeedService implements OnModuleInit {
       await this.usageTracking.record(tenantId, USAGE_METRIC_KEYS.NEWS_MONITORED, result.count);
       await this.destinationCategories.categorizeArticlesByCanonicalUrls(
         tenantId,
-        filtered.map((article) => article.canonicalUrl),
+        fresh.map((article) => article.canonicalUrl),
       ).catch((error) => {
         this.logger.warn(`Platform feed categorization failed: ${error instanceof Error ? error.message : 'unknown error'}`);
       });

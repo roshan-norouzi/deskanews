@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Crown, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { Building2, Coins, Crown, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { PlatformOrganizationWalletPanel } from '@/components/settings/platform-organization-wallet-panel';
 import { PLATFORM_ROLES, TENANT_ROLE_LABELS, USAGE_UNIT_LABEL, formatPersianDigits, type TenantRole } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,9 +51,9 @@ function splitDisplayName(name: string) {
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
-export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean }) {
+export function PlatformAdminPanel({ embedded = false, initialTab = 'users' }: { embedded?: boolean; initialTab?: 'users' | 'organizations' | 'credits' }) {
   const { isSuperAdmin } = useAuth();
-  const [tab, setTab] = useState<'users' | 'organizations'>('users');
+  const [tab, setTab] = useState<'users' | 'organizations' | 'credits'>(initialTab);
   const [query, setQuery] = useState('');
   const [overview, setOverview] = useState<Overview>();
   const [users, setUsers] = useState<PlatformUser[]>([]);
@@ -77,15 +78,15 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
       const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : '';
       const [summary, result] = await Promise.all([
         apiFetch<Overview>('/platform/overview', { skipTenant: true }),
-        tab === 'users'
+        tab === 'credits'
+          ? Promise.resolve({ items: [], total: 0 } as ListResult<PlatformUser>)
+          : tab === 'users'
           ? apiFetch<ListResult<PlatformUser>>(`/platform/users${suffix}`, { skipTenant: true })
-          : tab === 'organizations'
-            ? apiFetch<ListResult<Organization>>(`/platform/organizations${suffix}`, { skipTenant: true })
-            : Promise.resolve({ items: [], total: 0 } as ListResult<PlatformUser>),
+          : apiFetch<ListResult<Organization>>(`/platform/organizations${suffix}`, { skipTenant: true }),
       ]);
       setOverview(summary);
       if (tab === 'users') setUsers((result as ListResult<PlatformUser>).items);
-      else setOrganizations((result as ListResult<Organization>).items);
+      else if (tab === 'organizations') setOrganizations((result as ListResult<Organization>).items);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'دریافت اطلاعات انجام نشد');
     } finally {
@@ -277,12 +278,16 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
                 <Building2 className="h-4 w-4" />
                 سازمان‌ها
               </Button>
+              <Button variant={tab === 'credits' ? 'primary' : 'outline'} onClick={() => setTab('credits')}>
+                <Coins className="h-4 w-4" />
+                اعتبار سازمان‌ها
+              </Button>
             </div>
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-              <div className="relative min-w-56 flex-1 sm:w-80">
+              {tab !== 'credits' && <div className="relative min-w-56 flex-1 sm:w-80">
                 <Search className="absolute right-3 top-3 h-4 w-4 text-slate-400" />
                 <Input className="pr-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="جستجو..." />
-              </div>
+              </div>}
               {isSuperAdmin && tab === 'users' && (
                 <Button type="button" onClick={() => setShowCreateUser((visible) => !visible)}>
                   <UserPlus className="h-4 w-4" />
@@ -308,7 +313,9 @@ export function PlatformAdminPanel({ embedded = false }: { embedded?: boolean })
               </div>
             </form>
           )}
-          {loading ? (
+          {tab === 'credits' ? (
+            <PlatformOrganizationWalletPanel />
+          ) : loading ? (
             <div className="py-12 text-center text-slate-500">در حال دریافت...</div>
           ) : tab === 'users' ? (
             <div className="space-y-3">

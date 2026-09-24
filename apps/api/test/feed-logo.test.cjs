@@ -5,6 +5,7 @@ const {
   buildAutoFeedLogoUrl,
   buildTelegramProfilePhotoUrl,
   extractFeedDomain,
+  resolveFeedSourceHref,
   usesFeedProfilePhoto,
 } = require('@deska/shared');
 
@@ -41,6 +42,12 @@ test('resolveFeedLogoUrl skips favicon for twitter until profile photo is stored
     resolveFeedLogoUrl('https://x.com/Reuters', 'https://pbs.twimg.com/profile_images/example.jpg', 'twitter'),
     'https://pbs.twimg.com/profile_images/example.jpg',
   );
+});
+
+test('resolveFeedSourceHref links to site origin or social profile', () => {
+  assert.equal(resolveFeedSourceHref('https://www.isna.ir/rss/tp/1', 'rss'), 'https://www.isna.ir');
+  assert.equal(resolveFeedSourceHref('https://t.me/VahidOnline', 'telegram'), 'https://t.me/VahidOnline');
+  assert.equal(resolveFeedSourceHref('https://x.com/Reuters/status/1', 'twitter'), 'https://x.com/Reuters');
 });
 
 test('usesFeedProfilePhoto marks telegram and twitter', () => {

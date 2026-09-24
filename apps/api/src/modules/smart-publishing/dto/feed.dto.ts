@@ -1,5 +1,16 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, Min, ValidateNested } from 'class-validator';
 import { FEED_CATALOG_GROUP_ORDER, FEED_SOURCE_TYPES, SOURCE_LANGUAGE_CODE_PATTERN, type FeedCatalogGroup, type FeedSourceType } from '@deska/shared';
+
+export class FeedChannelDto {
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  url!: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  topicLabel?: string;
+}
 
 export const FEED_PURPOSES = ['news-room', 'social-studio'] as const;
 export type FeedPurpose = (typeof FEED_PURPOSES)[number];
@@ -51,6 +62,17 @@ export class CreateFeedDto {
   @IsOptional()
   @IsIn(['default', 'custom'])
   settingsMode?: 'default' | 'custom';
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  topicLabel?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FeedChannelDto)
+  channels?: FeedChannelDto[];
 }
 
 export class UpdateFeedDto {
@@ -96,6 +118,17 @@ export class UpdateFeedDto {
   @IsOptional()
   @IsIn(['default', 'custom'])
   settingsMode?: 'default' | 'custom';
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  topicLabel?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FeedChannelDto)
+  channels?: FeedChannelDto[];
 }
 
 export class UpdateTenantPlatformFeedDto {

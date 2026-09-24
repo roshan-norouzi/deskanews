@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HeartPulse, Plus } from 'lucide-react';
 import { formatPersianDigits, resolveFeedLogoUrl } from '@deska/shared';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
+import { FeedChannelFields, channelsForFeed, groupCatalogFeedsBySource, type FeedChannelDraft } from '@/components/publishing/feed-channel-fields';
 import { PlatformFeedCatalogTable } from '@/components/publishing/platform-feed-catalog-table';
 import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
@@ -49,6 +50,8 @@ interface PlatformFeed {
   healthItemCount?: number;
   healthError?: string;
   healthFailSince?: string | null;
+  topicLabel?: string;
+  sourceGroupId?: string;
 }
 
 interface FeedForm {
@@ -57,6 +60,8 @@ interface FeedForm {
   sourceType: FeedSourceType;
   sourceLanguage: SourceLanguage;
   logoUrlOverride: string;
+  topicLabel: string;
+  channels: FeedChannelDraft[];
   enabled: boolean;
 }
 
@@ -66,6 +71,8 @@ const EMPTY_FORM: FeedForm = {
   sourceType: 'rss',
   sourceLanguage: 'auto',
   logoUrlOverride: '',
+  topicLabel: '',
+  channels: [{ url: '', topicLabel: '' }],
   enabled: true,
 };
 
@@ -77,18 +84,39 @@ interface HealthItem {
   featuredImageUrl: string;
 }
 
-interface HealthResult {
-  source: { name: string; url: string; sourceType: FeedSourceType; resolvedFeedUrl?: string };
+interface HealthChannelResult {
+  id?: string;
+  topicLabel?: string;
+  url: string;
+  healthStatus?: PlatformFeed['healthStatus'];
+  healthError?: string;
+  itemCount?: number;
   items: HealthItem[];
+}
+
+interface HealthResult {
+  source: { name: string; url: string; sourceType: FeedSourceType; resolvedFeedUrl?: string; channelCount?: number };
+  healthStatus?: PlatformFeed['healthStatus'];
+  healthError?: string;
+  channels?: HealthChannelResult[];
+  items: HealthItem[];
+}
+
+function filledChannels(channels: FeedChannelDraft[]) {
+  return channels.map((channel) => ({ url: channel.url.trim(), topicLabel: channel.topicLabel })).filter((channel) => channel.url);
 }
 
 function validateForm(form: FeedForm) {
   if (form.name.trim().length < 2) return 'نام منبع باید حداقل ۲ نویسه باشد.';
-  try {
-    const url = new URL(form.url.trim());
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
-  } catch {
-    return 'آدرس منبع باید کامل و معتبر باشد.';
+  const channels = filledChannels(form.channels);
+  if (!channels.length) return 'حداقل یک آدرس RSS لازم است.';
+  for (const channel of channels) {
+    try {
+      const url = new URL(channel.url);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+    } catch {
+      return 'آدرس منبع باید کامل و معتبر باشد.';
+    }
   }
   return '';
 }
@@ -108,6 +136,8 @@ export default function PlatformFeedsPage() {
   const [form, setForm] = useState<FeedForm>(EMPTY_FORM);
   const [learnedLanguages, setLearnedLanguages] = useState<string[]>([]);
   const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
+  const [modalGroup, setModalGroup] = useState<FeedCatalogGroup>('media-domestic');
+  const [topicLabels, setTopicLabels] = useState<string[]>([]);
   const editingIdRef = useRef<string | null>(null);
 
   const feedsByGroup = useMemo(() => {
@@ -122,6 +152,14 @@ export default function PlatformFeedsPage() {
     return grouped;
   }, [feeds]);
 
+  const displayCountsByGroup = useMemo(() => {
+    const counts = {} as Record<FeedCatalogGroup, number>;
+    for (const group of FEED_CATALOG_GROUP_ORDER) {
+      counts[group] = groupCatalogFeedsBySource(feedsByGroup[group]).length;
+    }
+    return counts;
+  }, [feedsByGroup]);
+
   const languageOptions = useMemo(
     () => mergeSourceLanguageCatalog([...learnedLanguages, ...feeds.map((feed) => feed.sourceLanguage), form.sourceLanguage]),
     [feeds, form.sourceLanguage, learnedLanguages],
@@ -131,12 +169,14 @@ export default function PlatformFeedsPage() {
     setLoading(true);
     setError('');
     try {
-      const [result, languages] = await Promise.all([
+      const [result, languages, labels] = await Promise.all([
         apiFetch<PlatformFeed[]>('/platform/feeds', { skipTenant: true }),
         apiFetch<Array<{ code: string }>>('/platform/source-languages', { skipTenant: true }).catch(() => []),
+        apiFetch<string[]>('/platform/feed-topic-labels', { skipTenant: true }).catch(() => []),
       ]);
       setFeeds(Array.isArray(result) ? result : []);
       setLearnedLanguages(Array.isArray(languages) ? languages.map((item) => item.code) : []);
+      setTopicLabels(Array.isArray(labels) ? labels : []);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'دریافت منابع پیش‌فرض انجام نشد');
     } finally {
@@ -164,7 +204,9 @@ export default function PlatformFeedsPage() {
     setForm({
       ...EMPTY_FORM,
       sourceType: defaultSourceTypeForCatalogGroup(group),
+      channels: [{ url: '', topicLabel: '' }],
     });
+    setModalGroup(group);
     setActiveGroup(group);
     setModalOpen(true);
   }
@@ -178,8 +220,11 @@ export default function PlatformFeedsPage() {
       sourceType: feed.sourceType,
       sourceLanguage: feed.sourceLanguage || 'auto',
       logoUrlOverride: feed.logoUrlOverride || '',
+      topicLabel: feed.topicLabel || '',
+      channels: channelsForFeed(feed, feeds),
       enabled: feed.enabled,
     });
+    setModalGroup(resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage));
     setModalOpen(true);
   }
 
@@ -192,17 +237,38 @@ export default function PlatformFeedsPage() {
     setBusy('probe');
     setNotice(null);
     try {
-      const result = await apiFetch<HealthResult>('/platform/feeds/probe', {
-        method: 'POST',
-        skipTenant: true,
-        signal: AbortSignal.timeout(90_000),
-        body: {
+      const channels = filledChannels(form.channels);
+      const probed: HealthChannelResult[] = [];
+      for (const channel of channels) {
+        const result = await apiFetch<HealthResult>('/platform/feeds/probe', {
+          method: 'POST',
+          skipTenant: true,
+          signal: AbortSignal.timeout(90_000),
+          body: {
+            name: form.name.trim(),
+            url: channel.url,
+            sourceType: form.sourceType,
+          },
+        });
+        probed.push({
+          topicLabel: channel.topicLabel,
+          url: channel.url,
+          healthStatus: result.items.length ? 'healthy' : 'degraded',
+          healthError: result.items.length ? '' : 'مطلبی دریافت نشد',
+          itemCount: result.items.length,
+          items: result.items,
+        });
+      }
+      setHealth({
+        source: {
           name: form.name.trim(),
-          url: form.url.trim(),
+          url: channels[0]?.url || form.url.trim(),
           sourceType: form.sourceType,
+          channelCount: probed.length,
         },
+        channels: probed,
+        items: probed[0]?.items || [],
       });
-      setHealth(result);
       setHealthOpen(true);
     } catch (reason) {
       setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'تست منبع انجام نشد' });
@@ -217,7 +283,7 @@ export default function PlatformFeedsPage() {
     try {
       const result = await apiFetch<HealthResult & { healthStatus?: PlatformFeed['healthStatus']; healthError?: string }>(
         `/platform/feeds/${feed.id}/test`,
-        { method: 'POST', skipTenant: true, signal: AbortSignal.timeout(90_000) },
+        { method: 'POST', skipTenant: true, signal: AbortSignal.timeout(180_000) },
       );
       setHealth(result);
       setHealthOpen(true);
@@ -240,12 +306,15 @@ export default function PlatformFeedsPage() {
     setBusy('save');
     setNotice(null);
     try {
+      const channels = filledChannels(form.channels);
       const body = {
         name: form.name.trim(),
-        url: form.url.trim(),
+        url: channels[0].url,
         sourceType: form.sourceType,
-        catalogGroup: resolveCatalogGroup(form.sourceType, activeGroup, form.sourceLanguage),
+        catalogGroup: modalGroup,
         sourceLanguage: form.sourceLanguage,
+        topicLabel: channels[0].topicLabel,
+        channels,
         logoUrl: form.logoUrlOverride.trim(),
         enabled: form.enabled,
       };
@@ -255,6 +324,7 @@ export default function PlatformFeedsPage() {
         body,
       });
       closeModal();
+      setActiveGroup(modalGroup);
       setNotice({ type: 'success', text: feedId ? 'منبع پیش‌فرض ویرایش شد.' : 'منبع پیش‌فرض اضافه شد.' });
       await load();
     } catch (reason) {
@@ -312,7 +382,7 @@ export default function PlatformFeedsPage() {
           {FEED_CATALOG_GROUP_ORDER.map((group) => {
             const meta = FEED_CATALOG_GROUPS[group];
             const Icon = FEED_CATALOG_GROUP_UI[group].icon;
-            const count = feedsByGroup[group].length;
+            const count = displayCountsByGroup[group];
             return (
               <button
                 key={group}
@@ -348,6 +418,7 @@ export default function PlatformFeedsPage() {
           ) : (
             <PlatformFeedCatalogTable
               feeds={feedsByGroup[activeGroup]}
+              allFeeds={feeds}
               busy={busy}
               onTest={(feed) => void testSource(feed as PlatformFeed)}
               onFetch={(feed) => {
@@ -365,7 +436,6 @@ export default function PlatformFeedsPage() {
                 })();
               }}
               onEdit={(feed) => {
-                setActiveGroup(resolveCatalogGroup((feed as PlatformFeed).sourceType, (feed as PlatformFeed).catalogGroup, (feed as PlatformFeed).sourceLanguage));
                 openEdit(feed as PlatformFeed);
               }}
               onDelete={(feed) => {
@@ -400,11 +470,38 @@ export default function PlatformFeedsPage() {
               onClose={handleCloseModal}
             />
             <ModalBody className="space-y-4 p-6">
-                <Input label="نام" required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input label="نام" required value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} />
+                  <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                    نوع رسانه
+                    <select
+                      value={modalGroup}
+                      onChange={(event) => {
+                        const group = event.target.value as FeedCatalogGroup;
+                        setModalGroup(group);
+                        setForm((current) => ({ ...current, sourceType: defaultSourceTypeForCatalogGroup(group) }));
+                      }}
+                      className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    >
+                      {FEED_CATALOG_GROUP_ORDER.map((group) => (
+                        <option key={group} value={group}>
+                          {FEED_CATALOG_GROUPS[group].label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <FeedChannelFields
+                  channels={form.channels}
+                  labelOptions={topicLabels}
+                  urlLabel={FEED_SOURCE_UI[form.sourceType].label}
+                  urlPlaceholder={FEED_SOURCE_UI[form.sourceType].placeholder}
+                  onChange={(channels) => setForm((current) => ({ ...current, channels, url: channels[0]?.url || '', topicLabel: channels[0]?.topicLabel || '' }))}
+                />
                 <fieldset>
                   <legend className="mb-2 text-sm font-medium">نوع منبع</legend>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {(FEED_CATALOG_GROUPS[activeGroup].sourceTypes as FeedSourceType[]).map((key) => {
+                    {(FEED_CATALOG_GROUPS[modalGroup].sourceTypes as FeedSourceType[]).map((key) => {
                       const item = FEED_SOURCE_UI[key];
                       return (
                       <label key={key} className={cn('cursor-pointer rounded-2xl border p-4', form.sourceType === key ? 'border-primary-500 bg-primary-50' : 'border-slate-200')}>
@@ -418,7 +515,6 @@ export default function PlatformFeedsPage() {
                   </div>
                   <p className="mt-3 text-xs leading-5 text-slate-500">{feedSourceTypeHint(form.sourceType)}</p>
                 </fieldset>
-                <Input label={FEED_SOURCE_UI[form.sourceType].label} required dir="ltr" placeholder={FEED_SOURCE_UI[form.sourceType].placeholder} value={form.url} onChange={(e) => setForm((c) => ({ ...c, url: e.target.value }))} />
                 <div className="grid gap-3 sm:grid-cols-[auto,1fr] sm:items-end">
                   <FeedSourceLogoWithFallback
                     name={form.name || 'منبع'}
@@ -455,7 +551,11 @@ export default function PlatformFeedsPage() {
                 title={<div className="flex items-center gap-2"><HeartPulse className="h-5 w-5 text-emerald-600" /><span>آزمایش منبع</span></div>}
                 description={
                   <>
-                    <p>۵ مطلب آخر «{health.source.name}»</p>
+                    <p>
+                      {health.channels && health.channels.length > 1
+                        ? `${health.channels.length} فید «${health.source.name}» جداگانه آزمایش شد`
+                        : `۵ مطلب آخر «${health.source.name}»`}
+                    </p>
                     <p className="mt-1 truncate text-xs text-slate-400" dir="ltr">{health.source.url}</p>
                     {health.source.resolvedFeedUrl && (
                       <p className="mt-1 truncate text-xs text-emerald-700" dir="ltr">فید کشف‌شده: {health.source.resolvedFeedUrl}</p>
@@ -464,24 +564,31 @@ export default function PlatformFeedsPage() {
                 }
                 onClose={() => setHealthOpen(false)}
               />
-              <ModalBody className="space-y-3 p-6">
-                {health.items.length ? health.items.map((item) => (
-                  <article key={item.url} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex gap-4">
-                      {item.featuredImageUrl && <img src={item.featuredImageUrl} alt="" className="h-20 w-28 shrink-0 rounded-xl object-cover" />}
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold leading-6 text-slate-900">{item.title}</h3>
-                        <p className="mt-1 line-clamp-3 text-sm leading-6 text-slate-600">{item.summary || 'بدون خلاصه'}</p>
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
-                          {item.publishedAt && <span>{new Date(item.publishedAt).toLocaleString('fa-IR')}</span>}
-                          <a href={item.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">مشاهده منبع</a>
-                        </div>
+              <ModalBody className="space-y-4 p-6">
+                {(health.channels && health.channels.length > 0 ? health.channels : [{ url: health.source.url, items: health.items, healthStatus: health.healthStatus, healthError: health.healthError }]).map((channel) => (
+                  <section key={channel.url} className="space-y-3 rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{channel.topicLabel || 'بدون موضوع'}</p>
+                        <p className="mt-1 truncate text-xs text-slate-400" dir="ltr">{channel.url}</p>
                       </div>
+                      {channel.healthStatus ? (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          {channel.healthStatus === 'healthy' ? 'سالم' : channel.healthStatus === 'down' ? 'قطع' : channel.healthStatus === 'degraded' ? 'ناقص' : 'نامشخص'}
+                        </span>
+                      ) : null}
                     </div>
-                  </article>
-                )) : (
-                  <div className="rounded-2xl bg-amber-50 p-5 text-sm text-amber-800">منبع پاسخ داد اما مطلبی برای نمایش پیدا نشد.</div>
-                )}
+                    {channel.healthError ? <p className="text-xs text-red-600">{channel.healthError}</p> : null}
+                    {channel.items.length ? channel.items.slice(0, 3).map((item) => (
+                      <article key={item.url} className="rounded-xl bg-slate-50 p-3">
+                        <h3 className="text-sm font-semibold leading-6 text-slate-900">{item.title}</h3>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{item.summary || 'بدون خلاصه'}</p>
+                      </article>
+                    )) : (
+                      <p className="text-sm text-amber-800">مطلبی برای نمایش پیدا نشد.</p>
+                    )}
+                  </section>
+                ))}
               </ModalBody>
               <ModalFooter className="flex justify-end">
                 <Button type="button" onClick={() => setHealthOpen(false)}>بستن</Button>

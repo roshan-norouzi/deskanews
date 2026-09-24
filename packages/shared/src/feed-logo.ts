@@ -50,6 +50,25 @@ export function usesFeedProfilePhoto(sourceType?: string): boolean {
   return sourceType === 'telegram' || sourceType === 'twitter';
 }
 
+export function resolveFeedSourceHref(sourceUrl: string, sourceType?: string): string {
+  const raw = String(sourceUrl || '').trim();
+  if (!raw) return '';
+  const type = String(sourceType || '').trim();
+  if (type === 'telegram') {
+    const username = parseTelegramUsername(raw);
+    return username ? `https://t.me/${username}` : raw;
+  }
+  if (type === 'twitter') {
+    const handle = parseTwitterHandle(raw);
+    return handle ? `https://x.com/${handle}` : raw;
+  }
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw;
+  }
+}
+
 /** Stored override wins; social feeds use profile photos instead of site favicons. */
 export function resolveFeedLogoUrl(sourceUrl: string, storedLogoUrl = '', sourceType?: string): string {
   const stored = String(storedLogoUrl || '').trim();

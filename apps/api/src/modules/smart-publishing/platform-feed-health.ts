@@ -58,6 +58,16 @@ export function parseCatalogHealthEnabled(value: unknown): boolean {
   return normalized !== 'false' && normalized !== '0';
 }
 
+export function worstPlatformFeedHealthStatus(statuses: readonly string[]): PlatformFeedHealthStatus {
+  const rank: Record<string, number> = { down: 0, degraded: 1, unknown: 2, healthy: 3 };
+  let worst: PlatformFeedHealthStatus = 'healthy';
+  for (const raw of statuses) {
+    const status = (raw in rank ? raw : 'unknown') as PlatformFeedHealthStatus;
+    if (rank[status] < rank[worst]) worst = status;
+  }
+  return statuses.length ? worst : 'unknown';
+}
+
 export function isCatalogFeedPendingHealthCheck(feed: {
   healthCheckedAt?: Date | null;
   healthStatus?: string | null;

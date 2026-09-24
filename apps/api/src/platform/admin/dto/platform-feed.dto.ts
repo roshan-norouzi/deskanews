@@ -1,4 +1,6 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Matches, Max, Min, ValidateNested } from 'class-validator';
+import { FeedChannelDto } from '../../../modules/smart-publishing/dto/feed.dto';
 import { FEED_CATALOG_GROUP_ORDER, SOURCE_LANGUAGE_CODE_PATTERN } from '@deska/shared';
 import { SOURCE_TYPES } from '../../../modules/smart-publishing/dto/feed.dto';
 
@@ -30,6 +32,17 @@ export class CreatePlatformFeedDto {
   @IsOptional()
   @IsString()
   logoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  topicLabel?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FeedChannelDto)
+  channels?: FeedChannelDto[];
 }
 
 export class UpdatePlatformFeedDto {
@@ -61,4 +74,15 @@ export class UpdatePlatformFeedDto {
   @IsOptional()
   @IsString()
   logoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 80)
+  topicLabel?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FeedChannelDto)
+  channels?: FeedChannelDto[];
 }

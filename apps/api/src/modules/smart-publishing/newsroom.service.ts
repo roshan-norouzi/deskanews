@@ -16,7 +16,7 @@ import { SchedulerRuntimeService } from '../../common/services/scheduler-runtime
 import { IntegrationHealthService } from '../../common/services/integration-health.service';
 import { ContentWorkflowService } from '../../common/services/content-workflow.service';
 import { entryFilterText, matchesWordFilters, parseWordList } from './feed-word-filter';
-import { entryGuids, reuseKnownGuids } from './feed-dedupe';
+import { entryGuids, omitKnownStories } from './feed-dedupe';
 import { buildLatestFeedPreviewItems } from './feed-preview';
 import { PlatformFeedService } from './platform-feed.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
@@ -293,9 +293,27 @@ export class NewsroomService {
     return this.platformFeeds.toggleForTenant(tenantId, platformFeedId, enabled);
   }
 
+  private feedChannels(data: { url?: string; topicLabel?: string; channels?: Array<{ url: string; topicLabel?: string }> }) {
+    const raw = data.channels?.length
+      ? data.channels
+      : data.url ? [{ url: data.url, topicLabel: data.topicLabel }] : [];
+    const seen = new Set<string>();
+    const channels: Array<{ url: string; topicLabel: string }> = [];
+    for (const channel of raw) {
+      const url = normalizeFeedUrl(channel.url);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      channels.push({ url, topicLabel: (channel.topicLabel || '').trim() });
+    }
+    if (!channels.length) throw new BadRequestException('حداقل یک آدرس RSS لازم است.');
+    return channels;
+  }
+
   async addFeed(tenantId: string, data: CreateFeedDto) {
+    const channels = this.feedChannels(data);
     const name = data.name.trim();
-    const url = normalizeFeedUrl(data.url);
+    const url = channels[0].url;
+    data = { ...data, url, topicLabel: channels[0].topicLabel };
     const sourceType = normalizeSourceType(data.sourceType);
     const purpose = normalizePurpose(data.purpose);
     const duplicate = await this.prisma.newsFeed.findFirst({ where: { tenantId, url } });
@@ -312,6 +330,7 @@ export class NewsroomService {
       resolvedFeedUrl = (await this.sourceReader.discoverFeedUrl(url).catch(() => null)) || '';
     }
     const catalogGroup = normalizeFeedCatalogGroupForSource(data.catalogGroup, sourceType, data.sourceLanguage ?? 'auto');
+    const chosenLabel = await this.settings.chosenTopicLabel(data.topicLabel);
     const sourceLanguage = normalizeSourceLanguage(data.sourceLanguage);
     const profilePhoto = (sourceType === 'telegram' || sourceType === 'twitter')
       ? await this.sourceReader.resolveFeedProfilePhoto(url, sourceType).catch(() => '')
@@ -324,7 +343,7 @@ export class NewsroomService {
       url,
       sourceType,
       catalogGroup,
-      topicLabel: inferFeedTopicLabel(name, url, catalogGroup),
+      topicLabel: chosenLabel !== undefined && chosenLabel !== '' ? chosenLabel : inferFeedTopicLabel(name, url, catalogGroup),
       resolvedFeedUrl,
       logoUrl: profilePhoto,
       includeWords: parseWordList(data.includeWords),
@@ -337,7 +356,8 @@ export class NewsroomService {
     if (sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
     }
-    return created;
+    await this.syncNewsFeedChannels(tenantId, created.id, channels);
+    return this.findFeed(tenantId, created.id);
   }
 
   async updateFeed(tenantId: string, id: string, data: UpdateFeedDto) {
@@ -346,8 +366,12 @@ export class NewsroomService {
     const url = normalizeFeedUrl(String(data.url ?? feed.url));
     const sourceType = normalizeSourceType(data.sourceType ?? feed.sourceType);
     const purpose = normalizePurpose(data.purpose, normalizePurpose(feed.purpose));
+    const groupKey = feed.sourceGroupId || feed.id;
     const duplicate = await this.prisma.newsFeed.findFirst({ where: { tenantId, url, NOT: { id } } });
-    if (duplicate) throw new ConflictException('این آدرس قبلاً ثبت شده است');
+    if (duplicate && (duplicate.sourceGroupId || duplicate.id) !== groupKey) {
+      throw new ConflictException('این آدرس قبلاً ثبت شده است');
+    }
+    const urlForRow = duplicate ? feed.url : url;
     if (purpose === 'news-room') {
       const platformDuplicate = await this.prisma.platformFeed.findFirst({ where: { url, NOT: { url: feed.url } } });
       if (platformDuplicate && platformDuplicate.url === url) {
@@ -367,6 +391,7 @@ export class NewsroomService {
     const catalogGroup = data.catalogGroup !== undefined
       ? normalizeFeedCatalogGroupForSource(data.catalogGroup, sourceType, data.sourceLanguage ?? feed.sourceLanguage ?? 'auto')
       : feed.catalogGroup;
+    const chosenLabel = await this.settings.chosenTopicLabel(data.topicLabel);
     const sourceLanguage = data.sourceLanguage !== undefined
       ? normalizeSourceLanguage(data.sourceLanguage)
       : feed.sourceLanguage;
@@ -394,9 +419,10 @@ export class NewsroomService {
 
     const updated = await this.prisma.newsFeed.update({ where: { id }, data: {
       name,
-      url,
+      url: urlForRow,
       sourceType,
       catalogGroup,
+      ...(chosenLabel !== undefined ? { topicLabel: chosenLabel } : {}),
       resolvedFeedUrl,
       ...(shouldRefreshProfilePhoto && profilePhoto ? { logoUrl: profilePhoto } : {}),
       ...(data.includeWords !== undefined ? { includeWords: parseWordList(data.includeWords) } : {}),
@@ -413,7 +439,74 @@ export class NewsroomService {
     if (data.sourceLanguage !== undefined && sourceLanguage !== 'auto') {
       await this.settings.rememberSourceLanguages([sourceLanguage]).catch(() => undefined);
     }
-    return updated;
+    if (data.channels?.length) {
+      const survivorId = await this.syncNewsFeedChannels(tenantId, id, this.feedChannels({ url: updated.url, topicLabel: updated.topicLabel, channels: data.channels }));
+      return this.findFeed(tenantId, survivorId);
+    } else if (!updated.sourceGroupId) {
+      await this.prisma.newsFeed.update({ where: { id }, data: { sourceGroupId: id } });
+    }
+    return this.findFeed(tenantId, id);
+  }
+
+  private async syncNewsFeedChannels(tenantId: string, anchorId: string, channels: Array<{ url: string; topicLabel: string }>) {
+    const anchor = await this.findFeed(tenantId, anchorId);
+    const groupId = anchor.sourceGroupId || anchor.id;
+    const members = await this.prisma.newsFeed.findMany({ where: { tenantId, sourceGroupId: groupId, purpose: anchor.purpose } });
+    const roster = members.some((member) => member.id === anchor.id) ? members : [anchor, ...members];
+    const byUrl = new Map(roster.map((member) => [member.url, member]));
+    const used = new Set<string>();
+    for (const [index, channel] of channels.entries()) {
+      const label = await this.settings.chosenTopicLabel(channel.topicLabel);
+      const topicLabel = label !== undefined && label !== '' ? label : inferFeedTopicLabel(anchor.name, channel.url, anchor.catalogGroup);
+      const existing = byUrl.get(channel.url);
+      if (existing && !used.has(existing.id)) {
+        await this.prisma.newsFeed.update({
+          where: { id: existing.id },
+          data: { name: anchor.name, topicLabel, sourceGroupId: groupId, sourceType: anchor.sourceType, catalogGroup: anchor.catalogGroup, sourceLanguage: anchor.sourceLanguage, enabled: anchor.enabled },
+        });
+        used.add(existing.id);
+        continue;
+      }
+      if (index === 0 && !used.has(anchor.id)) {
+        await this.prisma.newsFeed.update({
+          where: { id: anchor.id },
+          data: { url: channel.url, topicLabel, sourceGroupId: groupId },
+        });
+        used.add(anchor.id);
+        continue;
+      }
+      const created = await this.prisma.newsFeed.create({
+        data: {
+          tenantId,
+          name: anchor.name,
+          url: channel.url,
+          sourceType: anchor.sourceType,
+          catalogGroup: anchor.catalogGroup,
+          topicLabel,
+          sourceGroupId: groupId,
+          resolvedFeedUrl: '',
+          logoUrl: anchor.logoUrl,
+          includeWords: anchor.includeWords,
+          excludeWords: anchor.excludeWords,
+          pollIntervalMinutes: anchor.pollIntervalMinutes,
+          autoPoll: anchor.autoPoll,
+          autoPrepare: anchor.autoPrepare,
+          autoPublish: anchor.autoPublish,
+          autoSendSocial: anchor.autoSendSocial,
+          settingsMode: anchor.settingsMode,
+          purpose: anchor.purpose,
+          sourceLanguage: anchor.sourceLanguage,
+          enabled: anchor.enabled,
+        },
+      });
+      used.add(created.id);
+    }
+    for (const member of roster) {
+      if (!used.has(member.id)) await this.deleteFeed(tenantId, member.id);
+    }
+    if (used.has(anchor.id)) return anchor.id;
+    const survivor = await this.prisma.newsFeed.findFirst({ where: { tenantId, sourceGroupId: groupId }, select: { id: true } });
+    return survivor?.id || anchor.id;
   }
 
   async toggleFeed(tenantId: string, id: string) {
@@ -560,10 +653,29 @@ export class NewsroomService {
         .filter((entry) => (!entry.publishedAt || entry.publishedAt >= cutoff)
           && matchesWordFilters(entryFilterText(entry), feed.includeWords, feed.excludeWords));
       const guids = entryGuids(matching);
-      const known = guids.length
-        ? await this.prisma.newsArticle.findMany({ where: { tenantId, feedId, guid: { in: guids } }, select: { guid: true, canonicalUrl: true } })
-        : [];
-      const filtered = reuseKnownGuids(matching, known);
+      const urls = [...new Set(matching.map((entry) => entry.canonicalUrl))];
+      const identityOr = [
+        ...(urls.length ? [{ canonicalUrl: { in: urls } }] : []),
+        ...(guids.length ? [{ guid: { in: guids } }] : []),
+      ];
+      const [byLink, bySource] = matching.length
+        ? await Promise.all([
+          identityOr.length
+            ? this.prisma.newsArticle.findMany({
+              where: { tenantId, OR: identityOr },
+              select: { canonicalUrl: true, guid: true, originalTitle: true },
+            })
+            : Promise.resolve([]),
+          this.prisma.newsArticle.findMany({
+            where: { tenantId, sourceName: feed.name },
+            select: { canonicalUrl: true, guid: true, originalTitle: true },
+            orderBy: { createdAt: 'desc' },
+            take: 400,
+          }),
+        ])
+        : [[], []];
+      const known = [...byLink, ...bySource];
+      const filtered = omitKnownStories(matching, known);
       const result = filtered.length ? await this.prisma.newsArticle.createMany({
         skipDuplicates: true,
         data: filtered.map((entry) => ({

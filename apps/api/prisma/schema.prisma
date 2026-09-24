@@ -28,6 +28,7 @@ model NewsFeed {
   sourceLanguage      String          @default("auto")
   catalogGroup        String          @default("media-domestic")
   topicLabel          String          @default("")
+  sourceGroupId       String          @default("")
   logoUrl             String          @default("")
   rightsMode          String          @default("quote_ok")
   adapterConfig       Json            @default("{}")
@@ -42,6 +43,7 @@ model NewsFeed {
   @@unique([tenantId, url])
   @@index([tenantId, enabled])
   @@index([tenantId, purpose])
+  @@index([tenantId, sourceGroupId])
 }
 
 model PlatformConfig {
@@ -57,6 +59,7 @@ model PlatformFeed {
   sourceType          String                 @default("rss")
   catalogGroup        String                 @default("media-domestic")
   topicLabel          String                 @default("")
+  sourceGroupId       String                 @default("")
   resolvedFeedUrl     String                 @default("")
   includeWords        String[]               @default([])
   excludeWords        String[]               @default([])
@@ -77,6 +80,8 @@ model PlatformFeed {
   updatedAt           DateTime               @updatedAt
   articles            PlatformFeedArticle[]
   subscriptions       TenantPlatformFeed[]
+
+  @@index([sourceGroupId])
 }
 
 model TenantPlatformFeed {

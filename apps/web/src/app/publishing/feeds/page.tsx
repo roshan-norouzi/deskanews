@@ -13,6 +13,7 @@ import {
   Power,
 } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
+import { FeedSourceFilters, matchesFeedCatalogFilters } from '@/components/publishing/feed-source-filters';
 import { PlatformFeedsSection } from '@/components/publishing/platform-feeds-section';
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
@@ -26,13 +27,13 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/moda
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { mergeSourceLanguageCatalog, sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
+import { FeedChannelFields, channelsForFeed, topicLabelsForSourceGroup, type FeedChannelDraft } from '@/components/publishing/feed-channel-fields';
 import { FEED_PROBE_REQUEST_TIMEOUT_MS, feedUsesOrganizationDefaults, newsOrganizationAutomation } from '@/lib/news-feed-automation';
 import {
   FEED_CATALOG_GROUPS,
   FEED_CATALOG_GROUP_ORDER,
   FEED_SOURCE_UI,
   defaultSourceTypeForCatalogGroup,
-  emptyFeedsByCatalogGroup,
   feedSourceTypeHint,
   resolveCatalogGroup,
   sortFeedsByName,
@@ -49,6 +50,7 @@ interface Feed {
   sourceType?: FeedSourceType;
   catalogGroup?: FeedCatalogGroup;
   topicLabel?: string;
+  sourceGroupId?: string;
   logoUrl?: string;
   sourceLanguage?: SourceLanguage;
   resolvedFeedUrl?: string;
@@ -72,6 +74,8 @@ interface FeedForm {
   sourceType: FeedSourceType;
   sourceLanguage: SourceLanguage;
   purpose: FeedPurpose;
+  topicLabel: string;
+  channels: FeedChannelDraft[];
   includeWords: string;
   excludeWords: string;
   pollIntervalMinutes: string;
@@ -82,7 +86,7 @@ interface FeedForm {
   useOrganizationDefaults: boolean;
 }
 
-const EMPTY_FORM: FeedForm = { name: '', url: '', sourceType: 'rss', sourceLanguage: 'auto', purpose: 'news-room', includeWords: '', excludeWords: '', pollIntervalMinutes: '240', autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false, useOrganizationDefaults: true };
+const EMPTY_FORM: FeedForm = { name: '', url: '', sourceType: 'rss', sourceLanguage: 'auto', purpose: 'news-room', topicLabel: '', channels: [{ url: '', topicLabel: '' }], includeWords: '', excludeWords: '', pollIntervalMinutes: '240', autoPoll: true, autoPrepare: true, autoPublish: false, autoSendSocial: false, useOrganizationDefaults: true };
 
 interface HealthItem {
   title: string;
@@ -98,17 +102,25 @@ interface HealthResult {
   items: HealthItem[];
 }
 
+function filledChannels(channels: FeedChannelDraft[]) {
+  return channels.map((channel) => ({ url: channel.url.trim(), topicLabel: channel.topicLabel })).filter((channel) => channel.url);
+}
+
 function validateForm(form: FeedForm) {
   if (form.name.trim().length < 2) return 'نام منبع باید حداقل ۲ نویسه باشد.';
   if (!form.useOrganizationDefaults) {
     const interval = Number(form.pollIntervalMinutes);
     if (!Number.isInteger(interval) || interval < 5 || interval > 1440) return 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.';
   }
-  try {
-    const url = new URL(form.url.trim());
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
-  } catch {
-    return 'آدرس منبع باید کامل و معتبر باشد؛ مانند https://example.com';
+  const channels = filledChannels(form.channels);
+  if (!channels.length) return 'حداقل یک آدرس RSS لازم است.';
+  for (const channel of channels) {
+    try {
+      const url = new URL(channel.url);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+    } catch {
+      return 'آدرس منبع باید کامل و معتبر باشد؛ مانند https://example.com';
+    }
   }
   return '';
 }
@@ -133,10 +145,11 @@ export default function FeedsPage() {
   const languagesApi = useApi<Array<{ code: string; label: string }>>('/publishing/source-languages');
   const orgAutomation = useMemo(() => newsOrganizationAutomation(orgSettings || {}), [orgSettings]);
   const feeds = useMemo(() => Array.isArray(data) ? data : [], [data]);
-  const [activeGroup, setActiveGroup] = useState<FeedCatalogGroup>('media-domestic');
+  const [selectedCatalogGroups, setSelectedCatalogGroups] = useState<Set<FeedCatalogGroup>>(() => new Set());
+  const [selectedTopics, setSelectedTopics] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
-  const [topicLabel, setTopicLabel] = useState('');
   const { data: topicLabels } = useApi<string[]>('/publishing/feed-topic-labels');
+  const labelOptions = useMemo(() => Array.isArray(topicLabels) ? topicLabels : [], [topicLabels]);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalGroup, setModalGroup] = useState<FeedCatalogGroup>('media-domestic');
   const [editing, setEditing] = useState<Feed | null>(null);
@@ -147,34 +160,16 @@ export default function FeedsPage() {
   const [health, setHealth] = useState<HealthResult | null>(null);
   const editingIdRef = useRef<string | null>(null);
 
-  const feedsByGroup = useMemo(() => {
-    const grouped = emptyFeedsByCatalogGroup<Feed>();
-    for (const feed of feeds) {
-      grouped[resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage)].push(feed);
-    }
-    for (const group of FEED_CATALOG_GROUP_ORDER) {
-      grouped[group] = sortFeedsByName(grouped[group]);
-    }
-    return grouped;
-  }, [feeds]);
-
-  const tenantActiveCountsByGroup = useMemo(() => {
-    const counts = {} as Record<FeedCatalogGroup, number>;
-    for (const group of FEED_CATALOG_GROUP_ORDER) {
-      counts[group] = feedsByGroup[group].filter((feed) => feed.enabled).length;
-    }
-    return counts;
-  }, [feedsByGroup]);
-
-  const visibleFeeds = useMemo(() => {
+  const visibleCustomFeeds = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
-    return feedsByGroup[activeGroup].filter((feed) => {
-      if (topicLabel && feed.topicLabel !== topicLabel) return false;
+    return sortFeedsByName(feeds.filter((feed) => {
+      if (!feed.enabled) return false;
+      if (!matchesFeedCatalogFilters(feed, selectedCatalogGroups, selectedTopics, labelOptions)) return false;
       if (!normalized) return true;
       return feed.name.toLocaleLowerCase('fa').includes(normalized)
         || feed.url.toLocaleLowerCase('fa').includes(normalized);
-    });
-  }, [activeGroup, feedsByGroup, query, topicLabel]);
+    }));
+  }, [feeds, labelOptions, query, selectedCatalogGroups, selectedTopics]);
 
   const modalSourceTypes = FEED_CATALOG_GROUPS[modalGroup].sourceTypes;
   const showSourceTypePicker = modalSourceTypes.length > 1;
@@ -194,13 +189,16 @@ export default function FeedsPage() {
     setForm(EMPTY_FORM);
   }
 
-  function openCreate(group: FeedCatalogGroup = activeGroup) {
+  function openCreate(group: FeedCatalogGroup = [...selectedCatalogGroups][0] || 'media-domestic') {
     setEditing(null);
     editingIdRef.current = null;
     setModalGroup(group);
+    const defaultTopic = [...selectedTopics].find((topic) => topic !== '__none') || '';
     setForm({
       ...EMPTY_FORM,
       sourceType: defaultSourceTypeForCatalogGroup(group),
+      topicLabel: defaultTopic,
+      channels: [{ url: '', topicLabel: defaultTopic }],
       pollIntervalMinutes: orgAutomation.pollIntervalMinutes,
       autoPoll: orgAutomation.autoPoll,
       autoPrepare: orgAutomation.autoPrepare,
@@ -214,7 +212,6 @@ export default function FeedsPage() {
 
   function openEdit(feed: Feed) {
     const group = resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage);
-    setActiveGroup(group);
     setEditing(feed);
     editingIdRef.current = feed.id;
     setModalGroup(group);
@@ -231,6 +228,8 @@ export default function FeedsPage() {
       url: feed.url,
       sourceType: feed.sourceType || defaultSourceTypeForCatalogGroup(group),
       sourceLanguage: feed.sourceLanguage || 'auto',
+      topicLabel: feed.topicLabel || '',
+      channels: channelsForFeed(feed, feeds),
       purpose: feed.purpose,
       includeWords: wordsToString(feed.includeWords),
       excludeWords: wordsToString(feed.excludeWords),
@@ -268,7 +267,7 @@ export default function FeedsPage() {
         signal: AbortSignal.timeout(FEED_PROBE_REQUEST_TIMEOUT_MS),
         body: {
           name: form.name.trim(),
-          url: form.url.trim(),
+          url: filledChannels(form.channels)[0]?.url || form.url.trim(),
           sourceType: form.sourceType,
           includeWords: form.includeWords,
           excludeWords: form.excludeWords,
@@ -300,13 +299,16 @@ export default function FeedsPage() {
     }
     await run('save', async () => {
       const feedId = editingIdRef.current;
+      const channels = filledChannels(form.channels);
       const body: Record<string, unknown> = {
         name: form.name.trim(),
-        url: form.url.trim(),
+        url: channels[0].url,
         sourceType: form.sourceType,
         sourceLanguage: form.sourceLanguage,
         purpose: 'news-room',
         catalogGroup: modalGroup,
+        topicLabel: channels[0].topicLabel,
+        channels,
         includeWords: form.includeWords,
         excludeWords: form.excludeWords,
         settingsMode: form.useOrganizationDefaults ? 'default' : 'custom',
@@ -323,69 +325,68 @@ export default function FeedsPage() {
         body,
       });
       closeModal();
-      setActiveGroup(modalGroup);
       setNotice({ type: 'success', text: feedId ? 'منبع ذخیره شد.' : 'منبع اضافه شد.' });
       await refetch();
     });
   }
+
+  const catalogBrowseActive = selectedCatalogGroups.size > 0 || selectedTopics.size > 0;
 
   return (
     <ProtectedLayout>
       <PageContainer className="space-y-8">
         <PageHeader
           title="منابع خبری"
-          description="منابع خبری اتاق خبر — کاتالوگ پیش‌فرض و منابع اختصاصی سازمان. استودیوی اجتماعی منابع جداگانه دارد."
+          description="هر منبع یک نام و یک نوع رسانه دارد. فیدهای RSS همان منبع با موضوع جدا، مثلاً ورزشی یا اقتصادی، اینجا فیلتر و روشن می‌شوند."
           icon={Rss}
           actions={
-            <Button className="shrink-0" onClick={() => openCreate(activeGroup)}>
-              <Plus className="h-4 w-4" /> افزودن به {FEED_CATALOG_GROUPS[activeGroup].label}
+            <Button className="shrink-0" onClick={() => openCreate()}>
+              <Plus className="h-4 w-4" /> افزودن منبع
             </Button>
           }
         />
 
-        <Card className="p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <label className="relative w-full sm:max-w-md">
-              <span className="sr-only">جست‌وجوی نام رسانه</span>
-              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="جست‌وجوی نام رسانه..."
-                className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-              />
-            </label>
-            <select
-              value={topicLabel}
-              onChange={(event) => setTopicLabel(event.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-primary-500"
-              aria-label="فیلتر لیبل"
-            >
-              <option value="">همه لیبل‌ها</option>
-              {(topicLabels ?? []).map((label) => <option key={label} value={label}>{label}</option>)}
-            </select>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Radio className="h-4 w-4" />
-              {query.trim()
-                ? `نمایش نتایج جست‌وجو`
-                : 'همه منابع'}
-            </div>
+        <Card className="space-y-4 p-4 sm:p-5">
+          <label className="relative block w-full sm:max-w-md">
+            <span className="sr-only">جست‌وجوی نام رسانه</span>
+            <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="جست‌وجوی نام رسانه..."
+              className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+            />
+          </label>
+          <FeedSourceFilters
+            selectedCatalogGroups={selectedCatalogGroups}
+            onCatalogGroupsChange={setSelectedCatalogGroups}
+            selectedTopics={selectedTopics}
+            onTopicsChange={setSelectedTopics}
+            topicOptions={labelOptions}
+          />
+          <div className="flex items-center gap-2 border-t border-slate-100 pt-3 text-sm text-slate-500">
+            <Radio className="h-4 w-4 shrink-0" />
+            <span>
+              {catalogBrowseActive
+                ? 'فیدهای کاتالوگ مطابق فیلتر (شامل خاموش برای روشن کردن)'
+                : 'فقط منابع روشن نمایش داده می‌شوند — نوع رسانه یا موضوع را تیک بزنید تا کاتالوگ را مرور کنید'}
+            </span>
           </div>
         </Card>
 
         <PlatformFeedsSection
-          activeGroup={activeGroup}
-          onActiveGroupChange={setActiveGroup}
+          selectedCatalogGroups={selectedCatalogGroups}
+          selectedTopics={selectedTopics}
+          labelOptions={labelOptions}
           searchQuery={query}
-          topicLabel={topicLabel}
-          tenantActiveCountsByGroup={tenantActiveCountsByGroup}
+          includeDisabled={catalogBrowseActive}
         />
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">منابع اختصاصی — {FEED_CATALOG_GROUPS[activeGroup].label}</h2>
-              <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
+              <h2 className="text-lg font-bold text-slate-900">فیدهای اختصاصی سازمان</h2>
+              <p className="mt-1 text-sm text-slate-500">همان فیلتر نوع رسانه و موضوع روی فیدهایی که خود سازمان ساخته اعمال می‌شود.</p>
             </div>
             <FeedBulkActions
               exportPath="/publishing/news/feeds/export"
@@ -401,18 +402,18 @@ export default function FeedsPage() {
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
               {query.trim()
-                ? `${visibleFeeds.length} منبع اختصاصی در نتایج جست‌وجو`
-                : `${visibleFeeds.length} منبع اختصاصی`}
+                ? `${visibleCustomFeeds.length} منبع اختصاصی در نتایج جست‌وجو`
+                : `${visibleCustomFeeds.length} منبع اختصاصی روشن`}
             </p>
           </div>
 
           {isLoading ? (
             <div className="grid min-h-56 place-items-center"><span className="h-9 w-9 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
-          ) : visibleFeeds.length === 0 ? (
-            <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">منبع اختصاصی در این دسته نیست</h2><p className="mt-2 text-sm text-slate-500">اولین منبع را در «{FEED_CATALOG_GROUPS[activeGroup].label}» اضافه کنید یا جست‌وجو را تغییر دهید.</p><Button className="mt-5" onClick={() => openCreate(activeGroup)}><Plus className="h-4 w-4" /> افزودن به {FEED_CATALOG_GROUPS[activeGroup].label}</Button></div>
+          ) : visibleCustomFeeds.length === 0 ? (
+            <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">فیدی با این فیلتر نیست</h2><p className="mt-2 text-sm text-slate-500">نوع رسانه یا موضوع را عوض کنید، یا منبعی با فیدهای موضوعی اضافه کنید.</p><Button className="mt-5" onClick={() => openCreate()}><Plus className="h-4 w-4" /> افزودن منبع</Button></div>
           ) : (
             <FeedSourceCardGrid>
-              {visibleFeeds.map((feed) => (
+              {visibleCustomFeeds.map((feed) => (
                 <FeedSourceCard
                   key={feed.id}
                   name={feed.name}
@@ -420,7 +421,8 @@ export default function FeedsPage() {
                   logoUrl={feed.logoUrl}
                   sourceType={feed.sourceType}
                   enabled={feed.enabled}
-                  badge={feed.topicLabel ? <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{feed.topicLabel}</span> : undefined}
+                  topicLabels={topicLabelsForSourceGroup(feed, feeds)}
+                  badge={<span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{FEED_CATALOG_GROUPS[resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage)].label}</span>}
                   footer={
                     feed.lastFetchedAt ? (
                       <p className="text-[10px] text-slate-400">
@@ -463,9 +465,28 @@ export default function FeedsPage() {
               />
               <ModalBody className="space-y-5 p-6">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Input label="نام منبع" required placeholder="مثلاً خبرگزاری رسمی" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-                  <Input label={FEED_SOURCE_UI[form.sourceType].label} required dir="ltr" placeholder={FEED_SOURCE_UI[form.sourceType].placeholder} value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} />
+                  <Input label="نام منبع" required placeholder="مثلاً ایسنا" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                  <label className="grid gap-1.5 text-sm font-medium text-slate-700">نوع رسانه
+                    <select
+                      value={modalGroup}
+                      onChange={(event) => {
+                        const group = event.target.value as FeedCatalogGroup;
+                        setModalGroup(group);
+                        setForm((current) => ({ ...current, sourceType: defaultSourceTypeForCatalogGroup(group) }));
+                      }}
+                      className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-primary-500"
+                    >
+                      {FEED_CATALOG_GROUP_ORDER.map((group) => <option key={group} value={group}>{FEED_CATALOG_GROUPS[group].label}</option>)}
+                    </select>
+                  </label>
                 </div>
+                <FeedChannelFields
+                  channels={form.channels}
+                  labelOptions={labelOptions}
+                  urlLabel={FEED_SOURCE_UI[form.sourceType].label}
+                  urlPlaceholder={FEED_SOURCE_UI[form.sourceType].placeholder}
+                  onChange={(channels) => setForm((current) => ({ ...current, channels, url: channels[0]?.url || '', topicLabel: channels[0]?.topicLabel || '' }))}
+                />
                 {showSourceTypePicker ? (
                   <fieldset>
                     <legend className="mb-3 text-sm font-medium text-slate-700">نوع منبع</legend>

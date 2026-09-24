@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { FeedSourceLogoWithFallback } from '@/components/publishing/feed-source-logo';
+import { FeedTopicLabelChips } from '@/components/publishing/feed-channel-fields';
+import { FeedSourceTitleLink } from '@/components/publishing/feed-source-title-link';
 
 interface FeedSourceCardProps {
   name: string;
@@ -10,6 +12,8 @@ interface FeedSourceCardProps {
   logoUrl?: string;
   sourceType?: string;
   enabled: boolean;
+  /** Topic labels for this source group, shown after the name. */
+  topicLabels?: string[];
   badge?: ReactNode;
   footer?: ReactNode;
   actions?: ReactNode;
@@ -26,6 +30,7 @@ export function FeedSourceCard({
   logoUrl,
   sourceType,
   enabled,
+  topicLabels = [],
   badge,
   footer,
   actions,
@@ -55,12 +60,13 @@ export function FeedSourceCard({
             {badge ? <div className="mb-1.5">{badge}</div> : null}
             <h4
               className={cn(
-                'break-words text-sm font-semibold leading-6',
+                'flex flex-wrap items-center gap-1.5 break-words text-sm font-semibold leading-6',
                 enabled ? 'text-slate-900' : 'text-slate-500',
               )}
               title={name}
             >
-              {name}
+              <FeedSourceTitleLink name={name} url={url} sourceType={sourceType} />
+              <FeedTopicLabelChips labels={topicLabels} />
             </h4>
             {url ? (
               <p className="mt-1.5 break-all text-[11px] leading-5 text-slate-400" dir="ltr" title={url}>

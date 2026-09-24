@@ -40,6 +40,7 @@ export class PlatformPublishingFacade implements PlatformPublishingPort {
   saveCatalogHealth(body: UpdatePlatformCatalogHealthSettingsDto) { return this.settings.saveGlobalCatalogHealth(body); }
   feedTopicLabels() { return this.settings.listFeedTopicLabels(); }
   saveFeedTopicLabels(body: UpdateFeedTopicLabelsDto) { return this.settings.saveFeedTopicLabels(body); }
+  applyFeedTopicLabels() { return this.platformFeeds.assignMissingTopicLabels(); }
   aiSettings() { return this.settings.getGlobalAiPublic(); }
   saveAiSettings(body: UpdatePlatformAiSettingsDto) { return this.settings.saveGlobalAi(body); }
   async testGapGpt(body: TestGapGptConnectionDto) {

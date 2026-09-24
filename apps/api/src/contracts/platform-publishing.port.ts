@@ -27,6 +27,7 @@ export interface PlatformPublishingPort {
   saveCatalogHealth(body: UpdatePlatformCatalogHealthSettingsDto): Promise<unknown>;
   feedTopicLabels(): Promise<unknown>;
   saveFeedTopicLabels(body: UpdateFeedTopicLabelsDto): Promise<unknown>;
+  applyFeedTopicLabels(): Promise<unknown>;
   aiSettings(): Promise<unknown>;
   saveAiSettings(body: UpdatePlatformAiSettingsDto): Promise<unknown>;
   testGapGpt(body: TestGapGptConnectionDto): Promise<unknown>;

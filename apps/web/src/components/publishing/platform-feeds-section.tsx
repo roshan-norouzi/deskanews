@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { ChevronDown, Pencil, Power } from 'lucide-react';
+import { Pencil, Power } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,17 +9,16 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
+import { topicLabelsForSourceGroup } from '@/components/publishing/feed-channel-fields';
 import { useApi } from '@/hooks/use-api';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
 import { newsOrganizationAutomation } from '@/lib/news-feed-automation';
 import { sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
+import { matchesFeedCatalogFilters } from '@/components/publishing/feed-source-filters';
 import {
   FEED_CATALOG_GROUPS,
-  FEED_CATALOG_GROUP_ORDER,
-  FEED_CATALOG_GROUP_UI,
-  emptyFeedsByCatalogGroup,
   resolveCatalogGroup,
   sortFeedsByName,
   type FeedCatalogGroup,
@@ -34,6 +33,7 @@ interface PlatformFeed {
   catalogGroup?: FeedCatalogGroup;
   logoUrl?: string;
   topicLabel?: string;
+  sourceGroupId?: string;
   pollIntervalMinutes?: number | null;
   pollIntervalOverride?: number | null;
   catalogPollIntervalMinutes?: number | null;
@@ -69,12 +69,11 @@ function wordsToString(words?: string[]) {
 }
 
 interface PlatformFeedsSectionProps {
-  activeGroup: FeedCatalogGroup;
-  onActiveGroupChange: (group: FeedCatalogGroup) => void;
+  selectedCatalogGroups: ReadonlySet<FeedCatalogGroup>;
+  selectedTopics: ReadonlySet<string>;
+  labelOptions: string[];
   searchQuery?: string;
-  topicLabel?: string;
-  /** فعال‌های منابع اختصاصی سازمان — به شمارش تب‌ها اضافه می‌شود */
-  tenantActiveCountsByGroup?: Record<FeedCatalogGroup, number>;
+  includeDisabled?: boolean;
 }
 
 function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery: string) {
@@ -85,11 +84,11 @@ function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery
 }
 
 export function PlatformFeedsSection({
-  activeGroup,
-  onActiveGroupChange,
+  selectedCatalogGroups,
+  selectedTopics,
+  labelOptions,
   searchQuery = '',
-  topicLabel = '',
-  tenantActiveCountsByGroup,
+  includeDisabled = false,
 }: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
   const { data: orgSettings } = useApi<Record<string, string>>('/publishing/settings');
@@ -98,31 +97,14 @@ export function PlatformFeedsSection({
   const { activeTenant } = useTenant();
   const canManage = isSuperAdmin || ['owner', 'admin', 'manager', 'senior_specialist'].includes(activeTenant?.memberRole || '');
   const feeds = useMemo(() => (Array.isArray(data) ? data.filter((feed) => feed.platformEnabled !== false) : []), [data]);
-  const feedsByGroup = useMemo(() => {
-    const grouped = emptyFeedsByCatalogGroup<PlatformFeed>();
-    for (const feed of feeds) {
-      const group = resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage);
-      grouped[group].push(feed);
-    }
-    for (const group of FEED_CATALOG_GROUP_ORDER) {
-      grouped[group] = sortFeedsByName(grouped[group]);
-    }
-    return grouped;
-  }, [feeds]);
   const visibleFeeds = useMemo(
-    () => feedsByGroup[activeGroup].filter((feed) => matchesFeedNameSearch(feed, searchQuery) && (!topicLabel || feed.topicLabel === topicLabel)),
-    [activeGroup, feedsByGroup, searchQuery, topicLabel],
+    () => sortFeedsByName(feeds.filter((feed) => {
+      if (!includeDisabled && !feed.enabled) return false;
+      if (!matchesFeedCatalogFilters(feed, selectedCatalogGroups, selectedTopics, labelOptions)) return false;
+      return matchesFeedNameSearch(feed, searchQuery);
+    })),
+    [feeds, includeDisabled, labelOptions, searchQuery, selectedCatalogGroups, selectedTopics],
   );
-  const activeCountsByGroup = useMemo(() => {
-    const counts = {} as Record<FeedCatalogGroup, number>;
-    for (const group of FEED_CATALOG_GROUP_ORDER) {
-      const platformActive = feedsByGroup[group].filter((feed) => feed.enabled).length;
-      const tenantActive = tenantActiveCountsByGroup?.[group] ?? 0;
-      counts[group] = platformActive + tenantActive;
-    }
-    return counts;
-  }, [feedsByGroup, tenantActiveCountsByGroup]);
-  const [catalogExpanded, setCatalogExpanded] = useState(true);
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
   const editingIdRef = useRef<string | null>(null);
   const [form, setForm] = useState<FeedSettingsForm>({
@@ -184,8 +166,12 @@ export function PlatformFeedsSection({
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-lg font-bold text-slate-900">منابع پیش‌فرض</h2>
-        <p className="mt-1 text-sm text-slate-500">کاتالوگ منابع رسمی پلتفرم. نام و آدرس را مدیر کل ثبت می‌کند؛ هر سازمان خودش منبع را روشن می‌کند و فیلتر و فاصله پایش جداگانه می‌گذارد.</p>
+        <h2 className="text-lg font-bold text-slate-900">فیدهای کاتالوگ</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {includeDisabled
+            ? 'فیدهای مطابق فیلتر؛ منابع خاموش را روشن کنید تا خبرشان به اتاق خبر بیاید.'
+            : 'فقط فیدهای روشن. برای مرور کاتالوگ، نوع رسانه یا موضوع را بالا تیک بزنید.'}
+        </p>
       </div>
 
       {notice && (
@@ -195,75 +181,12 @@ export function PlatformFeedsSection({
       )}
       {loadError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">دریافت منابع پیش‌فرض انجام نشد: {loadError}</div>}
 
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        {FEED_CATALOG_GROUP_ORDER.map((group) => {
-          const meta = FEED_CATALOG_GROUPS[group];
-          const Icon = FEED_CATALOG_GROUP_UI[group].icon;
-          const count = activeCountsByGroup[group];
-          return (
-            <button
-              key={group}
-              type="button"
-              onClick={() => onActiveGroupChange(group)}
-              className={cn(
-                'flex flex-1 min-w-[9rem] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition',
-                activeGroup === group
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-slate-50',
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{meta.label}</span>
-              <span className={cn(
-                'rounded-full px-2 py-0.5 text-xs font-bold',
-                activeGroup === group ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600',
-              )} title="منابع فعال (پیش‌فرض + اختصاصی)">
-                {formatPersianDigits(count)}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       <Card className="overflow-hidden">
-        <button
-          type="button"
-          className="flex w-full items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 text-right transition hover:bg-slate-50/80"
-          aria-expanded={catalogExpanded}
-          onClick={() => setCatalogExpanded((open) => !open)}
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-semibold text-slate-900">{FEED_CATALOG_GROUPS[activeGroup].label}</h3>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
-                {formatPersianDigits(activeCountsByGroup[activeGroup])} فعال
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-slate-500">{FEED_CATALOG_GROUPS[activeGroup].description}</p>
-            {searchQuery.trim() ? (
-              <p className="mt-2 text-xs text-slate-500">
-                {formatPersianDigits(visibleFeeds.length)} نتیجه از {formatPersianDigits(feedsByGroup[activeGroup].length)} منبع پیش‌فرض
-              </p>
-            ) : null}
-          </div>
-          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate-500">
-            {catalogExpanded ? 'جمع کردن' : 'باز کردن'}
-            <ChevronDown className={cn('h-5 w-5 transition-transform', catalogExpanded && 'rotate-180')} />
-          </span>
-        </button>
-        {catalogExpanded ? (
-          <>
         {isLoading ? (
           <div className="grid min-h-40 place-items-center"><span className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
-        ) : feedsByGroup[activeGroup].length === 0 ? (
-          <div className="px-6 py-10 text-center text-sm text-slate-500">
-            {feeds.length === 0
-              ? 'منبع پیش‌فرض فعالی ثبت نشده است.'
-              : `در دسته «${FEED_CATALOG_GROUPS[activeGroup].label}» منبعی وجود ندارد.`}
-          </div>
         ) : visibleFeeds.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm text-slate-500">
-            رسانه‌ای با نام «{searchQuery.trim()}» در این دسته پیدا نشد.
+            {feeds.length === 0 ? 'فید پیش‌فرضی ثبت نشده است.' : 'فیدی با این نوع رسانه و موضوع پیدا نشد.'}
           </div>
         ) : (
           <FeedSourceCardGrid>
@@ -275,7 +198,8 @@ export function PlatformFeedsSection({
                 logoUrl={feed.logoUrl}
                 sourceType={feed.sourceType}
                 enabled={feed.enabled}
-                badge={<span className="flex flex-wrap gap-1"><Badge variant="default" className="shrink-0 text-[10px]">پیش‌فرض</Badge>{feed.topicLabel ? <Badge variant="default" className="shrink-0 text-[10px]">{feed.topicLabel}</Badge> : null}</span>}
+                topicLabels={topicLabelsForSourceGroup(feed, feeds)}
+                badge={<Badge variant="default" className="shrink-0 text-[10px]">{FEED_CATALOG_GROUPS[resolveCatalogGroup(feed.sourceType, feed.catalogGroup, feed.sourceLanguage)].label}</Badge>}
                 actions={
                   canManage ? (
                     <>
@@ -328,12 +252,6 @@ export function PlatformFeedsSection({
               />
             ))}
           </FeedSourceCardGrid>
-        )}
-          </>
-        ) : (
-          <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-            {formatPersianDigits(feedsByGroup[activeGroup].length)} منبع پیش‌فرض — برای مشاهده و مدیریت، بخش را باز کنید.
-          </div>
         )}
       </Card>
 

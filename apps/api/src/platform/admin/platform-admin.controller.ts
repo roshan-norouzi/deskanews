@@ -289,6 +289,12 @@ export class PlatformAdminController {
     return this.publishing.saveFeedTopicLabels(body);
   }
 
+  @Post('feed-topic-labels/apply')
+  applyFeedTopicLabels(@User() actor: AuthUser) {
+    this.assertSuperAdmin(actor);
+    return this.publishing.applyFeedTopicLabels();
+  }
+
   @Get('catalog-health-settings')
   catalogHealthSettings(@User() actor: AuthUser) {
     this.assertSuperAdmin(actor);

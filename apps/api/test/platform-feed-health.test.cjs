@@ -9,6 +9,7 @@ const {
   normalizeCatalogHealthIntervalHours,
   orderCatalogHealthCheckFeeds,
   parseCatalogHealthEnabled,
+  worstPlatformFeedHealthStatus,
 } = require('../dist/modules/smart-publishing/platform-feed-health');
 
 test('evaluatePlatformFeedHealth marks five items as healthy', () => {
@@ -88,6 +89,12 @@ test('orderCatalogHealthCheckFeeds checks untested sources before retests', () =
     ordered.map((feed) => feed.id),
     ['new', 'older', 'old'],
   );
+});
+
+test('worstPlatformFeedHealthStatus uses the weakest channel in a source group', () => {
+  assert.equal(worstPlatformFeedHealthStatus(['healthy', 'degraded', 'healthy']), 'degraded');
+  assert.equal(worstPlatformFeedHealthStatus(['healthy', 'down']), 'down');
+  assert.equal(worstPlatformFeedHealthStatus([]), 'unknown');
 });
 
 test('catalog health concurrency constant is positive', () => {

@@ -956,6 +956,17 @@ export class PublishingSettingsService implements OnModuleInit {
     }
   }
 
+  async chosenTopicLabel(value: string | undefined): Promise<string | undefined> {
+    if (value === undefined) return undefined;
+    const label = value.trim();
+    if (!label) return '';
+    const allowed = await this.listFeedTopicLabels();
+    if (!allowed.includes(label)) {
+      throw new BadRequestException('لیبل انتخاب‌شده در فهرست لیبل‌های پلتفرم نیست.');
+    }
+    return label;
+  }
+
   async listFeedTopicLabels(): Promise<string[]> {
     const stored = await this.loadPlatformTopicLabels();
     return stored.length ? stored : [...DEFAULT_FEED_TOPIC_LABELS];
