@@ -51,7 +51,7 @@ export function TenantSwitcher() {
       setSlug('');
       router.push('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'ایجاد سازمان انجام نشد.');
+      setError(err instanceof Error ? err.message : 'ساخت میز خبر انجام نشد.');
     } finally {
       setSubmitting(false);
     }
@@ -67,13 +67,13 @@ export function TenantSwitcher() {
         className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-card hover:bg-slate-100"
       >
         <Building2 className="h-4 w-4 text-slate-500" />
-        <span className="max-w-[120px] truncate">{activeTenant?.name ?? 'انتخاب سازمان'}</span>
+        <span className="max-w-[120px] truncate">{activeTenant?.name ?? 'انتخاب میز خبر'}</span>
         <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')} />
       </button>
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-slate-200 bg-white py-1 shadow-elevated">
-          <p className="px-3 py-2 text-xs font-medium text-slate-500">سازمان‌ها</p>
+          <p className="px-3 py-2 text-xs font-medium text-slate-500">میزهای خبر</p>
           {tenants.map((tenant) => (
             <button
               key={tenant.id}
@@ -108,7 +108,7 @@ export function TenantSwitcher() {
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
             >
               <Plus className="h-4 w-4" />
-              افزودن سازمان جدید
+              افزودن میز خبر جدید
             </button>
           </div>
         </div>
@@ -116,9 +116,9 @@ export function TenantSwitcher() {
 
       <Modal open={creating} onClose={() => { if (!submitting) setCreating(false); }} size="sm" labelledBy="new-organization-title">
         <form onSubmit={createOrganization}>
-          <ModalHeader title="افزودن سازمان جدید" description="سازمان تازه ۱۰۰۰ توکن هدیه می‌گیرد و شما مالک آن می‌شوید." onClose={() => { if (!submitting) setCreating(false); }} />
+          <ModalHeader title="ساخت میز خبر جدید" description="میز خبر تازه ۱۰۰۰ توکن هدیه می‌گیرد و شما مدیر آن می‌شوید." onClose={() => { if (!submitting) setCreating(false); }} />
           <ModalBody className="space-y-4 px-6 py-5">
-            <Input label="نام سازمان" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} />
+            <Input label="نام میز خبر" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} />
             <Input
               label="نامک (لاتین در نشانی)"
               dir="ltr"
@@ -132,7 +132,7 @@ export function TenantSwitcher() {
           </ModalBody>
           <ModalFooter>
             <Button type="button" variant="outline" onClick={() => setCreating(false)} disabled={submitting}>انصراف</Button>
-            <Button type="submit" isLoading={submitting}>ساخت سازمان</Button>
+            <Button type="submit" isLoading={submitting}>ساخت میز خبر</Button>
           </ModalFooter>
         </form>
       </Modal>

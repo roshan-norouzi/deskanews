@@ -46,8 +46,8 @@ export function PlatformCatalogHealthSettingsPanel() {
           setNotice({
             type: 'success',
             text: status.total
-              ? `تست سلامت در حال اجراست (${status.checked}/${status.total}). برای مشاهده پیشرفت «اجرای فوری» را بزنید.`
-              : 'تست سلامت در حال اجراست.',
+              ? `بررسی سلامت در حال اجراست (${status.checked}/${status.total}). برای مشاهده پیشرفت «اجرای فوری» را انتخاب کنید.`
+              : 'بررسی سلامت در حال اجراست.',
           });
         }
         setLoaded(true);
@@ -71,7 +71,7 @@ export function PlatformCatalogHealthSettingsPanel() {
         },
       });
       setHealthSettings(saved);
-      setNotice({ type: 'success', text: 'تنظیمات تست سلامت ذخیره شد.' });
+      setNotice({ type: 'success', text: 'تنظیمات بررسی سلامت ذخیره شد.' });
     } catch (reason) {
       setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'ذخیره تنظیمات انجام نشد' });
     } finally {
@@ -102,12 +102,12 @@ export function PlatformCatalogHealthSettingsPanel() {
 
       setNotice({
         type: 'success',
-        text: `تست سلامت انجام شد: ${status.healthy} سالم، ${status.degraded} موقت، ${status.down} قطع.`,
+        text: `بررسی سلامت انجام شد: ${status.healthy} سالم، ${status.degraded} موقت، ${status.down} قطع.`,
       });
       return;
     }
 
-    throw new Error('زمان انتظار برای پایان تست سلامت تمام شد؛ بعداً وضعیت را دوباره بررسی کنید.');
+    throw new Error('زمان انتظار برای پایان بررسی سلامت تمام شد؛ بعداً وضعیت را دوباره بررسی کنید.');
   }
 
   async function runHealthChecksNow() {
@@ -122,13 +122,13 @@ export function PlatformCatalogHealthSettingsPanel() {
         setNotice({
           type: 'success',
           text: result.started
-            ? `تست سلامت برای ${result.total} منبع شروع شد.`
-            : 'تست سلامت از قبل در حال اجراست.',
+            ? `بررسی سلامت برای ${result.total} منبع شروع شد.`
+            : 'بررسی سلامت از قبل در حال اجراست.',
         });
       }
       await waitForCatalogHealthRun();
     } catch (reason) {
-      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'اجرای تست سلامت انجام نشد' });
+      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'اجرای بررسی سلامت انجام نشد' });
     } finally {
       setBusy('');
     }
@@ -162,7 +162,7 @@ export function PlatformCatalogHealthSettingsPanel() {
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="font-bold text-slate-900">تست سلامت خودکار کاتالوگ</h2>
+            <h2 className="font-bold text-slate-900">بررسی سلامت خودکار کاتالوگ</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
               در بازه زمانی مشخص، هر منبع فعال بررسی می‌شود که ۵ مطلب آخر را دریافت کند. وضعیت با دایره رنگی کنار نام منبع در صفحه کاتالوگ نمایش داده می‌شود.
             </p>

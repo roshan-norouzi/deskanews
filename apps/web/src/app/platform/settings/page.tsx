@@ -26,13 +26,13 @@ const TAB_DEFINITIONS: Array<{
     id: 'ai',
     label: 'هوش مصنوعی',
     icon: Bot,
-    description: 'اتصال GapGPT، مدل‌ها و پرامپت‌های پردازش خبر — سراسری برای همه سازمان‌ها.',
+    description: 'اتصال GapGPT، مدل‌ها و دستورهای پردازش خبر — سراسری برای همه سازمان‌ها.',
   },
   {
     id: 'sources',
     label: 'منابع',
     icon: Cloud,
-    description: 'دریافت منبع، سلامت کاتالوگ و لیبل‌های موضوعی.',
+    description: 'دریافت منبع، سلامت کاتالوگ و برچسب‌های موضوعی.',
   },
   {
     id: 'usage',
@@ -51,7 +51,7 @@ const TAB_DEFINITIONS: Array<{
 const SOURCE_SECTIONS: Array<{ id: SourceSection; label: string; icon: typeof Cloud; description: string }> = [
   { id: 'fetch', label: 'دریافت منبع', icon: Cloud, description: 'Worker Deska برای تلگرام، X، و رسانه‌های بین‌المللی مسدود یا بدون RSS.' },
   { id: 'health', label: 'سلامت کاتالوگ', icon: HeartPulse, description: 'تست خودکار سلامت منابع پیش‌فرض و فاصله اجرای دوره‌ای.' },
-  { id: 'labels', label: 'لیبل منابع', icon: Tags, description: 'برچسب موضوعی منابع خبری، جدا از دستهٔ کاتالوگ.' },
+  { id: 'labels', label: 'برچسب منابع', icon: Tags, description: 'برچسب موضوعی منابع خبری، جدا از دستهٔ کاتالوگ.' },
 ];
 
 const LEGACY_SOURCE_TABS: Record<string, SourceSection> = {

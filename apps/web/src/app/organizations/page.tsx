@@ -140,18 +140,18 @@ export default function OrganizationsPage() {
       setActiveTenant(created.id);
       router.push('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'ایجاد سازمان انجام نشد.');
+      setError(err instanceof Error ? err.message : 'ساخت میز خبر انجام نشد.');
     } finally {
       setCreating(false);
     }
   };
 
   return (
-    <ProtectedLayout title="سازمان‌های من" tenantRequired={false} showPlatformNav>
+    <ProtectedLayout title="میزهای خبر من" tenantRequired={false} showPlatformNav>
       <PageContainer>
         <PageHeader
-          title="سازمان‌های من"
-          description="سازمان موردنظر را انتخاب کن، مصرف را ببین و وارد میز خبر شو."
+          title="میزهای خبر من"
+          description="یک میز خبر بسازید یا به میزهای خبری بپیوندید که در آن‌ها عضو هستید. منابع، محتوا و دسترسی همکاران در هر میز خبر جداگانه مدیریت می‌شوند."
           icon={Building2}
         />
 
@@ -163,7 +163,7 @@ export default function OrganizationsPage() {
                   <Building2 className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-sm text-slate-500">سازمان‌های در دسترس</p>
+                  <p className="text-sm text-slate-500">میزهای خبر در دسترس</p>
                   <p className="text-2xl font-bold text-slate-900">
                     {formatPersianDigits(memberships.length)}
                   </p>
@@ -190,7 +190,7 @@ export default function OrganizationsPage() {
                   <CheckCircle2 className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm text-slate-500">سازمان فعال</p>
+                  <p className="text-sm text-slate-500">میز خبر فعال</p>
                   <p className="truncate text-lg font-bold text-slate-900">
                     {memberships.find((org) => org.id === activeTenantId)?.name ?? 'انتخاب نشده'}
                   </p>
@@ -204,11 +204,11 @@ export default function OrganizationsPage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>سازمان‌های در دسترس</CardTitle>
+                <CardTitle>میزهای خبر در دسترس</CardTitle>
                 <CardDescription>
                   {memberships.length
-                    ? `${formatPersianDigits(memberships.length)} سازمان — برای جزئیات مصرف یک سازمان را انتخاب کنید.`
-                    : 'هنوز عضو هیچ سازمانی نیستید.'}
+                    ? `${formatPersianDigits(memberships.length)} میز خبر — برای جزئیات مصرف یک میز خبر را انتخاب کنید.`
+                    : 'هنوز عضو هیچ میز خبری نیستید.'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -221,9 +221,9 @@ export default function OrganizationsPage() {
                 ) : memberships.length === 0 ? (
                   <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-300 px-5 py-12 text-center">
                     <Building2 className="h-10 w-10 text-slate-300" />
-                    <h2 className="mt-4 font-semibold text-slate-800">نخستین سازمان خود را بسازید</h2>
+                    <h2 className="mt-4 font-semibold text-slate-800">نخستین میز خبرتان را بسازید</h2>
                     <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                      پس از ساخت سازمان، مالک آن می‌شوید و می‌توانید تیم و منابع خبری را تنظیم کنید.
+                      با ساخت میز خبر، فضای اختصاصی خودتان را خواهید داشت. همکاران را اضافه کنید، دسترسی‌ها را تعیین کنید و منابع خبری را فعال کنید.
                     </p>
                   </div>
                 ) : (
@@ -291,7 +291,7 @@ export default function OrganizationsPage() {
                               enterWorkspace(organization.id);
                             }}
                           >
-                            ورود به سازمان
+                            ورود به میز خبر
                             <ArrowLeft className="h-4 w-4" />
                           </Button>
                         </article>
@@ -314,8 +314,8 @@ export default function OrganizationsPage() {
                 <Card>
                   <CardContent className="grid min-h-40 place-items-center px-5 py-10 text-center">
                     <Activity className="h-10 w-10 text-slate-300" />
-                    <p className="mt-3 text-sm font-medium text-slate-700">سازمانی انتخاب نشده</p>
-                    <p className="mt-1 text-xs text-slate-500">روی یکی از کارت‌های بالا کلیک کنید تا جزئیات مصرف نمایش داده شود.</p>
+                    <p className="mt-3 text-sm font-medium text-slate-700">میز خبری انتخاب نشده است</p>
+                    <p className="mt-1 text-xs text-slate-500">برای مشاهدهٔ جزئیات مصرف، یک میز خبر انتخاب کنید.</p>
                   </CardContent>
                 </Card>
               ) : null}
@@ -327,14 +327,14 @@ export default function OrganizationsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Plus className="h-5 w-5 text-primary-600" />
-                  ایجاد سازمان
+                  ساخت میز خبر
                 </CardTitle>
-                <CardDescription>مالک سازمان تازه خواهید بود.</CardDescription>
+                <CardDescription>با ساخت میز خبر، مدیریت اعضا و تنظیمات آن در اختیار شما قرار می‌گیرد.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={createOrganization} className="space-y-4">
                   <Input
-                    label="نام سازمان"
+                    label="نام میز خبر"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     required
@@ -358,7 +358,7 @@ export default function OrganizationsPage() {
                   )}
                   <Button type="submit" className="w-full" isLoading={creating}>
                     <Users className="h-4 w-4" />
-                    ساخت سازمان و ورود
+                    ساخت میز خبر و ورود
                   </Button>
                 </form>
               </CardContent>

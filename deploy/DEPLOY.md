@@ -103,3 +103,24 @@ deploy/postgres/           فقط برای پروفایل read-replica
 ```
 
 توکن و کلید SSH را هرگز در چت یا ریپو قرار ندهید.
+
+## خطای «ارتباط Web با API» یا «سرویس دسکا موقتاً در دسترس نیست»
+
+مرورگر فقط با همان دامنهٔ عمومی (مثلاً `https://app.deska.ir`) صحبت می‌کند؛ درخواست‌های `/api/*` داخل کانتینر **Web** به سرویس **api** روی Docker شبکهٔ داخلی (`http://api:3001`) فرستاده می‌شوند. پیام خطای اتصال معمولاً یکی از این حالت‌هاست:
+
+| علت | نشانه | اقدام |
+|---|---|---|
+| **ری‌استارت یا deploy API** | چند ثانیه تا یک دقیقه، همهٔ صفحات | نسخهٔ جدید Web/API خودکار چند بار retry می‌کند؛ صبر و رفرش. اگر ماند: `docker compose ps` و `logs api web` |
+| **healthcheck سختگیرانهٔ قدیمی API** | نوسان هر ~۱–۲ دقیقه | در نسخه‌های جدید healthcheck فقط `/api/health/live` است (بدون query سنگین DB در هر ۱۰ ثانیه) |
+| **timeout پنل Nginx/Apache** | فقط عملیات طولانی (پروب فید، import اکسل) | `proxy_read_timeout` و `proxy_send_timeout` را حداقل **۳۰۰s** بگذارید؛ مسیر `/api/` را به پورت `WEB_PORT` (معمولاً 3000) پروکسی کنید، نه مستقیم به 3001 |
+| **پر شدن دیسک / crash API** | `502`/`503` مداوم | فضای دیسک `DEPLOY_PATH`، `docker compose logs api --tail=100` |
+| **API_URL اشتباه در Web** | همیشه بعد از deploy | در compose باید `API_URL=http://api:3001` باشد (نه localhost) |
+
+بررسی سریع روی سرور:
+
+```bash
+curl -fsS http://127.0.0.1:3001/api/health/live
+curl -fsS http://127.0.0.1:3000/api/health/ready
+```
+
+هر دو باید JSON با `ok` برگردانند. اگر اولی OK و دومی نه، مشکل از PostgreSQL یا migration است نه reverse proxy عمومی.

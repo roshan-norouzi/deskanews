@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { USAGE_METRIC_KEYS, detectSourceLanguageFromItems, inferFeedTopicLabel, normalizeFeedCatalogGroupForSource, normalizeFeedSourceType, normalizeSourceLanguage, resolveFeedLogoUrl, resolveNewsroomServiceAccess, shouldUsePersianRewrite } from '@deska/shared';
 import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -21,12 +22,16 @@ import { buildLatestFeedPreviewItems } from './feed-preview';
 import { PlatformFeedService } from './platform-feed.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { DestinationCategoryService } from './destination-category.service';
-import { newsroomArticleWhere, orphanedNewsArticleWhere } from './newsroom-article-stats';
+import { newsroomArticleWhere, orphanedNewsArticleWhere, newsroomListViewWhere, countNewsroomStatusQueries, newsroomStatsFromCounts, type NewsroomListView } from './newsroom-article-stats';
+import { pickRoundRobinByKey } from './fair-source-queue';
+import { DEFAULT_NEWS_MAX_AGE_DAYS } from './tenant-platform-feed-settings';
 import { decodeArticleCursor, encodeArticleCursor } from '../../common/article-page';
 import { resolvePublishHtml } from './news-publish-html';
 
 const REJECT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
+const NEWSROOM_LIST_VIEWS = new Set<NewsroomListView>(['action', 'processing', 'archive', 'rejected', 'all']);
+const NEWSROOM_PAGE_SIZE = 50;
 
 type MemberNewsroomAccess = {
   permissions: string[];
@@ -514,6 +519,40 @@ export class NewsroomService {
     return this.prisma.newsFeed.update({ where: { id }, data: { enabled: !feed.enabled } });
   }
 
+  async bulkSetFeedsEnabled(
+    tenantId: string,
+    input: { enabled: boolean; newsFeedIds?: string[]; platformFeedIds?: string[] },
+  ) {
+    const newsFeedIds = [...new Set((input.newsFeedIds || []).filter(Boolean))];
+    const platformFeedIds = [...new Set((input.platformFeedIds || []).filter(Boolean))];
+
+    let newsUpdated = 0;
+    if (newsFeedIds.length) {
+      const result = await this.prisma.newsFeed.updateMany({
+        where: {
+          tenantId,
+          purpose: 'news-room',
+          id: { in: newsFeedIds },
+          enabled: { not: input.enabled },
+        },
+        data: { enabled: input.enabled },
+      });
+      newsUpdated = result.count;
+    }
+
+    const platform = platformFeedIds.length
+      ? await this.platformFeeds.bulkSetEnabledForTenant(tenantId, platformFeedIds, input.enabled)
+      : { updated: 0, skipped: 0 };
+
+    return {
+      ok: true,
+      enabled: input.enabled,
+      newsUpdated,
+      platformUpdated: platform.updated,
+      platformSkipped: platform.skipped,
+    };
+  }
+
   async deleteFeed(tenantId: string, id: string) {
     await this.findFeed(tenantId, id);
     await this.prisma.$transaction([
@@ -523,38 +562,120 @@ export class NewsroomService {
     return { ok: true };
   }
 
-  async articles(
+  async articleStats(
     tenantId: string,
-    filters: { status?: string; categoryId?: string; generalOnly?: boolean; access?: MemberNewsroomAccess; cursor?: string } = {},
+    filters: { categoryId?: string; generalOnly?: boolean; feedId?: string; access?: MemberNewsroomAccess } = {},
   ) {
     await this.purgeRejected();
-    const { status, categoryId, generalOnly, access, cursor } = filters;
-    if (status && !NEWS_STATUSES.includes(status as (typeof NEWS_STATUSES)[number])) {
-      throw new BadRequestException('وضعیت خبر معتبر نیست');
+    const scope = this.buildArticleListScope(tenantId, filters);
+    if (scope === null) {
+      return { action: 0, processing: 0, archive: 0, rejected: 0, total: 0 };
     }
-    const serviceFilter = newsroomCategoryFilter(access);
+    const queries = countNewsroomStatusQueries(scope);
+    const reader = this.prisma.reader ?? this.prisma;
+    const [
+      total,
+      rejected,
+      archive,
+      preparing,
+      statusFailed,
+      terminalFailed,
+      readyPrepared,
+      readyUnprepared,
+      inbox,
+    ] = await Promise.all([
+      reader.newsArticle.count({ where: queries.total }),
+      reader.newsArticle.count({ where: queries.rejected }),
+      reader.newsArticle.count({ where: queries.archive }),
+      reader.newsArticle.count({ where: queries.preparing }),
+      reader.newsArticle.count({ where: queries.statusFailed }),
+      reader.newsArticle.count({ where: queries.terminalFailed }),
+      reader.newsArticle.count({ where: queries.readyPrepared }),
+      reader.newsArticle.count({ where: queries.readyUnprepared }),
+      reader.newsArticle.count({ where: queries.inbox }),
+    ]);
+    const stats = newsroomStatsFromCounts({
+      total,
+      rejected,
+      archive,
+      preparing,
+      statusFailed,
+      terminalFailed,
+      readyPrepared,
+      readyUnprepared,
+      inbox,
+      publishedToday: 0,
+    });
+    return {
+      action: stats.action,
+      processing: stats.processing,
+      archive: stats.archive,
+      rejected: stats.rejected,
+      total: stats.total,
+    };
+  }
+
+  private buildArticleListScope(
+    tenantId: string,
+    filters: { categoryId?: string; generalOnly?: boolean; feedId?: string; access?: MemberNewsroomAccess },
+  ): Prisma.NewsArticleWhereInput | null {
+    const { categoryId, generalOnly, feedId, access } = filters;
     if (categoryId) {
       const resolved = access ? resolveNewsroomServiceAccess(access.permissions, access.newsroomServiceIds) : 'all';
       if (resolved !== 'all' && resolved !== 'none' && !resolved.includes(categoryId)) {
         throw new ForbiddenException('دسترسی به این سرویس میز خبر مجاز نیست');
       }
-      if (resolved === 'none') return { items: [], nextCursor: null };
+      if (resolved === 'none') return null;
     }
+    const serviceFilter = newsroomCategoryFilter(access);
+    return {
+      AND: [
+        newsroomArticleWhere(tenantId),
+        serviceFilter,
+        ...(categoryId ? [{ destinationCategoryId: categoryId }] : []),
+        ...(generalOnly ? [{ destinationCategory: { isGeneral: true } }] : []),
+        ...(feedId ? [{ feedId }] : []),
+      ],
+    };
+  }
+
+  async articles(
+    tenantId: string,
+    filters: {
+      status?: string;
+      view?: NewsroomListView;
+      feedId?: string;
+      categoryId?: string;
+      generalOnly?: boolean;
+      access?: MemberNewsroomAccess;
+      cursor?: string;
+    } = {},
+  ) {
+    await this.purgeRejected();
+    const { status, view, feedId, categoryId, generalOnly, access, cursor } = filters;
+    if (status && !NEWS_STATUSES.includes(status as (typeof NEWS_STATUSES)[number])) {
+      throw new BadRequestException('وضعیت خبر معتبر نیست');
+    }
+    if (view && !NEWSROOM_LIST_VIEWS.has(view)) {
+      throw new BadRequestException('فیلتر میز خبر معتبر نیست');
+    }
+    const listScope = this.buildArticleListScope(tenantId, { categoryId, generalOnly, feedId, access });
+    if (listScope === null) return { items: [], nextCursor: null };
     const decoded = decodeArticleCursor(cursor);
     const reader = this.prisma.reader ?? this.prisma;
     const rows = await reader.newsArticle.findMany({
       where: {
-        ...newsroomArticleWhere(tenantId),
-        ...serviceFilter,
-        ...(status ? { status } : {}),
-        ...(categoryId ? { destinationCategoryId: categoryId } : {}),
-        ...(generalOnly ? { destinationCategory: { isGeneral: true } } : {}),
-        ...(decoded ? {
-          OR: [
-            { publishedAtSource: { lt: decoded.stamp ?? new Date(0) } },
-            { publishedAtSource: decoded.stamp, id: { lt: decoded.id } },
-          ],
-        } : {}),
+        AND: [
+          listScope,
+          ...(view && view !== 'all' ? [newsroomListViewWhere(view)] : []),
+          ...(status && !view ? [{ status }] : []),
+          ...(decoded ? [{
+            OR: [
+              { publishedAtSource: { lt: decoded.stamp ?? new Date(0) } },
+              { publishedAtSource: decoded.stamp, id: { lt: decoded.id } },
+            ],
+          }] : []),
+        ],
       },
       omit: { originalContent: true },
       include: {
@@ -563,13 +684,13 @@ export class NewsroomService {
         destinationCategory: { select: { id: true, name: true, isGeneral: true } },
       },
       orderBy: [{ publishedAtSource: 'desc' }, { id: 'desc' }],
-      take: 51,
+      take: NEWSROOM_PAGE_SIZE + 1,
     });
-    const items = rows.slice(0, 50);
+    const items = rows.slice(0, NEWSROOM_PAGE_SIZE);
     const last = items.at(-1);
     return {
       items,
-      nextCursor: rows.length > 50 && last ? encodeArticleCursor(last.publishedAtSource, last.id) : null,
+      nextCursor: rows.length > NEWSROOM_PAGE_SIZE && last ? encodeArticleCursor(last.publishedAtSource, last.id) : null,
     };
   }
 
@@ -644,7 +765,7 @@ export class NewsroomService {
     const startedAt = Date.now();
     try {
       const settings = await this.settings.getRaw(tenantId);
-      const maxAgeMs = Number(settings.news_max_age_days || 10) * 24 * 60 * 60 * 1000;
+      const maxAgeMs = Number(settings.news_max_age_days || DEFAULT_NEWS_MAX_AGE_DAYS) * 24 * 60 * 60 * 1000;
       const cutoff = new Date(Date.now() - maxAgeMs);
       const { entries, resolvedFeedUrl } = await this.sourceReader.readSourceWithMeta(feed.sourceType || 'rss', feed.url, {
         resolvedFeedUrl: feed.resolvedFeedUrl,
@@ -1279,12 +1400,15 @@ export class NewsroomService {
         ],
       },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
-      take: Math.max(limit * 4, 100),
+      take: Math.max(limit * 20, 200),
       select: {
         id: true,
+        feedId: true,
+        platformFeedArticleId: true,
         feed: { select: { autoPrepare: true } },
         platformFeedArticle: {
           select: {
+            platformFeedId: true,
             platformFeed: {
               select: {
                 subscriptions: {
@@ -1298,8 +1422,7 @@ export class NewsroomService {
         },
       },
     });
-    let queued = 0;
-    for (const row of rows.filter((item) => {
+    const eligible = rows.filter((item) => {
       if (!requireSourceAutomation) return true;
       const subscription = item.platformFeedArticle?.platformFeed.subscriptions[0];
       if (subscription) {
@@ -1307,7 +1430,14 @@ export class NewsroomService {
         return sourceBoolean(subscription.autoPrepare, fallback);
       }
       return sourceBoolean(item.feed?.autoPrepare, fallback);
-    }).slice(0, limit)) {
+    });
+    const selected = pickRoundRobinByKey(
+      eligible,
+      limit,
+      (item) => item.platformFeedArticle?.platformFeedId || item.feedId || item.id,
+    );
+    let queued = 0;
+    for (const row of selected) {
       const result = await this.jobs.enqueue({
         tenantId,
         type: 'news.prepare',
@@ -1333,12 +1463,15 @@ export class NewsroomService {
         ],
       },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
-      take: Math.max(limit * 4, 100),
+      take: Math.max(limit * 20, 200),
       select: {
         id: true,
+        feedId: true,
+        platformFeedArticleId: true,
         feed: { select: { autoPublish: true, autoSendSocial: true } },
         platformFeedArticle: {
           select: {
+            platformFeedId: true,
             platformFeed: {
               select: {
                 subscriptions: {
@@ -1352,15 +1485,21 @@ export class NewsroomService {
         },
       },
     });
-    let queued = 0;
-    for (const row of rows.filter((item) => {
+    const eligible = rows.filter((item) => {
       const subscription = item.platformFeedArticle?.platformFeed.subscriptions[0];
       if (subscription) {
         if (!subscription.enabled) return false;
         return sourceBoolean(subscription[sourceSetting], fallback);
       }
       return sourceBoolean(item.feed?.[sourceSetting], fallback);
-    }).slice(0, limit)) {
+    });
+    const selected = pickRoundRobinByKey(
+      eligible,
+      limit,
+      (item) => item.platformFeedArticle?.platformFeedId || item.feedId || item.id,
+    );
+    let queued = 0;
+    for (const row of selected) {
       const result = await this.jobs.enqueue({
         tenantId,
         type,

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   DEFAULT_PLATFORM_POLL_MINUTES,
+  PLATFORM_CATALOG_MAX_AGE_DAYS,
   resolveOrganizationPollMinutes,
   resolveTenantFeedSettings,
   isAutoPollingSubscription,
@@ -69,4 +70,8 @@ test('shared catalog refreshes at the most frequent due organization interval', 
   assert.equal(shouldRefreshSharedCatalog(new Date('2026-09-20T11:50:00Z'), [30], now), false);
   assert.equal(shouldRefreshSharedCatalog(new Date('2026-09-20T11:50:00Z'), [5, 240], now), true);
   assert.equal(shouldRefreshSharedCatalog(new Date('2026-09-20T11:50:00Z'), [], now), false);
+});
+
+test('platform catalog keeps original-language articles for three days', () => {
+  assert.equal(PLATFORM_CATALOG_MAX_AGE_DAYS, 3);
 });

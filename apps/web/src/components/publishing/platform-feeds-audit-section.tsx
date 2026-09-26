@@ -66,7 +66,7 @@ export function PlatformFeedsAuditSection() {
       {!audit ? (
         <div className="grid place-items-center px-5 py-14 text-center text-sm text-slate-500">
           <RefreshCw className="h-10 w-10 text-slate-300" />
-          <p className="mt-3">برای آزمایش اتصال و دریافت خبر از منابع پیش‌فرض، دکمه «شروع بررسی» را بزنید.</p>
+          <p className="mt-3">برای آزمایش اتصال و دریافت خبر از منابع پیش‌فرض، دکمه «شروع بررسی» را انتخاب کنید.</p>
         </div>
       ) : (
         <div className="space-y-4 p-5">

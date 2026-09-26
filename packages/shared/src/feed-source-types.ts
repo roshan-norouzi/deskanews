@@ -15,7 +15,7 @@ export const FEED_SOURCE_TYPE_META: Record<
   website: {
     label: 'آدرس وب‌سایت',
     shortLabel: 'وب‌سایت',
-    description: 'سیستم فید استاندارد سایت را پیدا می‌کند',
+    description: 'تلاش برای شناسایی فید استاندارد وب‌سایت',
     placeholder: 'https://example.com',
   },
   blog: {

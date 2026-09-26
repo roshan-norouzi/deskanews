@@ -34,7 +34,7 @@ export const NEWSROOM_FILTERS: Array<{
 }> = [
   {
     key: 'action',
-    label: 'آماده اقدام',
+    label: 'آمادهٔ بررسی',
     description: 'بررسی، انتشار در سایت، یا ارسال به استودیو',
     tone: 'text-emerald-700',
     matches: isNewsReadyForAction,
@@ -48,7 +48,7 @@ export const NEWSROOM_FILTERS: Array<{
   },
   {
     key: 'archive',
-    label: 'منتشر / استودیو',
+    label: 'منتشرشده یا ارسال‌شده',
     description: 'خبرهای منتشرشده یا ارسال‌شده به استودیوی اجتماعی',
     tone: 'text-indigo-700',
     matches: isNewsArchived,
@@ -90,7 +90,7 @@ export function resolveNewsDisplayStatus(article: NewsArticleCardData): {
     return { label: 'نیاز به اقدام', badge: 'danger' };
   }
   if (article.status === 'ready') {
-    return { label: 'آماده اقدام', badge: 'success' };
+    return { label: 'آمادهٔ بررسی', badge: 'success' };
   }
   if (article.status === 'published') {
     return { label: 'منتشر شده', badge: 'success' };

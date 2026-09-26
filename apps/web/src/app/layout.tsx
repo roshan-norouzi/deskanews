@@ -19,6 +19,10 @@ export const metadata: Metadata = {
     template: `%s | ${PLATFORM_NAME}`,
   },
   description: PLATFORM_DESCRIPTION,
+  icons: {
+    icon: [{ url: '/brand/deska-logo.png', type: 'image/png' }],
+    apple: '/brand/deska-logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -38,7 +38,7 @@ export function FeedBulkActions({
   importPath,
   skipTenant = false,
   onImported,
-  confirmImportMessage = 'پس از آپلود، منابعی که در فایل نیستند حذف می‌شوند. ادامه می‌دهید؟',
+  confirmImportMessage = 'پس از بارگذاری، منابعی که در فایل نیستند حذف می‌شوند. ادامه می‌دهید؟',
 }: FeedBulkActionsProps) {
   const confirm = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,9 +64,9 @@ export function FeedBulkActions({
 
   async function importWorkbook(file: File) {
     const ok = await confirm({
-      title: 'آپلود فایل منابع؟',
+      title: 'بارگذاری فایل منابع؟',
       description: confirmImportMessage,
-      confirmLabel: 'آپلود و اعمال',
+      confirmLabel: 'بارگذاری و اعمال',
     });
     if (!ok) return;
     setImporting(true);

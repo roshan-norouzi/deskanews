@@ -101,12 +101,12 @@ export function OrganizationsDashboardSection() {
       <Card>
         <CardContent className="flex flex-col items-center px-6 py-12 text-center">
           <Building2 className="h-10 w-10 text-slate-300" />
-          <p className="mt-3 font-medium text-slate-800">هنوز عضو هیچ سازمانی نیستید</p>
+          <p className="mt-3 font-medium text-slate-800">هنوز عضو هیچ میز خبری نیستید</p>
           <p className="mt-1 max-w-sm text-sm text-slate-500">
-            برای شروع کار خبری، نخستین سازمان خود را بسازید.
+            برای شروع کار خبری، نخستین میز خبرتان را بسازید.
           </p>
           <Button className="mt-5" onClick={() => router.push('/organizations')}>
-            ساخت سازمان
+            ساخت میز خبر
           </Button>
         </CardContent>
       </Card>
@@ -116,14 +116,14 @@ export function OrganizationsDashboardSection() {
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">مصرف سازمان</h2>
+        <h2 className="text-base font-semibold text-slate-900">مصرف میز خبر</h2>
         <Link href="/organizations" className="text-sm font-medium text-primary-700 hover:text-primary-800">
-          مدیریت سازمان‌ها
+          مدیریت میزهای خبر
         </Link>
       </div>
 
       {memberships.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="انتخاب سازمان">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="انتخاب میز خبر">
           {memberships.map((org) => {
             const selected = org.id === selectedOrg?.id;
             return (

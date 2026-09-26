@@ -1,15 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  Circle,
   Eye,
   EyeOff,
   GripVertical,
   Image as ImageIcon,
+  Minus,
   Plus,
+  Square,
   Trash2,
   Type,
 } from 'lucide-react';
@@ -17,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { apiFetch, apiFetchBlob, cn, withBasePath } from '@/lib/utils';
 
 type Binding = 'title' | 'lead' | 'author' | 'category' | 'reading_time' | 'summary' | 'link' | 'source' | 'custom';
-type LayerType = 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient';
+type LayerType = 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient' | 'line' | 'rect' | 'circle';
 
 export interface CoverLayer {
   id: string;
@@ -46,6 +49,10 @@ export interface CoverLayer {
   gradientFromOpacity?: number;
   gradientToOpacity?: number;
   gradientAngle?: number;
+  /** Line stroke width in output pixels */
+  strokeWidth?: number;
+  /** Line direction in degrees (0 = horizontal, clockwise) */
+  lineAngle?: number;
 }
 
 export interface CoverTemplate {
@@ -273,6 +280,75 @@ async function loadCoverImage(url?: string): Promise<HTMLImageElement | null> {
   });
 }
 
+function drawCoverLine(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  layer: CoverLayer,
+) {
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const halfLen = width / 2;
+  const angleRad = ((layer.lineAngle ?? 0) * Math.PI) / 180;
+  const x1 = cx - halfLen * Math.cos(angleRad);
+  const y1 = cy - halfLen * Math.sin(angleRad);
+  const x2 = cx + halfLen * Math.cos(angleRad);
+  const y2 = cy + halfLen * Math.sin(angleRad);
+  context.strokeStyle = layer.color || '#ffffff';
+  context.lineWidth = Math.max(1, layer.strokeWidth ?? 4);
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(x1, y1);
+  context.lineTo(x2, y2);
+  context.stroke();
+}
+
+function layerPreviewStyle(layer: CoverLayer): CSSProperties | undefined {
+  if (layer.type === 'rect') {
+    return {
+      backgroundColor: rgba(layer.backgroundColor || '#2563eb', layer.backgroundOpacity ?? 100),
+      borderRadius: `${layer.borderRadius || 0}px`,
+    };
+  }
+  if (layer.type === 'circle') {
+    return {
+      backgroundColor: rgba(layer.backgroundColor || '#2563eb', layer.backgroundOpacity ?? 100),
+      borderRadius: '50%',
+    };
+  }
+  return undefined;
+}
+
+function layerListIcon(layer: CoverLayer) {
+  if (layer.type === 'line') return <Minus className="ml-2 inline h-4 w-4" />;
+  if (layer.type === 'rect') return <Square className="ml-2 inline h-4 w-4" />;
+  if (layer.type === 'circle') return <Circle className="ml-2 inline h-4 w-4" />;
+  if (layer.type === 'text') return <Type className="ml-2 inline h-4 w-4" />;
+  if (layer.type === 'gradient') return <span className="ml-2 inline-block h-4 w-4 rounded bg-gradient-to-br from-blue-500 to-violet-500 align-middle" />;
+  return <ImageIcon className="ml-2 inline h-4 w-4" />;
+}
+
+function LineLayerPreview({ layer }: { layer: CoverLayer }) {
+  const stroke = layer.color || '#ffffff';
+  const angle = layer.lineAngle ?? 0;
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+      <line
+        x1="5"
+        y1="50"
+        x2="95"
+        y2="50"
+        stroke={stroke}
+        strokeWidth={Math.max(1, (layer.strokeWidth ?? 4) / 4)}
+        strokeLinecap="round"
+        transform={`rotate(${angle} 50 50)`}
+      />
+    </svg>
+  );
+}
+
 function drawCoverImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, objectFit: 'cover' | 'contain', radius: number) {
   const sourceRatio = image.naturalWidth / Math.max(1, image.naturalHeight);
   const targetRatio = width / Math.max(1, height);
@@ -397,6 +473,17 @@ export async function renderCoverToDataUrl(templateValue: string, article?: Cove
           context.fillText(rtlCanvasText(line), textX, startY + index * lineHeight, Math.max(20, width - 32));
         }
       });
+    } else if (layer.type === 'line') {
+      drawCoverLine(context, x, y, width, height, layer);
+    } else if (layer.type === 'rect') {
+      context.fillStyle = rgba(layer.backgroundColor || '#2563eb', layer.backgroundOpacity ?? 100);
+      roundedPath(context, x, y, width, height, radius);
+      context.fill();
+    } else if (layer.type === 'circle') {
+      context.fillStyle = rgba(layer.backgroundColor || '#2563eb', layer.backgroundOpacity ?? 100);
+      context.beginPath();
+      context.ellipse(x + width / 2, y + height / 2, Math.max(1, width / 2), Math.max(1, height / 2), 0, 0, Math.PI * 2);
+      context.fill();
     } else {
       const imageUrl = layer.type === 'featured-image' ? article?.featuredImageUrl : layer.type === 'author-image' ? article?.authorImageUrl : layer.imageUrl;
       const image = await loadCoverImage(imageUrl);
@@ -423,6 +510,7 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
   const coveringLayer = selected && selectedIndex >= 0 ? template.layers.slice(selectedIndex + 1).find((layer) => {
     if (!layer.visible || (layer.opacity ?? 100) <= 0) return false;
     const visuallyOpaque = layer.type === 'image' || layer.type === 'featured-image' || layer.type === 'author-image' || layer.type === 'gradient'
+      || layer.type === 'rect' || layer.type === 'circle'
       || (layer.type === 'text' && Boolean(layer.backgroundColor && layer.backgroundColor !== 'transparent'));
     return visuallyOpaque
       && layer.x <= selected.x && layer.y <= selected.y
@@ -474,6 +562,62 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
     commit({ ...template, layers: [...template.layers, layer] });
   }
 
+  function addLine() {
+    const layer: CoverLayer = {
+      id: newId(),
+      name: 'خط',
+      type: 'line',
+      x: 8,
+      y: 48,
+      width: 84,
+      height: 6,
+      visible: true,
+      opacity: 100,
+      color: '#ffffff',
+      strokeWidth: 8,
+      lineAngle: 0,
+    };
+    setSelectedId(layer.id);
+    commit({ ...template, layers: [...template.layers, layer] });
+  }
+
+  function addRect() {
+    const layer: CoverLayer = {
+      id: newId(),
+      name: 'مستطیل',
+      type: 'rect',
+      x: 30,
+      y: 40,
+      width: 40,
+      height: 18,
+      visible: true,
+      opacity: 100,
+      backgroundColor: '#2563eb',
+      backgroundOpacity: 85,
+      borderRadius: 8,
+    };
+    setSelectedId(layer.id);
+    commit({ ...template, layers: [...template.layers, layer] });
+  }
+
+  function addCircle() {
+    const layer: CoverLayer = {
+      id: newId(),
+      name: 'دایره',
+      type: 'circle',
+      x: 40,
+      y: 40,
+      width: 20,
+      height: 20,
+      visible: true,
+      opacity: 100,
+      backgroundColor: '#ef4444',
+      backgroundOpacity: 90,
+    };
+    setSelectedId(layer.id);
+    commit({ ...template, layers: [...template.layers, layer] });
+  }
+
   function reorderLayers(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
     const layers = [...template.layers];
@@ -505,7 +649,7 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
       const result = await apiFetch<{ url: string }>('/publishing/settings/images', { method: 'POST', body: form });
       updateLayer(selected.id, { imageUrl: result.url });
     } catch (error) {
-      setImageUploadError(error instanceof Error ? error.message : 'آپلود تصویر انجام نشد');
+      setImageUploadError(error instanceof Error ? error.message : 'بارگذاری تصویر انجام نشد');
     } finally { setUploadingImage(false); }
   }
 
@@ -527,15 +671,20 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
         <Button type="button" size="sm" variant="outline" onClick={() => addImage('author-image')}><ImageIcon className="h-4 w-4" /> تصویر نویسنده</Button>
         <Button type="button" size="sm" variant="outline" onClick={() => addImage('image')}><Plus className="h-4 w-4" /> تصویر دلخواه</Button>
         <Button type="button" size="sm" variant="outline" onClick={addGradient}><Plus className="h-4 w-4" /> گرادینت</Button>
+        <Button type="button" size="sm" variant="outline" onClick={addLine}><Minus className="h-4 w-4" /> خط</Button>
+        <Button type="button" size="sm" variant="outline" onClick={addRect}><Square className="h-4 w-4" /> مستطیل</Button>
+        <Button type="button" size="sm" variant="outline" onClick={addCircle}><Circle className="h-4 w-4" /> دایره</Button>
       </div>
 
       <div className="overflow-hidden rounded-2xl border bg-slate-100 p-4">
         <div ref={canvasRef} className="mx-auto overflow-hidden shadow-2xl" style={{ position: 'relative', width: `${template.width * previewScale}%`, maxWidth: '100%', aspectRatio: `${template.width}/${template.height}`, backgroundColor: template.backgroundColor }}>
-          {template.layers.map((layer) => layer.visible && <button type="button" key={layer.id} onClick={() => setSelectedId(layer.id)} onPointerDown={(event) => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { id: layer.id, clientX: event.clientX, clientY: event.clientY, x: layer.x, y: layer.y }; setSelectedId(layer.id); }} onPointerMove={(event) => { const drag = dragRef.current; const canvas = canvasRef.current; if (!drag || drag.id !== layer.id || !event.currentTarget.hasPointerCapture(event.pointerId) || !canvas) return; const rect = canvas.getBoundingClientRect(); const x = Math.max(0, Math.min(100 - layer.width, drag.x + ((event.clientX - drag.clientX) / rect.width) * 100)); const y = Math.max(0, Math.min(100 - layer.height, drag.y + ((event.clientY - drag.clientY) / rect.height) * 100)); updateLayer(layer.id, { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); dragRef.current = null; }} className={cn('absolute cursor-move overflow-hidden border-2 text-right transition', selected?.id === layer.id ? 'border-blue-400' : 'border-transparent hover:border-white/60')} style={{ left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`, opacity: layer.opacity / 100, borderRadius: `${layer.borderRadius || 0}px`, backgroundColor: layer.type === 'text' && layer.backgroundColor !== 'transparent' ? rgba(layer.backgroundColor || '#ffffff', layer.backgroundOpacity ?? 100) : undefined, touchAction: 'none' }}>
+          {template.layers.map((layer) => layer.visible && <button type="button" key={layer.id} onClick={() => setSelectedId(layer.id)} onPointerDown={(event) => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { id: layer.id, clientX: event.clientX, clientY: event.clientY, x: layer.x, y: layer.y }; setSelectedId(layer.id); }} onPointerMove={(event) => { const drag = dragRef.current; const canvas = canvasRef.current; if (!drag || drag.id !== layer.id || !event.currentTarget.hasPointerCapture(event.pointerId) || !canvas) return; const rect = canvas.getBoundingClientRect(); const x = Math.max(0, Math.min(100 - layer.width, drag.x + ((event.clientX - drag.clientX) / rect.width) * 100)); const y = Math.max(0, Math.min(100 - layer.height, drag.y + ((event.clientY - drag.clientY) / rect.height) * 100)); updateLayer(layer.id, { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }); }} onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); dragRef.current = null; }} className={cn('absolute cursor-move overflow-hidden border-2 text-right transition', selected?.id === layer.id ? 'border-blue-400' : 'border-transparent hover:border-white/60', layer.type === 'line' && 'overflow-visible bg-transparent')} style={{ left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`, opacity: layer.opacity / 100, borderRadius: layer.type === 'circle' ? '50%' : `${layer.borderRadius || 0}px`, backgroundColor: layer.type === 'text' && layer.backgroundColor !== 'transparent' ? rgba(layer.backgroundColor || '#ffffff', layer.backgroundOpacity ?? 100) : layerPreviewStyle(layer)?.backgroundColor, touchAction: 'none' }}>
             {layer.type === 'featured-image' && (demoArticle?.featuredImageUrl ? <img src={previewImageUrl(demoArticle.featuredImageUrl)} alt="" className={cn('h-full w-full', layer.objectFit === 'contain' ? 'object-contain' : 'object-cover')} /> : <div className="grid h-full place-items-center bg-gradient-to-br from-slate-500 to-slate-800 text-center text-sm text-white"><ImageIcon className="mb-1 h-8 w-8" />تصویر شاخص مطلب</div>)}
             {layer.type === 'author-image' && (demoArticle?.authorImageUrl ? <img src={previewImageUrl(demoArticle.authorImageUrl)} alt="" className={cn('h-full w-full', layer.objectFit === 'contain' ? 'object-contain' : 'object-cover')} /> : <div className="grid h-full place-items-center bg-gradient-to-br from-violet-500 to-fuchsia-600 text-center text-sm text-white"><ImageIcon className="mb-1 h-8 w-8" />تصویر نویسنده</div>)}
             {layer.type === 'gradient' && <div className="h-full w-full" style={{ background: `linear-gradient(${layer.gradientAngle ?? 135}deg, ${rgba(layer.gradientFrom || '#2563eb', layer.gradientFromOpacity ?? 100)}, ${rgba(layer.gradientTo || '#7c3aed', layer.gradientToOpacity ?? 100)})` }} />}
             {layer.type === 'image' && (layer.imageUrl ? <img src={previewImageUrl(layer.imageUrl)} alt="" className={cn('h-full w-full', layer.objectFit === 'contain' ? 'object-contain' : 'object-cover')} /> : <div className="grid h-full place-items-center bg-white/90 text-sm text-slate-500">تصویر دلخواه</div>)}
+            {layer.type === 'line' && <LineLayerPreview layer={layer} />}
+            {(layer.type === 'rect' || layer.type === 'circle') && <div className="h-full w-full" style={layerPreviewStyle(layer)} />}
             {layer.type === 'text' && <span className="flex h-full w-full whitespace-pre-wrap p-2 leading-snug" style={{ color: layer.color, fontSize: `${Math.max(10, (layer.fontSize || 24) * 0.42)}px`, fontWeight: layer.fontWeight, fontFamily: layer.fontFamily, direction: 'rtl', textAlign: layer.align, alignItems: 'center', justifyContent: layer.align === 'right' || layer.align === 'justify' ? 'flex-start' : layer.align === 'center' ? 'center' : 'flex-end', backgroundColor: layer.backgroundColor === 'transparent' ? undefined : rgba(layer.backgroundColor || '#ffffff', layer.backgroundOpacity ?? 100) }}>{textFor(layer, demoArticle)}</span>}
           </button>)}
         </div>
@@ -556,7 +705,7 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
           {[...template.layers].reverse().map((layer) => {
             return <div key={layer.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', layer.id); setDraggingLayerId(layer.id); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverLayerId(layer.id); }} onDragLeave={() => setDragOverLayerId((current) => current === layer.id ? null : current)} onDrop={(event) => { event.preventDefault(); reorderLayers(event.dataTransfer.getData('text/plain') || draggingLayerId || '', layer.id); setDraggingLayerId(null); setDragOverLayerId(null); }} onDragEnd={() => { setDraggingLayerId(null); setDragOverLayerId(null); }} className={cn('flex cursor-grab items-center gap-1 rounded-xl border p-2 active:cursor-grabbing', selected?.id === layer.id ? 'border-blue-300 bg-blue-50' : 'bg-white', draggingLayerId === layer.id && 'opacity-50', dragOverLayerId === layer.id && draggingLayerId !== layer.id && 'border-dashed border-blue-500')}>
               <GripVertical className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              <button type="button" className="min-w-0 flex-1 truncate text-right text-sm font-medium" onClick={() => setSelectedId(layer.id)}>{layer.type === 'text' ? <Type className="ml-2 inline h-4 w-4" /> : layer.type === 'gradient' ? <span className="ml-2 inline-block h-4 w-4 rounded bg-gradient-to-br from-blue-500 to-violet-500 align-middle" /> : <ImageIcon className="ml-2 inline h-4 w-4" />}{layer.name}</button>
+              <button type="button" className="min-w-0 flex-1 truncate text-right text-sm font-medium" onClick={() => setSelectedId(layer.id)}>{layerListIcon(layer)}{layer.name}</button>
               <button type="button" title={layer.visible ? 'مخفی کردن' : 'نمایش'} onClick={() => updateLayer(layer.id, { visible: !layer.visible })}>{layer.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-slate-400" />}</button>
               <button type="button" title="حذف" className="text-red-600" onClick={() => remove(layer.id)}><Trash2 className="h-4 w-4" /></button>
             </div>;
@@ -573,10 +722,32 @@ export function CoverTemplateBuilder({ value, onChange, fontLibrary = [{ id: 'va
           <label className="grid gap-1 text-xs text-slate-600">گردی گوشه<input type="number" min="0" max="100" className="rounded-lg border px-2 py-2 text-sm" value={selected.borderRadius || 0} onChange={(e) => updateLayer(selected.id, { borderRadius: Math.max(0, Math.min(100, Number(e.target.value))) })} /></label>
         </div>
 
-        {selected.type === 'image' && <div className="grid gap-3 rounded-xl bg-slate-50 p-3"><label className="grid gap-1 text-xs text-slate-600">آدرس تصویر دلخواه<input dir="ltr" type="url" className="rounded-lg border px-3 py-2 text-sm" placeholder="https://example.com/image.png" value={selected.imageUrl || ''} onChange={(e) => updateLayer(selected.id, { imageUrl: e.target.value })} /></label><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-50"><input type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" disabled={uploadingImage} onChange={(event) => { void uploadCustomImage(event.target.files?.[0]); event.target.value = ''; }} />{uploadingImage ? 'در حال آپلود تصویر…' : 'آپلود تصویر دلخواه'}</label><p className="text-xs text-slate-500">فرمت‌های مجاز: JPG، PNG، WebP و AVIF؛ حداکثر ۱۵ مگابایت.</p>{imageUploadError && <p className="text-xs text-red-600">{imageUploadError}</p>}</div>}
+        {selected.type === 'image' && <div className="grid gap-3 rounded-xl bg-slate-50 p-3"><label className="grid gap-1 text-xs text-slate-600">آدرس تصویر دلخواه<input dir="ltr" type="url" className="rounded-lg border px-3 py-2 text-sm" placeholder="https://example.com/image.png" value={selected.imageUrl || ''} onChange={(e) => updateLayer(selected.id, { imageUrl: e.target.value })} /></label><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-50"><input type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" disabled={uploadingImage} onChange={(event) => { void uploadCustomImage(event.target.files?.[0]); event.target.value = ''; }} />{uploadingImage ? 'در حال بارگذاری تصویر…' : 'بارگذاری تصویر دلخواه'}</label><p className="text-xs text-slate-500">فرمت‌های مجاز: JPG، PNG، WebP و AVIF؛ حداکثر ۱۵ مگابایت.</p>{imageUploadError && <p className="text-xs text-red-600">{imageUploadError}</p>}</div>}
         {(selected.type === 'image' || selected.type === 'featured-image' || selected.type === 'author-image') && <label className="grid gap-1 text-xs text-slate-600">نحوه نمایش تصویر<select className="rounded-lg border px-3 py-2 text-sm" value={selected.objectFit || 'cover'} onChange={(e) => updateLayer(selected.id, { objectFit: e.target.value as 'cover' | 'contain' })}><option value="cover">پوشاندن کامل کادر</option><option value="contain">نمایش کامل تصویر</option></select></label>}
 
         {selected.type === 'gradient' && <div className="grid gap-3 rounded-xl bg-slate-50 p-3"><div className="grid grid-cols-2 gap-3"><label className="grid gap-1 text-xs text-slate-600">رنگ ابتدا<input type="color" className="h-10 w-full rounded-lg border bg-white p-1" value={selected.gradientFrom || '#2563eb'} onChange={(e) => updateLayer(selected.id, { gradientFrom: e.target.value })} /></label><label className="grid gap-1 text-xs text-slate-600">شفافیت ابتدا<input type="number" min="0" max="100" className="rounded-lg border px-2 py-2 text-sm" value={selected.gradientFromOpacity ?? 100} onChange={(e) => updateLayer(selected.id, { gradientFromOpacity: Math.max(0, Math.min(100, Number(e.target.value))) })} /></label><label className="grid gap-1 text-xs text-slate-600">رنگ انتها<input type="color" className="h-10 w-full rounded-lg border bg-white p-1" value={selected.gradientTo || '#7c3aed'} onChange={(e) => updateLayer(selected.id, { gradientTo: e.target.value })} /></label><label className="grid gap-1 text-xs text-slate-600">شفافیت انتها<input type="number" min="0" max="100" className="rounded-lg border px-2 py-2 text-sm" value={selected.gradientToOpacity ?? 100} onChange={(e) => updateLayer(selected.id, { gradientToOpacity: Math.max(0, Math.min(100, Number(e.target.value))) })} /></label></div><label className="grid gap-1 text-xs text-slate-600">زاویهٔ گرادینت (درجه)<input type="number" min="0" max="360" className="rounded-lg border px-2 py-2 text-sm" value={selected.gradientAngle ?? 135} onChange={(e) => updateLayer(selected.id, { gradientAngle: Math.max(0, Math.min(360, Number(e.target.value))) })} /></label></div>}
+
+        {selected.type === 'line' && (
+          <div className="grid gap-3 rounded-xl bg-slate-50 p-3">
+            <label className="grid gap-1 text-xs text-slate-600">رنگ خط<input type="color" className="h-10 w-full rounded-lg border bg-white p-1" value={selected.color || '#ffffff'} onChange={(e) => updateLayer(selected.id, { color: e.target.value })} /></label>
+            <label className="grid gap-1 text-xs text-slate-600">ضخامت خط (پیکسل خروجی)<input type="number" min="1" max="120" className="rounded-lg border px-2 py-2 text-sm" value={selected.strokeWidth ?? 4} onChange={(e) => updateLayer(selected.id, { strokeWidth: Math.max(1, Math.min(120, Number(e.target.value))) })} /></label>
+            <label className="grid gap-1 text-xs text-slate-600">جهت خط (درجه)<input type="number" min="0" max="360" className="rounded-lg border px-2 py-2 text-sm" value={selected.lineAngle ?? 0} onChange={(e) => updateLayer(selected.id, { lineAngle: Math.max(0, Math.min(360, Number(e.target.value))) })} /></label>
+            <p className="text-xs leading-5 text-slate-500">«عرض» طول خط را تعیین می‌کند. ۰ درجه افقی و ۹۰ درجه عمودی است.</p>
+          </div>
+        )}
+
+        {(selected.type === 'rect' || selected.type === 'circle') && (
+          <div className="grid gap-3 rounded-xl bg-slate-50 p-3">
+            <label className="grid gap-1 text-xs text-slate-600">رنگ<input type="color" className="h-10 w-full rounded-lg border bg-white p-1" value={selected.backgroundColor || '#2563eb'} onChange={(e) => updateLayer(selected.id, { backgroundColor: e.target.value })} /></label>
+            <label className="grid gap-1 text-xs text-slate-600">شفافیت<input type="number" min="0" max="100" className="rounded-lg border px-2 py-2 text-sm" value={selected.backgroundOpacity ?? 100} onChange={(e) => updateLayer(selected.id, { backgroundOpacity: Math.max(0, Math.min(100, Number(e.target.value))) })} /></label>
+            {selected.type === 'rect' && (
+              <label className="grid gap-1 text-xs text-slate-600">گردی گوشه (پیکسل)<input type="number" min="0" max="200" className="rounded-lg border px-2 py-2 text-sm" value={selected.borderRadius || 0} onChange={(e) => updateLayer(selected.id, { borderRadius: Math.max(0, Math.min(200, Number(e.target.value))) })} /></label>
+            )}
+            {selected.type === 'circle' && (
+              <p className="text-xs leading-5 text-slate-500">برای بیضی، عرض و ارتفاع لایه را متفاوت بگذارید.</p>
+            )}
+          </div>
+        )}
 
         {selected.type === 'text' && <>
           <label className="grid gap-1 text-xs text-slate-600">محتوای لایه<select className="rounded-lg border px-3 py-2 text-sm" value={selected.binding || 'custom'} onChange={(e) => { const binding = e.target.value as Binding; updateLayer(selected.id, { binding, name: BINDINGS.find((item) => item.value === binding)?.label || selected.name }); }}>{BINDINGS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>

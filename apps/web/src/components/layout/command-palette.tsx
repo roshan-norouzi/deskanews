@@ -99,7 +99,7 @@ export function CommandPalette({ open, onClose, navGroups }: CommandPaletteProps
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
-            placeholder="جستجو در منو..."
+            placeholder="جست‌وجو در منو..."
             className="flex-1 py-4 text-sm outline-none"
             autoFocus
           />

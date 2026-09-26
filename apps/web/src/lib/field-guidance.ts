@@ -7,9 +7,9 @@ export function getFieldPlaceholder(label?: string, type?: string, name?: string
   }
   if (key.includes('موبایل') || key.includes('تلفن همراه')) return '09121234567';
   if (key.includes('تلفن ثابت')) return '02112345678';
-  if (key.includes('رمز عبور')) return 'حداقل ۸ کاراکتر';
+  if (key.includes('رمز عبور')) return 'رمز عبور را وارد کنید';
   if (key.includes('نامک') || key.includes('slug')) return 'my-newsroom';
-  if (key.includes('نام سازمان')) return 'مثلاً خبرگزاری نمونه';
+  if (key.includes('نام سازمان') || key.includes('نام میز خبر')) return 'مثلاً خبرگزاری نمونه';
   if (key.includes('نام منبع')) return 'مثلاً خبرگزاری رسمی';
   if (key.includes('کلمات')) return 'با ویرگول جدا کنید';
   if (key.includes('عنوان')) return 'عنوان را وارد کنید';

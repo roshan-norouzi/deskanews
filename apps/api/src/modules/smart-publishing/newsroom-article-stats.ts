@@ -57,6 +57,62 @@ export function isNewsArchived(article: Pick<NewsroomArticleSnapshot, 'status'>)
   return ['published', 'social_sent'].includes(article.status);
 }
 
+export type NewsroomListView = 'action' | 'processing' | 'archive' | 'rejected' | 'all';
+
+const READY_WITH_PERSIAN_SUMMARY: Prisma.NewsArticleWhereInput = {
+  status: 'ready',
+  NOT: [{ titleFa: '' }, { summaryFa: '' }],
+};
+
+const READY_WITHOUT_PERSIAN_SUMMARY: Prisma.NewsArticleWhereInput = {
+  status: 'ready',
+  OR: [{ titleFa: '' }, { summaryFa: '' }],
+};
+
+/** Matches client-side NEWSROOM_FILTERS for paginated API queries. */
+export function newsroomListViewWhere(view: NewsroomListView): Prisma.NewsArticleWhereInput {
+  switch (view) {
+    case 'action':
+      return {
+        OR: [
+          READY_WITH_PERSIAN_SUMMARY,
+          { status: { in: ['publishing', 'social_processing', 'publish_failed', 'social_failed'] } },
+        ],
+      };
+    case 'processing':
+      return {
+        OR: [
+          { status: { in: ['new', 'processing', 'failed'] } },
+          READY_WITHOUT_PERSIAN_SUMMARY,
+        ],
+      };
+    case 'archive':
+      return { status: { in: ['published', 'social_sent'] } };
+    case 'rejected':
+      return { status: 'rejected' };
+    case 'all':
+    default:
+      return {};
+  }
+}
+
+export type NewsroomArticleScope = Prisma.NewsArticleWhereInput;
+
+export function countNewsroomStatusQueries(scope: NewsroomArticleScope) {
+  const scoped = (extra: Prisma.NewsArticleWhereInput) => ({ AND: [scope, extra] });
+  return {
+    total: scoped({}),
+    rejected: scoped({ status: 'rejected' }),
+    archive: scoped({ status: { in: ['published', 'social_sent'] } }),
+    preparing: scoped({ status: { in: ['publishing', 'social_processing'] } }),
+    statusFailed: scoped({ status: 'failed' }),
+    terminalFailed: scoped({ status: { in: ['publish_failed', 'social_failed'] } }),
+    readyPrepared: scoped(READY_WITH_PERSIAN_SUMMARY),
+    readyUnprepared: scoped(READY_WITHOUT_PERSIAN_SUMMARY),
+    inbox: scoped({ status: { in: ['new', 'processing', 'failed'] } }),
+  };
+}
+
 export type NewsroomStatusCounts = {
   total: number;
   rejected: number;

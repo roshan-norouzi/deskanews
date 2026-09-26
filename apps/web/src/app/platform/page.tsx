@@ -26,7 +26,7 @@ function PlatformAdminPageContent() {
       <div className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
         <PageHeader
           title="مدیریت پلتفرم"
-          description="کاربران، سازمان‌ها و اعتبار سازمان‌ها."
+          description="حساب کاربران، عضویت در سازمان‌ها، مالکیت و اعتبار سازمان‌ها را مدیریت کنید."
           icon={ShieldCheck}
         />
         <PlatformAdminPanel embedded initialTab={initialTab} />

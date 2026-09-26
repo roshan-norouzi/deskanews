@@ -19,7 +19,7 @@ export function PlatformTopicLabelsPanel() {
         setLabels(next);
         setOriginal(next);
       })
-      .catch((reason) => setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'دریافت لیبل‌ها انجام نشد' }));
+      .catch((reason) => setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'دریافت برچسب‌ها انجام نشد' }));
   }, []);
 
   function addLabel() {
@@ -50,9 +50,9 @@ export function PlatformTopicLabelsPanel() {
       const next = Array.isArray(saved) ? saved : labels;
       setLabels(next);
       setOriginal(next);
-      setNotice({ type: 'success', text: 'لیبل‌ها ذخیره شد. منابعی که لیبل‌شان حذف شده، دوباره برچسب می‌خورند.' });
+      setNotice({ type: 'success', text: 'برچسب‌ها ذخیره شدند. منابعی که برچسب آن‌ها حذف شده است، دوباره برچسب‌گذاری می‌شوند.' });
     } catch (reason) {
-      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'ذخیره لیبل‌ها انجام نشد' });
+      setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'ذخیره برچسب‌ها انجام نشد' });
     } finally {
       setBusy(null);
     }
@@ -71,10 +71,10 @@ export function PlatformTopicLabelsPanel() {
       setNotice({
         type: 'success',
         text: remaining > 0
-          ? `${assigned} منبع برچسب خورد. ${remaining} منبع هنوز بدون لیبل است؛ دوباره بزنید.`
+          ? `${assigned} منبع برچسب‌گذاری شد. ${remaining} منبع هنوز برچسب ندارد. برای ادامه، «برچسب‌گذاری منابع بدون برچسب» را دوباره اجرا کنید.`
           : assigned > 0
-            ? `${assigned} منبع برچسب خورد.`
-            : 'منبع بدون لیبلِ قابل‌تشخیصی نماند.',
+            ? `${assigned} منبع برچسب‌گذاری شد.`
+            : 'منبع دیگری برای برچسب‌گذاری خودکار شناسایی نشد.',
       });
     } catch (reason) {
       setNotice({ type: 'error', text: reason instanceof Error ? reason.message : 'برچسب‌گذاری انجام نشد' });
@@ -86,7 +86,7 @@ export function PlatformTopicLabelsPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm leading-7 text-slate-600">
-        این لیبل‌ها کنار دستهٔ کاتالوگ (رسانه داخلی، بین‌المللی و …) روی هر منبع نشان داده می‌شوند. منابع بدون لیبل، با قانون نام یا هوش مصنوعی برچسب می‌خورند.
+        این برچسب‌ها موضوع هر منبع را مشخص می‌کنند و کنار دستهٔ آن، مانند رسانهٔ داخلی یا بین‌المللی، نمایش داده می‌شوند. موضوع منابع بدون برچسب، بر اساس نام منبع یا با کمک هوش مصنوعی تعیین می‌شود.
       </p>
       <ul className="space-y-2">
         {labels.map((label, index) => (
@@ -96,7 +96,7 @@ export function PlatformTopicLabelsPanel() {
               onChange={(event) => setLabels((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
               className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary-500"
             />
-            <Button type="button" variant="ghost" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="حذف لیبل">
+            <Button type="button" variant="ghost" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="حذف برچسب">
               <Trash2 className="h-4 w-4" />
             </Button>
           </li>
@@ -107,16 +107,16 @@ export function PlatformTopicLabelsPanel() {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addLabel(); } }}
-          placeholder="لیبل تازه"
+          placeholder="برچسب تازه"
           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-primary-500"
         />
         <Button type="button" variant="secondary" onClick={addLabel}><Plus className="h-4 w-4" /> افزودن</Button>
       </div>
       {notice ? <div className={`rounded-xl border px-4 py-3 text-sm ${notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div> : null}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={() => void save()} isLoading={busy === 'save'}>ذخیره لیبل‌ها</Button>
+        <Button type="button" onClick={() => void save()} isLoading={busy === 'save'}>ذخیره برچسب‌ها</Button>
         <Button type="button" variant="secondary" onClick={() => void applyLabels()} isLoading={busy === 'apply'}>
-          <Tags className="h-4 w-4" /> برچسب‌گذاری منابع بدون لیبل
+          <Tags className="h-4 w-4" /> برچسب‌گذاری منابع بدون برچسب
         </Button>
       </div>
     </div>

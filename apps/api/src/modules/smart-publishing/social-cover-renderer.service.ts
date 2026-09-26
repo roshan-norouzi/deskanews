@@ -9,7 +9,7 @@ import { SourceReaderService } from './source-reader.service';
 import { UsageTrackingService } from '../../platform/usage/usage-tracking.service';
 import { canonicalMediaPath } from '../../common/media-signature';
 
-type LayerType = 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient';
+type LayerType = 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient' | 'line' | 'rect' | 'circle';
 type Binding = 'title' | 'lead' | 'author' | 'category' | 'reading_time' | 'summary' | 'link' | 'source' | 'custom';
 interface CoverLayer {
   id: string; type: LayerType; binding?: Binding; content?: string; imageUrl?: string;
@@ -18,6 +18,7 @@ interface CoverLayer {
   fontWeight?: number; fontFamily?: string; align?: 'right' | 'center' | 'left' | 'justify';
   borderRadius?: number; objectFit?: 'cover' | 'contain'; gradientFrom?: string; gradientTo?: string;
   gradientFromOpacity?: number; gradientToOpacity?: number; gradientAngle?: number;
+  strokeWidth?: number; lineAngle?: number;
 }
 interface CoverTemplate { version: 1; width: number; height: number; backgroundColor: string; layers: CoverLayer[] }
 interface CoverLibrary { version: 1; defaultTemplateId: string; templates: Array<{ id: string; name: string; template: CoverTemplate }> }
@@ -173,6 +174,21 @@ export class SocialCoverRendererService {
       const common = `position:absolute;left:${x}%;top:${y}%;width:${width}%;height:${height}%;opacity:${clamp(layer.opacity ?? 100, 0, 100) / 100};border-radius:${radius}px;overflow:hidden;box-sizing:border-box`;
       if (layer.type === 'gradient') {
         return `<div style="${common};background:linear-gradient(${clamp(layer.gradientAngle ?? 135, 0, 360)}deg,${rgba(layer.gradientFrom, layer.gradientFromOpacity)},${rgba(layer.gradientTo, layer.gradientToOpacity)})"></div>`;
+      }
+      if (layer.type === 'line') {
+        const stroke = escapeHtml(layer.color || '#ffffff');
+        const strokeWidth = Math.max(1, Number(layer.strokeWidth) || 4);
+        const angle = clamp(layer.lineAngle ?? 0, 0, 360);
+        return `<div style="${common};background:transparent;overflow:visible"><svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><line x1="5" y1="50" x2="95" y2="50" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" transform="rotate(${angle} 50 50)"/></svg></div>`;
+      }
+      if (layer.type === 'rect') {
+        const radius = Math.min(template.width, template.height) * clamp(layer.borderRadius || 0, 0, 100) / 100;
+        const fill = rgba(layer.backgroundColor, layer.backgroundOpacity);
+        return `<div style="${common};background:${fill};border-radius:${radius}px"></div>`;
+      }
+      if (layer.type === 'circle') {
+        const fill = rgba(layer.backgroundColor, layer.backgroundOpacity);
+        return `<div style="${common};background:${fill};border-radius:50%"></div>`;
       }
       if (layer.type === 'text') {
         const content = layer.binding === 'custom' ? layer.content || '' : values[layer.binding || 'custom'];

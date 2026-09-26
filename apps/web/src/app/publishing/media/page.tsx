@@ -21,7 +21,7 @@ export default function PublishingMediaPage() {
           <span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400">
             <ImageIcon className="h-8 w-8" />
           </span>
-          <h2 className="mt-4 text-lg font-semibold text-slate-900">هنوز فایلی اینجا نیست</h2>
+          <h2 className="mt-4 text-lg font-semibold text-slate-900">هنوز فایلی ثبت نشده است</h2>
           <p className="mt-2 max-w-md text-sm leading-7 text-slate-500">
             تصاویر کاور و فایل‌های تولیدشده در استودیوی اجتماعی و میز خبر اینجا نمایش داده می‌شوند.
           </p>

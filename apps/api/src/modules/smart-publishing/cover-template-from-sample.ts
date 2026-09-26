@@ -1,7 +1,7 @@
 export type InferredCoverLayer = {
   id: string;
   name: string;
-  type: 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient';
+  type: 'featured-image' | 'author-image' | 'text' | 'image' | 'gradient' | 'line' | 'rect' | 'circle';
   binding?: 'title' | 'lead' | 'author' | 'category' | 'reading_time' | 'summary' | 'link' | 'source' | 'custom';
   content?: string;
   imageUrl?: string;
@@ -35,7 +35,7 @@ export type InferredCoverTemplate = {
   layers: InferredCoverLayer[];
 };
 
-const ALLOWED_TYPES = new Set(['featured-image', 'author-image', 'text', 'image', 'gradient']);
+const ALLOWED_TYPES = new Set(['featured-image', 'author-image', 'text', 'image', 'gradient', 'line', 'rect', 'circle']);
 const ALLOWED_BINDINGS = new Set(['title', 'lead', 'author', 'category', 'reading_time', 'summary', 'link', 'source', 'custom']);
 
 function clamp(value: number, min: number, max: number) {

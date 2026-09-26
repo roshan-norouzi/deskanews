@@ -95,7 +95,7 @@ const DEFAULTS: PublishingSettings = {
   gapgpt_model_news_translation: 'gpt-4o-mini',
   gapgpt_model_social: 'gpt-4o-mini',
   news_poll_interval_minutes: '240',
-  news_max_age_days: '10',
+  news_max_age_days: '2',
   news_auto_poll: 'true',
   news_auto_prepare: 'true',
   news_auto_publish: 'false',
@@ -243,7 +243,7 @@ function normalizeCoverTemplate(value: string): string {
     throw new BadRequestException('ساختار قالب تصویری معتبر نیست یا تعداد لایه‌ها بیش از ۳۰ است');
   }
 
-  const allowedTypes = new Set(['featured-image', 'author-image', 'text', 'image', 'gradient']);
+  const allowedTypes = new Set(['featured-image', 'author-image', 'text', 'image', 'gradient', 'line', 'rect', 'circle']);
   const allowedBindings = new Set(['title', 'lead', 'author', 'category', 'reading_time', 'summary', 'link', 'source', 'custom']);
   const sanitizedLayers: unknown[] = [];
   for (const item of layers) {
@@ -277,6 +277,22 @@ function normalizeCoverTemplate(value: string): string {
       if (!Number.isFinite(angle) || angle < 0 || angle > 360) throw new BadRequestException('زاویهٔ گرادینت باید بین ۰ تا ۳۶۰ درجه باشد');
       for (const key of ['gradientFrom', 'gradientTo']) {
         if (typeof layer[key] !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(String(layer[key]))) throw new BadRequestException('رنگ گرادینت معتبر نیست');
+      }
+    }
+    if (layer.type === 'line') {
+      const angle = Number(layer.lineAngle ?? 0);
+      if (!Number.isFinite(angle) || angle < 0 || angle > 360) throw new BadRequestException('زاویهٔ خط باید بین ۰ تا ۳۶۰ درجه باشد');
+      const strokeWidth = Number(layer.strokeWidth ?? 4);
+      if (!Number.isFinite(strokeWidth) || strokeWidth < 1 || strokeWidth > 120) throw new BadRequestException('ضخامت خط باید بین ۱ تا ۱۲۰ پیکسل باشد');
+      if (typeof layer.color !== 'undefined' && (typeof layer.color !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(String(layer.color)))) {
+        throw new BadRequestException('رنگ خط معتبر نیست');
+      }
+    }
+    if (layer.type === 'rect' || layer.type === 'circle') {
+      const opacity = Number(layer.backgroundOpacity ?? 100);
+      if (!Number.isFinite(opacity) || opacity < 0 || opacity > 100) throw new BadRequestException('شفافیت شکل باید بین ۰ تا ۱۰۰ باشد');
+      if (typeof layer.backgroundColor !== 'undefined' && (typeof layer.backgroundColor !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(String(layer.backgroundColor)))) {
+        throw new BadRequestException('رنگ شکل معتبر نیست');
       }
     }
     sanitizedLayers.push(layer);
@@ -1230,7 +1246,7 @@ export class PublishingSettingsService implements OnModuleInit {
     if (has('social_public_media_base_url')) next.social_public_media_base_url = normalizeSecureServiceUrl(next.social_public_media_base_url ?? '', 'آدرس عمومی رسانه‌های اجتماعی');
     if (has('wp_login_path')) next.wp_login_path = normalizeLoginPath(next.wp_login_path ?? 'wp-admin');
     if (has('news_poll_interval_minutes')) next.news_poll_interval_minutes = boundedInteger(next.news_poll_interval_minutes?.trim() || '240', 'فاصله پایش', 5, 1440);
-    if (has('news_max_age_days')) next.news_max_age_days = boundedInteger(next.news_max_age_days?.trim() || '10', 'حداکثر قدمت خبر', 1, 90);
+    if (has('news_max_age_days')) next.news_max_age_days = boundedInteger(next.news_max_age_days?.trim() || '2', 'حداکثر قدمت خبر', 1, 90);
     if (has('social_poll_interval_minutes')) next.social_poll_interval_minutes = boundedInteger(next.social_poll_interval_minutes?.trim() || '240', 'فاصله پایش استودیوی اجتماعی', 5, 1440);
     if (has('social_max_age_days')) next.social_max_age_days = boundedInteger(next.social_max_age_days?.trim() || '10', 'حداکثر قدمت مطلب اجتماعی', 1, 90);
     if (has('social_image_template')) next.social_image_template = normalizeCoverTemplate(next.social_image_template ?? DEFAULT_COVER_TEMPLATE);

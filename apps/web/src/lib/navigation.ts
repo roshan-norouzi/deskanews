@@ -60,7 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/publishing/settings', label: 'تنظیمات انتشار', icon: Settings },
       { href: '/publishing/operations', label: 'مرکز عملیات', icon: Activity },
-      { href: '/settings', label: 'تنظیمات سازمان', icon: Settings },
+      { href: '/settings', label: 'تنظیمات میز خبر', icon: Settings },
       { href: '/settings/account', label: 'حساب کاربری', icon: User },
     ],
   },

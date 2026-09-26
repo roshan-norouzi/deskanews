@@ -127,7 +127,7 @@ export function PlatformOrganizationWalletPanel() {
         <CardContent className="space-y-4">
           <div className="relative">
             <Search className="absolute right-3 top-3 h-4 w-4 text-slate-400" />
-            <Input className="pr-10" placeholder="جستجوی سازمان..." value={query} onChange={(e) => setQuery(e.target.value)} />
+            <Input className="pr-10" placeholder="جست‌وجوی سازمان..." value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">سازمان</span>

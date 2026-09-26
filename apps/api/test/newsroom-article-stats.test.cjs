@@ -5,6 +5,7 @@ const {
   isNewsInProcessing,
   isNewsReadyForAction,
   newsroomArticleWhere,
+  newsroomListViewWhere,
   newsroomStatsFromCounts,
 } = require('../dist/modules/smart-publishing/newsroom-article-stats');
 
@@ -60,4 +61,9 @@ test('ready without persian summary counts as processing not action', () => {
   const article = { status: 'ready', titleFa: '', summaryFa: '' };
   assert.equal(isNewsInProcessing(article), true);
   assert.equal(isNewsReadyForAction(article), false);
+});
+
+test('newsroom list view filters align with dashboard buckets', () => {
+  assert.deepEqual(newsroomListViewWhere('archive'), { status: { in: ['published', 'social_sent'] } });
+  assert.deepEqual(newsroomListViewWhere('rejected'), { status: 'rejected' });
 });

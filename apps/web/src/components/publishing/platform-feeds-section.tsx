@@ -1,13 +1,17 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pencil, Power } from 'lucide-react';
 import { formatPersianDigits } from '@deska/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
+import {
+  buildPlatformFeedSettingsPatch,
+  FeedMonitoringSettingsForm,
+  type FeedMonitoringSettingsValues,
+} from '@/components/publishing/feed-monitoring-settings-form';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
 import { groupFeedsBySourceTopic } from '@/components/publishing/feed-channel-fields';
 import { normalizeFeedTopicKey } from '@/components/publishing/feed-source-filters';
@@ -53,17 +57,6 @@ interface PlatformFeed {
   lastError: string;
 }
 
-interface FeedSettingsForm {
-  settingsMode: 'default' | 'custom';
-  includeWords: string;
-  excludeWords: string;
-  pollIntervalMinutes: string;
-  autoPoll: boolean;
-  autoPrepare: boolean;
-  autoPublish: boolean;
-  autoSendSocial: boolean;
-}
-
 function wordsToString(words?: string[]) {
   return (words || []).join('، ');
 }
@@ -74,9 +67,11 @@ interface PlatformFeedsSectionProps {
   labelOptions: string[];
   searchQuery?: string;
   includeDisabled?: boolean;
+  /** Increment to refetch platform feeds after bulk actions elsewhere on the page. */
+  feedsRevision?: number;
 }
 
-function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery: string) {
+export function matchesFeedNameSearch(feed: { name: string; url?: string }, searchQuery: string) {
   const normalized = searchQuery.trim().toLocaleLowerCase('fa');
   if (!normalized) return true;
   return feed.name.toLocaleLowerCase('fa').includes(normalized)
@@ -89,8 +84,13 @@ export function PlatformFeedsSection({
   labelOptions,
   searchQuery = '',
   includeDisabled = false,
+  feedsRevision = 0,
 }: PlatformFeedsSectionProps) {
   const { data, error: loadError, isLoading, refetch } = useApi<PlatformFeed[]>('/publishing/platform-feeds');
+
+  useEffect(() => {
+    if (feedsRevision > 0) void refetch();
+  }, [feedsRevision, refetch]);
   const { data: orgSettings } = useApi<Record<string, string>>('/publishing/settings');
   const orgPollMinutes = Number(newsOrganizationAutomation(orgSettings ?? {}).pollIntervalMinutes) || 240;
   const { isSuperAdmin } = useAuth();
@@ -107,7 +107,7 @@ export function PlatformFeedsSection({
   }, [feeds, includeDisabled, labelOptions, searchQuery, selectedCatalogGroups, selectedTopics]);
   const [editing, setEditing] = useState<PlatformFeed | null>(null);
   const editingIdsRef = useRef<string[]>([]);
-  const [form, setForm] = useState<FeedSettingsForm>({
+  const [form, setForm] = useState<FeedMonitoringSettingsValues>({
     settingsMode: 'default',
     includeWords: '',
     excludeWords: '',
@@ -136,25 +136,16 @@ export function PlatformFeedsSection({
     event.preventDefault();
     const feedIds = editingIdsRef.current;
     if (!feedIds.length || !editing) return;
-    const interval = Number(form.pollIntervalMinutes);
-    if (form.settingsMode === 'custom' && (!Number.isInteger(interval) || interval < 5 || interval > 1440)) {
-      setNotice({ type: 'error', text: 'فاصله پایش باید بین ۵ تا ۱۴۴۰ دقیقه باشد.' });
+    const { error, body } = buildPlatformFeedSettingsPatch(form);
+    if (error || !body) {
+      setNotice({ type: 'error', text: error || 'تنظیمات نامعتبر است.' });
       return;
     }
     const feedName = editing.name;
     await run('save', async () => {
       await Promise.all(feedIds.map((feedId) => apiFetch(`/publishing/platform-feeds/${feedId}`, {
         method: 'PATCH',
-        body: {
-          settingsMode: form.settingsMode,
-          includeWords: form.settingsMode === 'custom' ? form.includeWords : [],
-          excludeWords: form.settingsMode === 'custom' ? form.excludeWords : [],
-          pollIntervalMinutes: form.settingsMode === 'custom' ? interval : null,
-          autoPoll: form.autoPoll,
-          autoPrepare: form.autoPrepare,
-          autoPublish: form.autoPublish,
-          autoSendSocial: form.autoSendSocial,
-        },
+        body,
       })));
       setEditing(null);
       editingIdsRef.current = [];
@@ -170,7 +161,7 @@ export function PlatformFeedsSection({
         <p className="mt-1 text-sm text-slate-500">
           {includeDisabled
             ? 'هر کارت یک منبع و یک موضوع است. اگر چند فید همان موضوع را داشته باشند، با هم روشن یا خاموش می‌شوند.'
-            : 'فقط موضوع‌های روشن. برای دیدن و روشن کردن بقیه، نوع رسانه یا موضوع را بالا تیک بزنید.'}
+            : 'موضوع‌های فعال نمایش داده می‌شوند. برای دیدن و فعال‌کردن سایر موضوع‌ها، از فیلترهای بالا استفاده کنید.'}
         </p>
       </div>
 
@@ -279,41 +270,11 @@ export function PlatformFeedsSection({
                 <p className="mt-1 truncate" dir="ltr">{editing.url}</p>
                 <p className="mt-2 text-xs">{sourceLanguageLabel(editing.sourceLanguage || 'auto')}</p>
               </div>
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium text-slate-700">نوع تنظیمات</legend>
-                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
-                  <input type="radio" name="settingsMode" checked={form.settingsMode === 'default'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'default', pollIntervalMinutes: String(orgPollMinutes) }))} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-slate-900">پیش‌فرض سازمان</span><span className="mt-1 block text-xs text-slate-500">بدون فیلتر کلمه؛ فاصله پایش {formatPersianDigits(orgPollMinutes)} دقیقه</span></span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
-                  <input type="radio" name="settingsMode" checked={form.settingsMode === 'custom'} onChange={() => setForm((current) => ({ ...current, settingsMode: 'custom' }))} className="mt-1" />
-                  <span><span className="block text-sm font-semibold text-slate-900">اختصاصی این سازمان</span><span className="mt-1 block text-xs text-slate-500">فیلتر کلمات و فاصله پایش مخصوص این منبع</span></span>
-                </label>
-              </fieldset>
-              {form.settingsMode === 'custom' && (
-                <>
-                  <Input label="کلمات اجباری (با ویرگول)" placeholder="فقط خبرهایی که حداقل یکی از این کلمات را دارند" value={form.includeWords} onChange={(event) => setForm((current) => ({ ...current, includeWords: event.target.value }))} />
-                  <Input label="کلمات ممنوع (با ویرگول)" placeholder="خبرهایی که این کلمات را دارند نادیده گرفته می‌شوند" value={form.excludeWords} onChange={(event) => setForm((current) => ({ ...current, excludeWords: event.target.value }))} />
-                  <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                    فاصله پایش (دقیقه)
-                    <input type="number" min="5" max="1440" required dir="ltr" className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value }))} />
-                  </label>
-                </>
-              )}
-              {[
-                ['autoPoll', 'پایش خودکار', 'مطالب جدید این منبع بدون دخالت کاربر دریافت شوند.'],
-                ['autoPrepare', 'آماده‌سازی خودکار', 'مطالب جدید بدون دخالت کاربر آماده شوند.'],
-                ['autoPublish', 'انتشار خودکار', 'خبر آماده در سایت منتشر شود.'],
-                ['autoSendSocial', 'ارسال خودکار به استودیوی اجتماعی', 'خبر آماده برای شبکه‌های اجتماعی ارسال شود.'],
-              ].map(([key, label, description]) => {
-                const field = key as 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial';
-                return (
-                  <label key={key} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 hover:border-primary-300">
-                    <input type="checkbox" checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" />
-                    <span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{description}</span></span>
-                  </label>
-                );
-              })}
+              <FeedMonitoringSettingsForm
+                values={form}
+                orgPollMinutes={orgPollMinutes}
+                onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+              />
             </ModalBody>
             <ModalFooter className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => { setEditing(null); editingIdsRef.current = []; }}>انصراف</Button>

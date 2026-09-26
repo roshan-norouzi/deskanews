@@ -178,7 +178,7 @@ export function NewsPublishModal({
       setDraft((current) => ({ ...current, featuredImageUrl: nextUrl }));
       onFeaturedImageChange(nextUrl);
     } catch (error) {
-      setImageError(error instanceof Error ? error.message : 'آپلود تصویر انجام نشد.');
+      setImageError(error instanceof Error ? error.message : 'بارگذاری تصویر انجام نشد.');
     } finally {
       setUploadingImage(false);
     }
@@ -201,7 +201,7 @@ export function NewsPublishModal({
   return (
     <Modal open={open} onClose={onClose} size="wide" closeOnBackdrop={!busyTranslate && !busyPublish && !uploadingImage}>
       <ModalHeader
-        title="آماده برای انتشار"
+        title="بررسی و انتشار"
         description={`${sourceName} — ${articleTitle}`}
         onClose={busyPublish || uploadingImage ? undefined : onClose}
       />
@@ -240,7 +240,7 @@ export function NewsPublishModal({
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="h-4 w-4" />
-                  {draft.featuredImageUrl ? 'تعویض تصویر' : 'آپلود تصویر شاخص'}
+                  {draft.featuredImageUrl ? 'تعویض تصویر' : 'بارگذاری تصویر شاخص'}
                 </Button>
                 {draft.featuredImageUrl && (
                   <Button
@@ -315,7 +315,7 @@ export function NewsPublishModal({
             </div>
           </>
         ) : (
-          <p className="text-sm text-slate-600">متن کامل هنوز آماده نیست؛ از کارت خبر «آماده‌سازی برای انتشار» را بزنید.</p>
+          <p className="text-sm text-slate-600">متن کامل هنوز آماده نیست؛ از کارت خبر «آماده‌سازی برای انتشار» را انتخاب کنید.</p>
         )}
       </ModalBody>
       <ModalFooter className="gap-2">

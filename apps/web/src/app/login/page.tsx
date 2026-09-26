@@ -8,6 +8,7 @@ import { clearTenantId, setTenantId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LOGIN_FAILED } from '@/lib/product-copy';
+import { PlatformLogo } from '@/components/brand/platform-logo';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LoginPage() {
@@ -65,10 +66,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen" dir="rtl">
       <div className="hidden flex-1 flex-col justify-between bg-primary-600 p-10 text-white lg:flex">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 text-lg font-bold">د</div>
-          <span className="text-xl font-bold">{PLATFORM_NAME}</span>
-        </div>
+        <PlatformLogo variant="full" priority className="self-start" />
         <div className="max-w-md">
           <h1 className="text-3xl font-bold leading-tight">{PLATFORM_TAGLINE}</h1>
           <p className="mt-4 text-sm leading-7 text-indigo-100">{PLATFORM_DESCRIPTION}</p>
@@ -79,11 +77,8 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
         <Card className="w-full max-w-md border-slate-200 shadow-elevated">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600 text-xl font-bold text-white lg:hidden">
-              د
-            </div>
             <CardTitle className="text-2xl">ورود به {PLATFORM_NAME}</CardTitle>
-            <CardDescription>با حساب کاربری سازمان خود وارد شوید</CardDescription>
+            <CardDescription>با حساب کاربری خود وارد میز خبر شوید</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">

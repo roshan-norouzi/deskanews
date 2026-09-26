@@ -146,7 +146,7 @@ export function OrganizationUsersPanel({
     try {
       if (modalMode === 'add') {
         if (!selectedPlatformUser) {
-          setSaveError('ابتدا یک کاربر پلتفرم را جستجو و انتخاب کنید');
+          setSaveError('ابتدا یک کاربر پلتفرم را جست‌وجو و انتخاب کنید');
           return;
         }
         await apiFetch(`/tenants/${tenantId}/members`, {
@@ -156,7 +156,7 @@ export function OrganizationUsersPanel({
             ...body,
           },
         });
-        setRequestSuccess('کاربر با موفقیت به سازمان اضافه شد.');
+        setRequestSuccess('کاربر با موفقیت به میز خبر اضافه شد.');
       } else if (editingMember) {
         await apiFetch(`/tenants/${tenantId}/members/${editingMember.userId}`, {
           method: 'PATCH',
@@ -174,7 +174,7 @@ export function OrganizationUsersPanel({
 
   const searchPlatformUsers = async () => {
     if (!tenantId || userSearchQuery.trim().length < 5) {
-      setSaveError('برای جستجو حداقل ۵ کاراکتر از ایمیل یا شماره موبایل وارد کنید');
+      setSaveError('برای جست‌وجو حداقل ۵ کاراکتر از ایمیل یا شماره موبایل وارد کنید');
       return;
     }
     setSearchingUsers(true);
@@ -185,7 +185,7 @@ export function OrganizationUsersPanel({
       );
       setUserSearchResults(results);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'جستجوی کاربران انجام نشد');
+      setSaveError(err instanceof Error ? err.message : 'جست‌وجوی کاربران انجام نشد');
     } finally {
       setSearchingUsers(false);
     }
@@ -202,9 +202,9 @@ export function OrganizationUsersPanel({
     if (!tenantId) return;
     const label = member.user.name || member.user.email;
     const ok = await confirm({
-      title: 'حذف کاربر از سازمان؟',
-      description: `«${label}» دیگر به این سازمان دسترسی نخواهد داشت.`,
-      confirmLabel: 'حذف از سازمان',
+      title: 'حذف کاربر از میز خبر؟',
+      description: `«${label}» دیگر به این میز خبر دسترسی نخواهد داشت.`,
+      confirmLabel: 'حذف از میز خبر',
       variant: 'danger',
     });
     if (!ok) return;
@@ -216,7 +216,7 @@ export function OrganizationUsersPanel({
       });
       await refetch();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'حذف کاربر از سازمان انجام نشد.');
+      setSaveError(err instanceof Error ? err.message : 'حذف کاربر از میز خبر انجام نشد.');
     } finally {
       setDeletingUserId(null);
     }
@@ -262,7 +262,7 @@ export function OrganizationUsersPanel({
             {members.length === 0 ? (
               <TableEmpty
                 colSpan={canManage ? 6 : 5}
-                message="کاربری در این سازمان ثبت نشده است"
+                message="کاربری در این میز خبر ثبت نشده است"
               />
             ) : (
               members.map((member) => (
@@ -329,7 +329,7 @@ export function OrganizationUsersPanel({
         {modalMode && (
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <ModalHeader
-              title={modalMode === 'add' ? 'افزودن کاربر به سازمان' : 'ویرایش دسترسی کاربر'}
+              title={modalMode === 'add' ? 'افزودن کاربر به میز خبر' : 'ویرایش دسترسی کاربر'}
               onClose={closeModal}
             />
             <ModalBody className="space-y-4 px-6 py-5">
@@ -378,7 +378,7 @@ export function OrganizationUsersPanel({
                         />
                         <Button type="button" onClick={() => void searchPlatformUsers()} isLoading={searchingUsers}>
                           <Search className="h-4 w-4" />
-                          جستجو
+                          جست‌وجو
                         </Button>
                       </div>
                       {userSearchResults.length > 0 && (
@@ -400,7 +400,7 @@ export function OrganizationUsersPanel({
                                     {platformUser.phone ? ` · ${platformUser.phone}` : ''}
                                   </p>
                                 </div>
-                                {unavailable && <Badge variant="default">عضو سازمان</Badge>}
+                                {unavailable && <Badge variant="default">عضو میز خبر</Badge>}
                               </button>
                             );
                           })}
@@ -412,7 +412,7 @@ export function OrganizationUsersPanel({
               )}
 
               {modalMode === 'edit' && editingMember?.role === TENANT_ROLES.OWNER ? (
-                <p className="text-sm text-slate-600">مالک سازمان همیشه دسترسی کامل دارد.</p>
+                <p className="text-sm text-slate-600">مدیر میز خبر همیشه دسترسی کامل دارد.</p>
               ) : (
                 <PermissionPicker
                   value={selectedPermissions}
@@ -430,7 +430,7 @@ export function OrganizationUsersPanel({
                 انصراف
               </Button>
               <Button type="submit" isLoading={saving}>
-                {modalMode === 'add' ? 'افزودن به سازمان' : 'ذخیره'}
+                {modalMode === 'add' ? 'افزودن به میز خبر' : 'ذخیره'}
               </Button>
             </ModalFooter>
           </form>
@@ -451,7 +451,7 @@ export function OrganizationUsersPanel({
             <Users className="h-5 w-5" />
           </div>
           <div>
-            <CardTitle>کاربران سازمان</CardTitle>
+            <CardTitle>کاربران میز خبر</CardTitle>
             <p className="mt-0.5 text-sm text-slate-500">
               افزودن کاربران پلتفرم و تعیین سطح دسترسی
               {members.length > 0 ? ` — ${members.length} نفر` : ''}
@@ -467,7 +467,7 @@ export function OrganizationUsersPanel({
           )}
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={!tenantId}>
             <RefreshCw className="h-4 w-4" />
-            بروزرسانی
+            به‌روزرسانی
           </Button>
         </div>
       </CardHeader>

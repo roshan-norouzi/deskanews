@@ -61,13 +61,13 @@ function DashboardContent() {
   const alerts: Array<{ text: string; href: string }> = [];
   if (data.publishing.newsroom.failed > 0) {
     alerts.push({
-      text: `${formatPersianDigits(data.publishing.newsroom.failed)} خبر خطادار در میز خبر منتظر رسیدگی است.`,
+      text: `${formatPersianDigits(data.publishing.newsroom.failed)} خبر به‌دلیل خطا نیاز به بررسی دارد. جزئیات را در میز خبر ببینید.`,
       href: '/publishing/news',
     });
   }
   if (data.publishing.social.failed > 0) {
     alerts.push({
-      text: `${formatPersianDigits(data.publishing.social.failed)} مطلب اجتماعی خطادار است.`,
+      text: `${formatPersianDigits(data.publishing.social.failed)} مطلب در استودیوی اجتماعی نیاز به بررسی خطا دارد.`,
       href: '/publishing/social',
     });
   }
@@ -79,7 +79,7 @@ function DashboardContent() {
   }
   if (data.publishing.unhealthyIntegrations > 0) {
     alerts.push({
-      text: `${formatPersianDigits(data.publishing.unhealthyIntegrations)} اتصال ناسالم است.`,
+      text: `${formatPersianDigits(data.publishing.unhealthyIntegrations)} اتصال نیاز به بررسی دارد. جزئیات را در مرکز عملیات ببینید.`,
       href: '/publishing/operations',
     });
   }
@@ -91,14 +91,14 @@ function DashboardContent() {
         icon={LayoutDashboard}
         description={
           activeTenant
-            ? `${activeTenant.name} · آخرین بروزرسانی ${formatJalaliDateTime(data.generatedAt)}`
-            : `آخرین بروزرسانی ${formatJalaliDateTime(data.generatedAt)}`
+            ? `${activeTenant.name} · آخرین به‌روزرسانی ${formatJalaliDateTime(data.generatedAt)}`
+            : `آخرین به‌روزرسانی ${formatJalaliDateTime(data.generatedAt)}`
         }
         actions={(
           <>
             <Button variant="outline" size="sm" onClick={() => void refetch()}>
               <RefreshCw className="h-4 w-4" />
-              بروزرسانی
+              به‌روزرسانی
             </Button>
             <Link href="/publishing/operations">
               <Button variant="outline" size="sm">مرکز عملیات</Button>
@@ -131,11 +131,11 @@ function DashboardContent() {
           href="/publishing/news"
           actionLabel="باز کردن"
           metrics={[
-            { label: 'آماده اقدام', value: data.publishing.newsroom.action, href: '/publishing/news', tone: data.publishing.newsroom.failed > 0 ? 'default' : 'action' },
-            { label: 'خطادار', value: data.publishing.newsroom.failed, href: '/publishing/news', tone: 'danger' },
+            { label: 'آمادهٔ بررسی', value: data.publishing.newsroom.action, href: '/publishing/news', tone: data.publishing.newsroom.failed > 0 ? 'default' : 'action' },
+            { label: 'نیازمند بررسی', value: data.publishing.newsroom.failed, href: '/publishing/news', tone: 'danger' },
             { label: 'در پردازش', value: data.publishing.newsroom.processing, href: '/publishing/news' },
             { label: 'در حال انجام', value: data.publishing.newsroom.preparing, href: '/publishing/news' },
-            { label: 'منتشر امروز', value: data.publishing.newsroom.publishedToday, href: '/publishing/news' },
+            { label: 'منتشرشده امروز', value: data.publishing.newsroom.publishedToday, href: '/publishing/news' },
           ]}
         />
         <WorkQueueCard
@@ -144,10 +144,10 @@ function DashboardContent() {
           actionLabel="باز کردن"
           metrics={[
             { label: 'آماده انتشار', value: data.publishing.social.ready, href: '/publishing/social', tone: 'action' },
-            { label: 'خطادار', value: data.publishing.social.failed, href: '/publishing/social', tone: 'danger' },
+            { label: 'نیازمند بررسی', value: data.publishing.social.failed, href: '/publishing/social', tone: 'danger' },
             { label: 'ورودی', value: data.publishing.social.inbox, href: '/publishing/social' },
-            { label: 'در حال کار', value: data.publishing.social.preparing, href: '/publishing/social' },
-            { label: 'منتشر امروز', value: data.publishing.social.publishedToday, href: '/publishing/social' },
+            { label: 'در حال آماده‌سازی', value: data.publishing.social.preparing, href: '/publishing/social' },
+            { label: 'منتشرشده امروز', value: data.publishing.social.publishedToday, href: '/publishing/social' },
           ]}
         />
       </section>

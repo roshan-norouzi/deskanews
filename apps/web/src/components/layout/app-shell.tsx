@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronLeft, LogOut, Menu, Search, X } from 'lucide-react';
-import { PLATFORM_NAME } from '@deska/shared';
+import { PlatformBrandLink } from '@/components/brand/platform-logo';
 import { cn, withBasePath } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useTenant } from '@/lib/tenant-context';
@@ -72,12 +72,7 @@ export function AppShell({ children, title }: AppShellProps) {
         )}
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-sm font-bold text-white shadow-sm">
-              د
-            </div>
-            {!sidebarCollapsed && <span className="truncate font-bold text-slate-900">{PLATFORM_NAME}</span>}
-          </Link>
+          <PlatformBrandLink href="/dashboard" collapsed={sidebarCollapsed} />
           <div className="flex items-center gap-1">
             <button
               type="button"

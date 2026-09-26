@@ -214,6 +214,36 @@ ${items}
 </body></html>`;
 }
 
+function sniffImageContentType(bytes: Uint8Array): string {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
+  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  return '';
+}
+
+function wantsBinaryImage(accept: string, mode: string, contentType: string, bytes: Uint8Array, url: URL): boolean {
+  if (String(mode || '').toLowerCase() === 'image') return true;
+  const type = contentType.toLowerCase().split(';')[0].trim();
+  if (type.startsWith('image/')) return true;
+  if (sniffImageContentType(bytes)) return true;
+  if ((type === 'application/octet-stream' || type === 'binary/octet-stream' || !type)
+    && /\.(jpe?g|png|gif|webp|avif)(?:$|\?)/iu.test(url.pathname)) {
+    return true;
+  }
+  return String(accept || '').toLowerCase().includes('image/');
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 8192;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(index, index + chunk) as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
 const MAX_REDIRECTS = 5;
 
 /** Every redirect hop must pass the same host check as the original URL. */
@@ -458,16 +488,15 @@ export default {
       } else {
         upstream = await fetchUpstream(normalized.url, accept, userAgent);
         const upstreamContentType = upstream.headers.get('content-type') || 'text/plain';
-        const imageType = upstreamContentType.toLowerCase().split(';')[0].trim();
-        if (imageType.startsWith('image/')) {
-          const bytes = new Uint8Array(await upstream.arrayBuffer());
-          if (bytes.length > 8_000_000) {
-            return json(413, { ok: false, error: 'image_too_large' });
-          }
-          let binary = '';
-          for (let index = 0; index < bytes.length; index += 1) {
-            binary += String.fromCharCode(bytes[index]!);
-          }
+        const bytes = new Uint8Array(await upstream.arrayBuffer());
+        const forceImage = wantsBinaryImage(
+          accept,
+          String(payload.mode || ''),
+          upstreamContentType,
+          bytes,
+          normalized.url,
+        );
+        if (forceImage) {
           if (!upstream.ok) {
             return json(upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502, {
               ok: false,
@@ -476,16 +505,27 @@ export default {
               content_type: upstreamContentType,
             });
           }
+          if (!bytes.length) {
+            return json(502, { ok: false, error: 'image_empty', content_type: upstreamContentType });
+          }
+          if (bytes.length > 8_000_000) {
+            return json(413, { ok: false, error: 'image_too_large' });
+          }
+          const sniffed = sniffImageContentType(bytes);
+          const type = sniffed || upstreamContentType.toLowerCase().split(';')[0].trim();
+          if (!type.startsWith('image/')) {
+            return json(502, { ok: false, error: 'not_an_image', content_type: upstreamContentType });
+          }
           return json(200, {
             ok: true,
             status: upstream.status,
-            content_type: upstreamContentType,
-            body_base64: btoa(binary),
+            content_type: sniffed || type,
+            body_base64: bytesToBase64(bytes),
             final_url: normalized.url.toString(),
             worker: 'deska',
           });
         }
-        body = await upstream.text();
+        body = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

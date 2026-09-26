@@ -1,5 +1,11 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import {
+  API_BACKEND_RETRY_ATTEMPTS,
+  backendStatusWorthRetry,
+  retryDelayForAttempt,
+  sleepMs,
+} from '@/lib/api-backend';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -105,10 +111,56 @@ export class ApiError extends Error {
 function apiUnreachableMessage(kind: 'network' | 'proxy'): string {
   const base =
     kind === 'network'
-      ? 'ارتباط با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.'
-      : 'ارتباط Web با سرور API برقرار نشد؛ وضعیت API و reverse proxy را بررسی کنید.';
+      ? 'ارتباط با دسکا برقرار نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید. اگر مشکل ادامه داشت، به پشتیبانی اطلاع دهید.'
+      : 'سرویس دسکا موقتاً در دسترس نیست. چند لحظه دیگر دوباره تلاش کنید. اگر مشکل ادامه داشت، به پشتیبانی اطلاع دهید.';
   if (process.env.NODE_ENV !== 'development') return base;
   return `${base} در لوکال معمولاً API روی پورت 3101 بالا نیست — «pnpm start» (یا «pnpm dev:api») را اجرا کنید.`;
+}
+
+function parseApiErrorPayload(rawText: string): { message?: string | string[] } | null {
+  if (!rawText.trim()) return null;
+  try {
+    return JSON.parse(rawText) as { message?: string | string[] };
+  } catch {
+    return null;
+  }
+}
+
+function formatApiErrorMessage(errorData: { message?: string | string[] } | null, fallback: string): string {
+  if (!errorData?.message) return fallback;
+  return Array.isArray(errorData.message) ? errorData.message.join('، ') : errorData.message;
+}
+
+function looksLikeInfrastructureProxyFailure(status: number, rawText: string): boolean {
+  if (status === 502 || status === 504) return true;
+  if (status < 500) return false;
+  const trimmed = rawText.trim();
+  if (!trimmed) return true;
+  if (trimmed === 'Internal Server Error') return true;
+  if (/ECONNREFUSED|ECONNRESET|Bad Gateway|Gateway Timeout/i.test(trimmed)) return true;
+  const json = parseApiErrorPayload(trimmed);
+  if (json?.message) return false;
+  return false;
+}
+
+async function fetchWithTransientRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < API_BACKEND_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (backendStatusWorthRetry(response.status) && attempt < API_BACKEND_RETRY_ATTEMPTS - 1) {
+        await sleepMs(retryDelayForAttempt(attempt));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      const timedOut = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      if (timedOut || attempt >= API_BACKEND_RETRY_ATTEMPTS - 1) throw error;
+      await sleepMs(retryDelayForAttempt(attempt));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('fetch failed');
 }
 
 export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
@@ -140,7 +192,7 @@ export async function apiFetch<T = unknown>(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTransientRetry(url, {
       ...rest,
       credentials: rest.credentials ?? 'include',
       headers,
@@ -150,7 +202,7 @@ export async function apiFetch<T = unknown>(
     const timedOut = error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError');
     if (timedOut) {
       throw new ApiError(
-        'زمان پاسخ‌دهی تمام شد (معمولاً تست منبع یا دریافت از سایت خارجی طولانی شده). دوباره تلاش کنید؛ اگر تکرار شد، Worker دریافت منبع و timeout پروکسی Nginx/پنل را بررسی کنید.',
+        'پاسخ درخواست در زمان مقرر دریافت نشد. پیش از تکرار عملیات، وضعیت آن را بررسی کنید. اگر مشکل ادامه داشت، به پشتیبانی اطلاع دهید.',
         504,
       );
     }
@@ -166,7 +218,7 @@ export async function apiFetch<T = unknown>(
 
     const refreshed = await refreshPromise;
     if (refreshed) {
-      response = await fetch(url, {
+      response = await fetchWithTransientRetry(url, {
         ...rest,
         credentials: rest.credentials ?? 'include',
         headers,
@@ -185,28 +237,17 @@ export async function apiFetch<T = unknown>(
       errorData = rawText || null;
     }
 
+    const parsed = parseApiErrorPayload(rawText);
     const isGatewayTimeout = response.status === 502 || response.status === 504;
-    const isProxyFailure =
-      isGatewayTimeout ||
-      (response.status >= 500 &&
-        (rawText === 'Internal Server Error' ||
-          rawText.includes('ECONNREFUSED') ||
-          rawText.includes('ECONNRESET') ||
-          rawText.includes('Gateway Timeout') ||
-          rawText.includes('Bad Gateway') ||
-          !rawText.trim()));
+    const isProxyFailure = looksLikeInfrastructureProxyFailure(response.status, rawText);
 
     const message = response.status === 413
-      ? 'حجم فایل از حد مجاز بیشتر است؛ فایل Excel را کوچک‌تر کنید یا با پشتیبانی تماس بگیرید.'
+      ? 'حجم فایل از حد مجاز بیشتر است. فایل کوچک‌تری انتخاب کنید یا حجم آن را کاهش دهید.'
       : isGatewayTimeout
-      ? 'زمان پاسخ‌دهی تمام شد (معمولاً تست منبع یا دریافت از سایت خارجی طولانی شده). دوباره تلاش کنید؛ اگر تکرار شد، Worker دریافت منبع و timeout پروکسی Nginx/پنل (حداقل ۱۲۰ ثانیه برای /api) را بررسی کنید.'
+      ? 'پاسخ درخواست در زمان مقرر دریافت نشد. پیش از تکرار عملیات، وضعیت آن را بررسی کنید. اگر مشکل ادامه داشت، به پشتیبانی اطلاع دهید.'
       : isProxyFailure
       ? apiUnreachableMessage('proxy')
-      : (errorData as { message?: string | string[] })?.message
-        ? Array.isArray((errorData as { message: string[] }).message)
-          ? (errorData as { message: string[] }).message.join('، ')
-          : (errorData as { message: string }).message
-        : `خطای ${response.status}`;
+      : formatApiErrorMessage(parsed, `خطای ${response.status}`);
 
     throw new ApiError(message, response.status, errorData);
   }
@@ -241,7 +282,7 @@ export async function apiFetchBlob(path: string, options: ApiFetchOptions = {}):
 
   const url = withBasePath(path.startsWith('/api') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`);
 
-  const response = await fetch(url, {
+  const response = await fetchWithTransientRetry(url, {
     ...rest,
     credentials: rest.credentials ?? 'include',
     headers,
@@ -256,7 +297,7 @@ export async function apiFetchBlob(path: string, options: ApiFetchOptions = {}):
     }
     const refreshed = await refreshPromise;
     if (refreshed) {
-      const retry = await fetch(url, {
+      const retry = await fetchWithTransientRetry(url, {
         ...rest,
         credentials: rest.credentials ?? 'include',
         headers,

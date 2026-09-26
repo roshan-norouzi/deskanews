@@ -167,7 +167,7 @@ export function NewsArticleCard({
   const translateAction: CardAction | null = canPublish ? {
     key: 'translate',
     label: hasPublishText
-      ? 'آماده برای انتشار'
+      ? 'بررسی و انتشار'
       : publishPrepPending
         ? (translateBusy ? 'در حال ارسال...' : 'ارسال‌شده برای آماده‌سازی')
         : (article.status === 'publish_failed' ? 'آماده‌سازی مجدد' : 'آماده‌سازی برای انتشار'),

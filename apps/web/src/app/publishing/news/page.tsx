@@ -38,20 +38,33 @@ export default function NewsPage() {
   const categoriesApi = useApi<DestinationCategoryOption[]>('/publishing/destination/categories?status=approved');
   const [categoryId, setCategoryId] = useState('');
   const [generalOnly, setGeneralOnly] = useState(false);
+  const [feedId, setFeedId] = useState('');
+  const [status, setStatus] = useState<NewsroomFilter>('action');
   const [cursor, setCursor] = useState('');
-  const articlesPath = useMemo(() => {
+  const [loadedArticles, setLoadedArticles] = useState<NewsArticleCardData[]>([]);
+  const statsPath = useMemo(() => {
     const params = new URLSearchParams();
     if (categoryId) params.set('categoryId', categoryId);
     if (generalOnly) params.set('generalOnly', 'true');
+    if (feedId) params.set('feedId', feedId);
+    const query = params.toString();
+    return `/publishing/news/stats${query ? `?${query}` : ''}`;
+  }, [categoryId, generalOnly, feedId]);
+  const statsApi = useApi<{ action: number; processing: number; archive: number; rejected: number; total: number }>(statsPath);
+  const articlesPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (status !== 'all') params.set('view', status);
+    if (categoryId) params.set('categoryId', categoryId);
+    if (generalOnly) params.set('generalOnly', 'true');
+    if (feedId) params.set('feedId', feedId);
     if (cursor) params.set('cursor', cursor);
     const query = params.toString();
     return `/publishing/news/articles${query ? `?${query}` : ''}`;
-  }, [categoryId, generalOnly, cursor]);
+  }, [categoryId, generalOnly, cursor, feedId, status]);
   const articlesApi = useApi<{ items: NewsArticleCardData[]; nextCursor: string | null }>(articlesPath);
   const { data: feedData } = feedsApi;
-  const { data: articleData, execute: executeArticles } = articlesApi;
-  const [status, setStatus] = useState<NewsroomFilter>('action');
-  const [feedId, setFeedId] = useState('');
+  const { data: articleData, execute: executeArticles, refetch: refetchArticles } = articlesApi;
+  const { refetch: refetchStats } = statsApi;
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -65,7 +78,29 @@ export default function NewsPage() {
   } | null>(null);
   const [translatePendingIds, setTranslatePendingIds] = useState<Record<string, true>>({});
 
-  useVisibleInterval(() => { void executeArticles(); }, 30_000);
+  useVisibleInterval(() => {
+    void refetchStats();
+    void executeArticles();
+  }, 30_000);
+
+  useEffect(() => {
+    setCursor('');
+    setLoadedArticles([]);
+  }, [status, categoryId, generalOnly, feedId]);
+
+  useEffect(() => {
+    const items = articleData?.items;
+    if (!items) return;
+    if (!cursor) {
+      setLoadedArticles(items);
+      return;
+    }
+    setLoadedArticles((current) => {
+      const seen = new Set(current.map((item) => item.id));
+      const appended = items.filter((item) => !seen.has(item.id));
+      return appended.length ? [...current, ...appended] : current;
+    });
+  }, [articleData?.items, cursor]);
 
   const feeds = useMemo(
     () => (Array.isArray(feedData) ? feedData.filter((feed) => feed.purpose === 'news-room') : []),
@@ -75,7 +110,7 @@ export default function NewsPage() {
     () => (Array.isArray(categoriesApi.data) ? categoriesApi.data : []),
     [categoriesApi.data],
   );
-  const articles = useMemo(() => (Array.isArray(articleData?.items) ? articleData.items : []), [articleData]);
+  const articles = loadedArticles;
 
   useEffect(() => {
     setTranslatePendingIds((current) => {
@@ -97,22 +132,40 @@ export default function NewsPage() {
 
   const activeFilter = newsroomFilterMeta(status);
 
-  const rows = useMemo(() => articles.filter((article) => {
-    const statusMatches = activeFilter.matches(article);
-    const feedMatches = !feedId || article.feedId === feedId;
+  const rows = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
-    const queryMatches = !normalized
-      || `${article.titleFa} ${article.originalTitle} ${article.sourceName}`.toLocaleLowerCase('fa').includes(normalized);
-    return statusMatches && feedMatches && queryMatches;
-  }), [activeFilter, articles, feedId, query]);
+    if (!normalized) return articles;
+    return articles.filter((article) => (
+      `${article.titleFa} ${article.originalTitle} ${article.sourceName}`.toLocaleLowerCase('fa').includes(normalized)
+    ));
+  }, [articles, query]);
 
+  const statCounts = statsApi.data;
   const statCards = useMemo(
     () => NEWSROOM_FILTERS.filter((filter) => filter.key !== 'all').map((filter) => ({
       ...filter,
-      count: articles.filter(filter.matches).length,
+      count: statCounts && filter.key !== 'all'
+        ? ({
+          action: statCounts.action,
+          processing: statCounts.processing,
+          archive: statCounts.archive,
+          rejected: statCounts.rejected,
+        }[filter.key] ?? 0)
+        : 0,
     })),
-    [articles],
+    [statCounts],
   );
+
+  const listTotal = useMemo(() => {
+    if (status === 'all') return statCounts?.total ?? rows.length;
+    return statCards.find((card) => card.key === status)?.count ?? rows.length;
+  }, [rows.length, statCards, statCounts?.total, status]);
+
+  const refreshNewsData = useCallback(async () => {
+    setCursor('');
+    setLoadedArticles([]);
+    await Promise.all([refetchStats(), refetchArticles()]);
+  }, [refetchArticles, refetchStats]);
 
   const run = useCallback(async (key: string, operation: () => Promise<unknown>, success: string) => {
     setBusy(key);
@@ -124,7 +177,7 @@ export default function NewsPage() {
         type: 'success',
         text: queued ? QUEUED_JOB_SUCCESS : success,
       });
-      await articlesApi.refetch();
+      await refreshNewsData();
     } catch (error) {
       setNotice({
         type: 'error',
@@ -133,12 +186,12 @@ export default function NewsPage() {
     } finally {
       setBusy(null);
     }
-  }, [articlesApi]);
+  }, [refreshNewsData]);
 
   const syncNews = () => run(
     'sync',
     () => apiFetch('/publishing/news/sync', { method: 'POST' }),
-    'منابع میز خبر پایش شدند؛ خبرهای جدید بر اساس تنظیمات اتوماسیون پردازش می‌شوند.',
+    'منابع میز خبر پایش شدند؛ خبرهای جدید بر اساس تنظیمات خودکارسازی پردازش می‌شوند.',
   );
 
   const summarize = (id: string) => run(
@@ -186,9 +239,9 @@ export default function NewsPage() {
         type: 'success',
         text: translated?.queued
           ? QUEUED_JOB_SUCCESS
-          : 'متن کامل آماده انتشار شد؛ «آماده برای انتشار» را بزنید.',
+          : 'متن کامل آماده انتشار شد؛ «بررسی و انتشار» را انتخاب کنید.',
       });
-      await articlesApi.refetch();
+      await refreshNewsData();
     } catch (error) {
       setTranslatePendingIds((current) => {
         const next = { ...current };
@@ -202,7 +255,7 @@ export default function NewsPage() {
     } finally {
       setBusy(null);
     }
-  }, [articles, articlesApi, openPublishModal]);
+  }, [articles, openPublishModal, refreshNewsData]);
 
   const publishFromModal = useCallback(async (draft: NewsPublishDraft) => {
     if (!publishModal) return;
@@ -224,9 +277,9 @@ export default function NewsPage() {
         type: 'success',
         text: published?.queued
           ? QUEUED_JOB_SUCCESS
-          : 'خبر با موفقیت به سایت مقصد ارسال شد.',
+          : 'خبر به سایت مقصد ارسال شد.',
       });
-      await articlesApi.refetch();
+      await refreshNewsData();
     } catch (error) {
       setNotice({
         type: 'error',
@@ -235,7 +288,7 @@ export default function NewsPage() {
     } finally {
       setBusy(null);
     }
-  }, [articlesApi, publishModal]);
+  }, [publishModal, refreshNewsData]);
 
   const sendToSocial = (id: string) => run(
     `social-${id}`,
@@ -252,7 +305,7 @@ export default function NewsPage() {
         body: { destinationCategoryId },
       });
       setNotice({ type: 'success', text: 'دسته‌بندی خبر به‌روزرسانی شد.' });
-      await articlesApi.refetch();
+      await refreshNewsData();
     } catch (error) {
       setNotice({
         type: 'error',
@@ -261,7 +314,7 @@ export default function NewsPage() {
     } finally {
       setBusy(null);
     }
-  }, [articlesApi]);
+  }, [refreshNewsData]);
 
   const reject = (id: string) => {
     void run(
@@ -286,7 +339,7 @@ export default function NewsPage() {
       <PageContainer width="narrow">
         <PageHeader
           title="میز خبر"
-          description="مدیریت خبرها و فرایند انتشار."
+          description="تیتر ترجمه‌شده و خلاصهٔ فارسی خبرهای خارجی را بخوانید، خبر فارسی را بازنویسی کنید و محتوا را به سایت یا استودیوی اجتماعی بفرستید. مراحل خودکار از تنظیمات انتشار مدیریت می‌شوند."
           icon={Newspaper}
           actions={(
             <>
@@ -311,7 +364,7 @@ export default function NewsPage() {
                   const ok = await confirm({
                     title: 'حذف همه خبرهای میز خبر؟',
                     description:
-                      'همه خبرهای فعلی برای همیشه حذف می‌شوند. منابع و تنظیمات باقی می‌مانند و در پایش بعدی خبرها دوباره دریافت می‌شوند.',
+                      'همهٔ خبرهای فعلی و ویرایش‌های آن‌ها برای همیشه حذف می‌شوند. منابع و تنظیمات حفظ می‌شوند؛ دریافت دوبارهٔ خبرها به محتوای موجود در منابع بستگی دارد.',
                     confirmLabel: 'حذف همه خبرها',
                     variant: 'danger',
                   });
@@ -319,7 +372,7 @@ export default function NewsPage() {
                   void run(
                     'delete-all',
                     () => apiFetch('/publishing/news/articles', { method: 'DELETE' }),
-                    'همه خبرهای میز خبر حذف شدند؛ در پایش بعدی دوباره دریافت می‌شوند.',
+                    'همهٔ خبرهای میز خبر حذف شدند. در پایش بعدی، خبرهای در دسترس منابع دریافت می‌شوند.',
                   );
                 }}
               >
@@ -410,17 +463,21 @@ export default function NewsPage() {
 
         <div className="flex items-center justify-between">
           <h2 className="ds-section-title">{listTitle}</h2>
-          <span className="text-sm text-slate-500">{formatPersianDigits(rows.length)} خبر</span>
+          <span className="text-sm text-slate-500">
+            {listTotal > rows.length
+              ? `${formatPersianDigits(rows.length)} از ${formatPersianDigits(listTotal)} خبر`
+              : `${formatPersianDigits(rows.length)} خبر`}
+          </span>
         </div>
 
-        {articlesApi.isLoading && !articlesApi.data ? (
+        {articlesApi.isLoading && !loadedArticles.length ? (
           <PageSkeleton rows={4} />
         ) : rows.length === 0 ? (
           <Card>
             <EmptyState
               icon={Newspaper}
               title="خبری در این بخش نیست"
-              description="منابع میز خبر را در «منابع خبری» اضافه کنید یا دکمه «دریافت خبرهای جدید» را بزنید."
+              description="اگر هنوز منبعی ندارید، از «منابع خبری» اضافه کنید. در غیر این صورت، خبرهای جدید را دریافت کنید یا فیلترهای این صفحه را تغییر دهید."
               action={(
                 <Link href="/publishing/feeds">
                   <Button variant="outline" size="sm">مدیریت منابع خبری</Button>
@@ -445,10 +502,15 @@ export default function NewsPage() {
                 onRestore={restoreRejected}
               />
             ))}
-            {(cursor || articleData?.nextCursor) && (
-              <div className="flex justify-center gap-2">
-                {cursor && <Button variant="outline" onClick={() => setCursor('')}>صفحه اول</Button>}
-                {articleData?.nextCursor && <Button variant="outline" onClick={() => setCursor(articleData.nextCursor || '')}>صفحه بعد</Button>}
+            {articleData?.nextCursor && (
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  isLoading={articlesApi.isLoading && Boolean(cursor)}
+                  onClick={() => setCursor(articleData.nextCursor || '')}
+                >
+                  بارگذاری خبرهای بیشتر
+                </Button>
               </div>
             )}
           </section>

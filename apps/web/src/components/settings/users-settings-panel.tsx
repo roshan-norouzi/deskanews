@@ -12,7 +12,7 @@ export function UsersSettingsPanel() {
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
         title="کاربران"
-        description="دسترسی هر عضو را با همان آیتم‌های منوی کناری تنظیم کنید. پس از ذخیره، کاربر باید یک‌بار از حساب خارج و دوباره وارد شود تا منوی جدید را ببیند."
+        description="مشخص کنید هر عضو به کدام بخش‌ها دسترسی دارد. پس از ذخیره، از کاربر بخواهید خارج و دوباره وارد شود تا دسترسی‌های جدید اعمال شوند."
         icon={Users}
       />
       <OrganizationUsersPanel tenantId={activeTenantId} memberRole={activeTenant?.memberRole} />

@@ -8,13 +8,13 @@ export {
 } from '@deska/shared';
 
 export const QUEUED_JOB_SUCCESS =
-  'کار در صف پردازش قرار گرفت. چند لحظه دیگر فهرست را تازه کنید یا صبر کنید تا به‌روزرسانی خودکار انجام شود.';
+  'درخواست در صف پردازش قرار گرفت. برای مشاهدهٔ نتیجه، منتظر به‌روزرسانی خودکار بمانید یا فهرست را به‌روزرسانی کنید.';
 
 export const LOAD_NEWS_SOURCES_FAILED = 'بارگذاری منابع خبری انجام نشد. چند لحظه دیگر دوباره تلاش کنید.';
 
-export const INVITE_LINK_INVALID = 'این لینک دعوت ناقص یا منقضی است. از مدیر سازمان لینک جدید بخواهید.';
+export const INVITE_LINK_INVALID = 'این لینک دعوت ناقص یا منقضی است. از مدیر میز خبر لینک جدید بخواهید.';
 
-export const LOGIN_FAILED = 'ایمیل یا رمز عبور درست نیست. دوباره تلاش کنید.';
+export const LOGIN_FAILED = 'ورود انجام نشد. ایمیل و رمز عبور را بررسی کنید و دوباره تلاش کنید.';
 
 export const INTEGRATION_TYPE_LABELS: Record<string, string> = {
   feed: 'منبع خبری',
@@ -32,8 +32,8 @@ export const WORKFLOW_ACTION_LABELS: Record<string, string> = {
   'news.prepare': 'آماده‌سازی خبر',
   'news.publish': 'انتشار خبر',
   'news.send-social': 'ارسال به استودیو',
-  'social.prepare': 'آماده‌سازی مطلب اجتماعی',
-  'social.publish': 'انتشار اجتماعی',
+  'social.prepare': 'آماده‌سازی محتوای اجتماعی',
+  'social.publish': 'انتشار در شبکهٔ اجتماعی',
   'social.cover': 'تولید تصویر',
 };
 

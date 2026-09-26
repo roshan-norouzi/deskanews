@@ -347,7 +347,7 @@ export default function PlatformFeedsPage() {
       <PageContainer>
         <PageHeader
           title="منابع پیش‌فرض پلتفرم"
-          description="فقط نام، آدرس، نوع و زبان منابع رسمی را اینجا ثبت کنید. فیلتر کلمات و فاصله پایش را هر سازمان برای خودش تنظیم می‌کند."
+          description="نام، آدرس، نوع و زبان منابع پیش‌فرض را ثبت کنید. هر سازمان می‌تواند فیلتر کلمات و فاصلهٔ پایش این منابع را جداگانه تنظیم کند."
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <FeedBulkActions
@@ -525,7 +525,7 @@ export default function PlatformFeedsPage() {
                   <Input
                     label="آدرس لوگو (اختیاری)"
                     dir="ltr"
-                    placeholder="خالی = استخراج خودکار از آدرس منبع"
+                    placeholder="برای شناسایی خودکار از آدرس منبع، خالی بگذارید."
                     value={form.logoUrlOverride}
                     onChange={(e) => setForm((c) => ({ ...c, logoUrlOverride: e.target.value }))}
                   />

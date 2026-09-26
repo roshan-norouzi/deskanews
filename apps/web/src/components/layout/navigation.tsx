@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 export function PlatformNavigation() {
   const pathname = usePathname();
-  const links = [{ href: '/organizations', label: 'سازمان‌های من', icon: Building2 }];
+  const links = [{ href: '/organizations', label: 'میزهای خبر من', icon: Building2 }];
 
   return (
     <nav aria-label="دسترسی‌های پلتفرم" className="mb-6 flex flex-wrap gap-2">

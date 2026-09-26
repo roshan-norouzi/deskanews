@@ -35,8 +35,8 @@ function AcceptInvitationContent() {
     finally { setLoading(false); }
   };
 
-  return <Card className="mx-auto max-w-xl"><CardHeader><CardTitle>پذیرش دعوت سازمان</CardTitle></CardHeader><CardContent className="space-y-4">
-    {acceptedTenant ? <><div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-4 text-emerald-800"><CheckCircle2 className="h-5 w-5" />عضویت شما در «{acceptedTenant.tenantName}» فعال شد.</div><Button className="w-full" onClick={() => router.push('/dashboard')}>ورود به سازمان</Button></> : <><p className="text-sm leading-7 text-slate-600">با تأیید، حساب پلتفرم شما به سازمان دعوت‌کننده متصل می‌شود. رمز عبور شما برای مدیر سازمان قابل مشاهده یا تغییر نیست.</p>{error && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div>}<Button className="w-full" disabled={!token} isLoading={loading} onClick={() => void accept()}>پذیرش دعوت</Button></>}
+  return <Card className="mx-auto max-w-xl"><CardHeader><CardTitle>پذیرش دعوت به میز خبر</CardTitle></CardHeader><CardContent className="space-y-4">
+    {acceptedTenant ? <><div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-4 text-emerald-800"><CheckCircle2 className="h-5 w-5" />عضویت شما در «{acceptedTenant.tenantName}» فعال شد.</div><Button className="w-full" onClick={() => router.push('/dashboard')}>ورود به میز خبر</Button></> : <><p className="text-sm leading-7 text-slate-600">با تأیید، حساب شما به میز خبر دعوت‌کننده متصل می‌شود. رمز عبور شما برای مدیر میز خبر قابل مشاهده یا تغییر نیست.</p>{error && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div>}<Button className="w-full" disabled={!token} isLoading={loading} onClick={() => void accept()}>پذیرش دعوت</Button></>}
   </CardContent></Card>;
 }
 

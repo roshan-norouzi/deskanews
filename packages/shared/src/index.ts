@@ -4,7 +4,7 @@ export const PLATFORM_NAME = 'دسکا';
 export const PLATFORM_TAGLINE = 'میز خبر هوشمند';
 /** Longer line for meta description and secondary copy. */
 export const PLATFORM_DESCRIPTION =
-  'میز خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران — پایش منبع، آماده‌سازی و انتشار.';
+  'میز خبر شما؛ دریافت از منابع داخلی و بین‌المللی، ترجمه و بازنویسی خبر و انتشار در سایت و شبکه‌های اجتماعی، با همکاری تیم یا به‌صورت خودکار.';
 /** Menu label for the site publishing workflow (/publishing/news). */
 export const NEWS_DESK_LABEL = 'میز خبر';
 
@@ -82,7 +82,7 @@ export const ORGANIZATION_MENU_PERMISSIONS = [
   { key: 'publishing.media', label: 'فایل‌ها', group: 'محتوا', href: '/publishing/media' },
   { key: 'publishing.settings', label: 'تنظیمات انتشار', group: 'پیکربندی', href: '/publishing/settings' },
   { key: 'publishing.operations', label: 'مرکز عملیات', group: 'پیکربندی', href: '/publishing/operations' },
-  { key: 'settings.manage', label: 'تنظیمات سازمان (سازمان و کاربران)', group: 'پیکربندی', href: '/settings' },
+  { key: 'settings.manage', label: 'تنظیمات میز خبر', group: 'پیکربندی', href: '/settings' },
 ] as const;
 
 export type OrganizationMenuPermission = (typeof ORGANIZATION_MENU_PERMISSIONS)[number]['key'];
@@ -101,14 +101,14 @@ export const APP_PERMISSIONS = [
   { key: 'platform.admin', label: 'مدیریت پلتفرم', moduleId: 'platform' },
   { key: 'platform.users.view', label: 'مشاهده کاربران پلتفرم', moduleId: 'platform' },
   { key: 'platform.users.manage', label: 'مدیریت کاربران پلتفرم', moduleId: 'platform' },
-  { key: 'platform.organizations.view', label: 'مشاهده سازمان‌های پلتفرم', moduleId: 'platform' },
-  { key: 'platform.organizations.manage', label: 'مدیریت سازمان‌های پلتفرم', moduleId: 'platform' },
-  { key: 'organization.members.view', label: 'مشاهده اعضای سازمان', moduleId: 'platform' },
-  { key: 'organization.members.add', label: 'افزودن عضو سازمان', moduleId: 'platform' },
-  { key: 'organization.members.manage', label: 'مدیریت اعضای سازمان', moduleId: 'platform' },
-  { key: 'organization.owners.manage', label: 'مدیریت مالکان سازمان', moduleId: 'platform' },
+  { key: 'platform.organizations.view', label: 'مشاهده میزهای خبر پلتفرم', moduleId: 'platform' },
+  { key: 'platform.organizations.manage', label: 'مدیریت میزهای خبر پلتفرم', moduleId: 'platform' },
+  { key: 'organization.members.view', label: 'مشاهده اعضای میز خبر', moduleId: 'platform' },
+  { key: 'organization.members.add', label: 'افزودن عضو میز خبر', moduleId: 'platform' },
+  { key: 'organization.members.manage', label: 'مدیریت اعضای میز خبر', moduleId: 'platform' },
+  { key: 'organization.owners.manage', label: 'مدیریت مالکان میز خبر', moduleId: 'platform' },
   { key: 'dashboard.view', label: 'داشبورد', moduleId: 'platform' },
-  { key: 'settings.manage', label: 'تنظیمات سازمان', moduleId: 'platform' },
+  { key: 'settings.manage', label: 'تنظیمات میز خبر', moduleId: 'platform' },
   { key: 'users.manage', label: 'مدیریت کاربران', moduleId: 'platform' },
   { key: 'publishing.feeds', label: 'منابع خبری', moduleId: 'smart-publishing' },
   { key: 'publishing.news', label: NEWS_DESK_LABEL, moduleId: 'smart-publishing' },

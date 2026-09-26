@@ -18,21 +18,21 @@ const sections = [
   {
     href: '/publishing/feeds',
     title: 'منابع خبری',
-    text: 'منابع پیش‌فرض پلتفرم و منابع اختصاصی سازمان را فعال کن و پایش کن.',
+    text: 'منابع پیش‌فرض را انتخاب کنید یا منابع اختصاصی میز خبرتان را برای دریافت خبر اضافه کنید.',
     icon: Rss,
     tone: 'bg-emerald-50 text-emerald-700',
   },
   {
     href: '/publishing/news',
     title: 'میز خبر',
-    text: 'دریافت، خلاصه‌سازی و انتشار کنترل‌شده خبرها.',
+    text: 'خبرهای دریافتی را مرور، ترجمه و ویرایش کنید و برای انتشار بفرستید.',
     icon: Newspaper,
     tone: 'bg-blue-50 text-blue-700',
   },
   {
     href: '/publishing/social',
     title: 'استودیوی اجتماعی',
-    text: 'آماده‌سازی محتوای مناسب شبکه‌های اجتماعی.',
+    text: 'برای خبرها لید، کپشن و کاور آماده کنید و در شبکه‌های اجتماعی منتشر کنید.',
     icon: Share2,
     tone: 'bg-violet-50 text-violet-700',
   },
@@ -53,7 +53,7 @@ const sections = [
   {
     href: '/publishing/operations',
     title: 'مرکز عملیات',
-    text: 'صف فرایندها، سلامت اتصال‌ها و تاریخچه گردش محتوا.',
+    text: 'وضعیت پردازش‌ها، اتصال منابع و سابقهٔ آماده‌سازی و انتشار.',
     icon: Activity,
     tone: 'bg-slate-100 text-slate-700',
   },
@@ -65,7 +65,7 @@ export default function PublishingPage() {
       <main className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
         <PageHeader
           title="مرکز انتشار"
-          description="خبر را از منبع بگیر، در میز خبر آماده کن، در سایت یا شبکه‌ها منتشر کن."
+          description="منابع را پایش کنید، خبرها را آماده و بررسی کنید و در سایت یا شبکه‌های اجتماعی منتشر کنید."
           icon={Rss}
         />
 

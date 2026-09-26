@@ -41,9 +41,9 @@ export interface PlatformFeedRow {
 
 const HEALTH_META: Record<PlatformFeedHealthStatus, { label: string; className: string }> = {
   healthy: { label: 'سالم — ۵ مطلب آخر دریافت می‌شود', className: 'bg-emerald-500' },
-  degraded: { label: 'مشکل موقت — تست سلامت اخیر ناموفق یا ناقص بود', className: 'bg-amber-400' },
+  degraded: { label: 'مشکل موقت — بررسی سلامت اخیر ناموفق یا ناقص بود', className: 'bg-amber-400' },
   down: { label: 'قطع طولانی — مدت زیادی است منبع پاسخ نمی‌دهد', className: 'bg-red-500' },
-  unknown: { label: 'هنوز تست سلامت انجام نشده', className: 'bg-slate-300' },
+  unknown: { label: 'هنوز بررسی سلامت انجام نشده', className: 'bg-slate-300' },
 };
 
 export function FeedHealthDot({ status, title }: { status?: PlatformFeedHealthStatus; title?: string }) {
@@ -123,8 +123,8 @@ function CatalogRowActions({
       <Button
         size="sm"
         variant="ghost"
-        title="تست سلامت"
-        aria-label="تست سلامت"
+        title="بررسی سلامت"
+        aria-label="بررسی سلامت"
         isLoading={busy === `test-${feed.id}`}
         onClick={() => onTest(feed)}
       >
@@ -202,7 +202,7 @@ export function PlatformFeedCatalogTable({
                   ) : null}
                   {summary.healthMember.healthCheckedAt ? (
                     <p className="mt-1 text-xs text-slate-500">
-                      آخرین تست سلامت: {new Date(summary.healthMember.healthCheckedAt).toLocaleString('fa-IR')}
+                      آخرین بررسی سلامت: {new Date(summary.healthMember.healthCheckedAt).toLocaleString('fa-IR')}
                     </p>
                   ) : null}
                 </div>
@@ -283,7 +283,7 @@ export function PlatformFeedCatalogTable({
                         ) : null}
                         {summary.healthMember.healthCheckedAt && (
                           <div className="mt-1 text-xs text-slate-500">
-                            آخرین تست سلامت: {new Date(summary.healthMember.healthCheckedAt).toLocaleString('fa-IR')}
+                            آخرین بررسی سلامت: {new Date(summary.healthMember.healthCheckedAt).toLocaleString('fa-IR')}
                             {typeof summary.healthMember.healthItemCount === 'number' ? ` · ${summary.healthMember.healthItemCount} مطلب` : ''}
                           </div>
                         )}

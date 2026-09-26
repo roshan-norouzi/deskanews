@@ -62,8 +62,8 @@ export function OrganizationSettingsPanel() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="تنظیمات سازمان"
-        description="مدیریت اطلاعات سازمان فعال، توکن باقیمانده و مصرف روزانه، هفتگی و ماهانه"
+        title="تنظیمات میز خبر"
+        description="اطلاعات میز خبر را ویرایش کنید و موجودی توکن و مصرف روزانه، هفتگی و ماهانه را ببینید."
         icon={Building2}
       />
 
@@ -74,7 +74,7 @@ export function OrganizationSettingsPanel() {
         <CardContent>
           <form onSubmit={handleSave} className="space-y-4">
             <Input
-              label="نام سازمان"
+              label="نام میز خبر"
               value={name || tenant?.name || ''}
               onChange={(e) => setName(e.target.value)}
               required

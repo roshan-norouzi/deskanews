@@ -10,11 +10,12 @@ import { entryGuids, omitKnownStories } from './feed-dedupe';
 import { buildLatestFeedPreviewItems } from './feed-preview';
 import {
   DEFAULT_PLATFORM_POLL_MINUTES,
+  DEFAULT_NEWS_MAX_AGE_DAYS,
+  PLATFORM_CATALOG_MAX_AGE_DAYS,
   isAutoPollingSubscription,
   isSubscriptionDue,
   resolveOrganizationPollMinutes,
   resolveTenantFeedSettings,
-  shouldRefreshSharedCatalog,
 } from './tenant-platform-feed-settings';
 import type { CreatePlatformFeedDto, UpdatePlatformFeedDto } from '../../platform/admin/dto/platform-feed.dto';
 import type { ProbeFeedDto, SourceType, UpdateTenantPlatformFeedDto } from './dto/feed.dto';
@@ -32,7 +33,7 @@ import {
   type PlatformFeedHealthStatus,
 } from './platform-feed-health';
 
-const PLATFORM_ARTICLE_MAX_AGE_DAYS = 10;
+const CATALOG_FETCH_PER_TICK = 8;
 
 export type PlatformFeedWriteOptions = {
   skipNetworkDiscovery?: boolean;
@@ -940,76 +941,17 @@ export class PlatformFeedService implements OnModuleInit {
     };
   }
 
-  async fetch(id: string, options?: { tenantIds?: string[] }) {
+  async fetch(id: string, options?: { tenantIds?: string[]; maxAgeDays?: number }) {
     const feed = await this.findFeed(id);
     if (!feed.enabled) throw new BadRequestException('این منبع پیش‌فرض غیرفعال است');
     try {
-      const cutoff = new Date(Date.now() - PLATFORM_ARTICLE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
-      const { entries, resolvedFeedUrl } = await this.sourceReader.readSourceWithMeta(feed.sourceType || 'rss', feed.url, {
-        resolvedFeedUrl: feed.resolvedFeedUrl,
-      });
-      const recent = entries
-        .filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
-      const guids = entryGuids(recent);
-      const urls = [...new Set(recent.map((entry) => entry.canonicalUrl))];
-      const identityOr = [
-        ...(urls.length ? [{ canonicalUrl: { in: urls } }] : []),
-        ...(guids.length ? [{ guid: { in: guids } }] : []),
-      ];
-      const [byLink, bySource] = recent.length
-        ? await Promise.all([
-          identityOr.length
-            ? this.prisma.platformFeedArticle.findMany({
-              where: { OR: identityOr },
-              select: { canonicalUrl: true, guid: true, originalTitle: true },
-            })
-            : Promise.resolve([]),
-          this.prisma.platformFeedArticle.findMany({
-            where: { sourceName: feed.name },
-            select: { canonicalUrl: true, guid: true, originalTitle: true },
-            orderBy: { createdAt: 'desc' },
-            take: 400,
-          }),
-        ])
-        : [[], []];
-      const known = [...byLink, ...bySource];
-      const filtered = omitKnownStories(recent, known);
-      const createdResult = filtered.length
-        ? await this.prisma.platformFeedArticle.createMany({
-          skipDuplicates: true,
-          data: filtered.map((entry) => ({
-            platformFeedId: feed.id,
-            canonicalUrl: entry.canonicalUrl,
-            originalUrl: entry.canonicalUrl,
-            guid: entry.guid,
-            originalTitle: entry.title,
-            originalSummary: entry.summary,
-            originalContent: entry.content,
-            originalContentIsFull: entry.contentIsFull,
-            featuredImageUrl: entry.featuredImageUrl,
-            sourceName: feed.name,
-            publishedAtSource: entry.publishedAt,
-          })),
-        })
-        : { count: 0 };
-      const created = createdResult.count;
-
-      await this.prisma.platformFeed.update({
-        where: { id },
-        data: {
-          lastFetchedAt: new Date(),
-          lastError: '',
-          ...(resolvedFeedUrl && resolvedFeedUrl !== feed.resolvedFeedUrl ? { resolvedFeedUrl } : {}),
-        },
-      });
-
+      const maxAgeDays = options?.maxAgeDays ?? PLATFORM_CATALOG_MAX_AGE_DAYS;
+      const refreshed = await this.refreshCatalog(feed, new Date(Date.now() - Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000));
       const tenantIds = options?.tenantIds;
       const synced = tenantIds
         ? await this.syncTenants(id, tenantIds)
         : await this.syncFeedToSubscribedTenants(feed.id);
-      await this.queueSharedPreparation(feed.id, 10, tenantIds?.[0]);
-
-      return { ok: true, discovered: filtered.length, created, synced };
+      return { ok: true, discovered: refreshed.discovered, created: refreshed.created, synced };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'خطای ناشناخته دریافت منبع';
       await this.prisma.platformFeed.update({
@@ -1018,6 +960,66 @@ export class PlatformFeedService implements OnModuleInit {
       });
       throw error;
     }
+  }
+
+  private async refreshCatalog(
+    feed: { id: string; name: string; url: string; sourceType: string; resolvedFeedUrl: string },
+    cutoff: Date,
+  ) {
+    const { entries, resolvedFeedUrl } = await this.sourceReader.readSourceWithMeta(feed.sourceType || 'rss', feed.url, {
+      resolvedFeedUrl: feed.resolvedFeedUrl,
+    });
+    const recent = entries.filter((entry) => !entry.publishedAt || entry.publishedAt >= cutoff);
+    const guids = entryGuids(recent);
+    const urls = [...new Set(recent.map((entry) => entry.canonicalUrl))];
+    const identityOr = [
+      ...(urls.length ? [{ canonicalUrl: { in: urls } }] : []),
+      ...(guids.length ? [{ guid: { in: guids } }] : []),
+    ];
+    const [byLink, bySource] = recent.length
+      ? await Promise.all([
+        identityOr.length
+          ? this.prisma.platformFeedArticle.findMany({
+            where: { OR: identityOr },
+            select: { canonicalUrl: true, guid: true, originalTitle: true },
+          })
+          : Promise.resolve([]),
+        this.prisma.platformFeedArticle.findMany({
+          where: { sourceName: feed.name },
+          select: { canonicalUrl: true, guid: true, originalTitle: true },
+          orderBy: { createdAt: 'desc' },
+          take: 400,
+        }),
+      ])
+      : [[], []];
+    const filtered = omitKnownStories(recent, [...byLink, ...bySource]);
+    const createdResult = filtered.length
+      ? await this.prisma.platformFeedArticle.createMany({
+        skipDuplicates: true,
+        data: filtered.map((entry) => ({
+          platformFeedId: feed.id,
+          canonicalUrl: entry.canonicalUrl,
+          originalUrl: entry.canonicalUrl,
+          guid: entry.guid,
+          originalTitle: entry.title,
+          originalSummary: entry.summary,
+          originalContent: entry.content,
+          originalContentIsFull: entry.contentIsFull,
+          featuredImageUrl: entry.featuredImageUrl,
+          sourceName: feed.name,
+          publishedAtSource: entry.publishedAt,
+        })),
+      })
+      : { count: 0 };
+    await this.prisma.platformFeed.update({
+      where: { id: feed.id },
+      data: {
+        lastFetchedAt: new Date(),
+        lastError: '',
+        ...(resolvedFeedUrl && resolvedFeedUrl !== feed.resolvedFeedUrl ? { resolvedFeedUrl } : {}),
+      },
+    });
+    return { discovered: filtered.length, created: createdResult.count };
   }
 
   async listForTenant(tenantId: string) {
@@ -1108,8 +1110,13 @@ export class PlatformFeedService implements OnModuleInit {
     });
 
     if (data.enabled === true) {
+      const cached = await this.prisma.platformFeedArticle.count({ where: { platformFeedId } });
+      if (!cached) {
+        await this.fetch(platformFeedId, { tenantIds: [tenantId] }).catch((error) => {
+          this.logger.warn(`Catalog warm-up failed for ${platformFeedId}: ${error instanceof Error ? error.message : 'unknown error'}`);
+        });
+      }
       await this.syncFeedToTenant(tenantId, platformFeedId);
-      await this.queueSharedPreparation(platformFeedId, 10, tenantId);
     }
 
     const organizationPollMinutes = await this.organizationPollMinutes(tenantId);
@@ -1124,6 +1131,43 @@ export class PlatformFeedService implements OnModuleInit {
     if (!subscription) throw new NotFoundException('منبع پیش‌فرض یافت نشد');
     const nextEnabled = enabled ?? !subscription.enabled;
     return this.updateSubscriptionForTenant(tenantId, platformFeedId, { enabled: nextEnabled });
+  }
+
+  /** Fast bulk on/off — skips per-feed catalog sync (use «دریافت خبر» or maintenance). */
+  async bulkSetEnabledForTenant(tenantId: string, platformFeedIds: string[], enabled: boolean) {
+    await this.ensureSubscriptions(tenantId);
+    const uniqueIds = [...new Set(platformFeedIds.filter(Boolean))];
+    if (!uniqueIds.length) return { updated: 0, skipped: 0 };
+
+    if (!enabled) {
+      const result = await this.prisma.tenantPlatformFeed.updateMany({
+        where: { tenantId, platformFeedId: { in: uniqueIds }, enabled: true },
+        data: { enabled: false },
+      });
+      return { updated: result.count, skipped: Math.max(0, uniqueIds.length - result.count) };
+    }
+
+    const eligible = await this.prisma.tenantPlatformFeed.findMany({
+      where: {
+        tenantId,
+        platformFeedId: { in: uniqueIds },
+        enabled: false,
+        platformFeed: { enabled: true },
+      },
+      select: { platformFeedId: true },
+    });
+    const eligibleIds = eligible.map((row) => row.platformFeedId);
+    if (!eligibleIds.length) {
+      return { updated: 0, skipped: uniqueIds.length };
+    }
+    const result = await this.prisma.tenantPlatformFeed.updateMany({
+      where: { tenantId, platformFeedId: { in: eligibleIds } },
+      data: { enabled: true },
+    });
+    return {
+      updated: result.count,
+      skipped: Math.max(0, uniqueIds.length - result.count),
+    };
   }
 
   async syncFeedToSubscribedTenants(platformFeedId: string) {
@@ -1164,7 +1208,6 @@ export class PlatformFeedService implements OnModuleInit {
           });
         }
         const created = await this.syncFeedToTenant(tenantId, subscription.platformFeedId);
-        await this.queueSharedPreparation(subscription.platformFeedId, 10, tenantId);
         results.push({ platformFeedId: subscription.platformFeedId, ok: true, created });
       } catch (error) {
         results.push({
@@ -1177,15 +1220,35 @@ export class PlatformFeedService implements OnModuleInit {
     return results;
   }
 
+  private async tenantNewsMaxAgeDays(tenantId: string): Promise<number> {
+    const settings = await this.settings.getRaw(tenantId);
+    const parsed = Number(settings.news_max_age_days || DEFAULT_NEWS_MAX_AGE_DAYS);
+    if (!Number.isFinite(parsed)) return DEFAULT_NEWS_MAX_AGE_DAYS;
+    return Math.min(90, Math.max(1, Math.round(parsed)));
+  }
+
   async syncFeedToTenant(tenantId: string, platformFeedId: string) {
     const feed = await this.findFeed(platformFeedId);
+    const maxAgeDays = await this.tenantNewsMaxAgeDays(tenantId);
+    if (maxAgeDays > PLATFORM_CATALOG_MAX_AGE_DAYS) {
+      await this.refreshCatalog(feed, new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000)).catch((error) => {
+        this.logger.warn(`Extended catalog fetch failed for ${platformFeedId}: ${error instanceof Error ? error.message : 'unknown error'}`);
+      });
+    }
     const subscription = await this.prisma.tenantPlatformFeed.findUnique({
       where: { tenantId_platformFeedId: { tenantId, platformFeedId } },
     });
     const organizationPollMinutes = await this.organizationPollMinutes(tenantId);
     const tenantSettings = resolveTenantFeedSettings(subscription ?? {}, organizationPollMinutes);
+    const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
     const articles = await this.prisma.platformFeedArticle.findMany({
-      where: { platformFeedId },
+      where: {
+        platformFeedId,
+        OR: [
+          { publishedAtSource: { gte: cutoff } },
+          { publishedAtSource: null, createdAt: { gte: cutoff } },
+        ],
+      },
       orderBy: [{ publishedAtSource: 'desc' }, { createdAt: 'desc' }],
       take: 200,
     });
@@ -1376,12 +1439,26 @@ export class PlatformFeedService implements OnModuleInit {
     return prepared;
   }
 
+  private async pruneCatalogCache() {
+    const cutoff = new Date(Date.now() - PLATFORM_CATALOG_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+    await this.prisma.platformFeedArticle.deleteMany({
+      where: {
+        tenantArticles: { none: {} },
+        OR: [
+          { publishedAtSource: { lt: cutoff } },
+          { publishedAtSource: null, createdAt: { lt: cutoff } },
+        ],
+      },
+    });
+  }
+
   @Interval('platform-feed-maintenance', 60_000)
   async maintenance() {
     if (this.maintenanceRunning) return;
     await this.scheduler.runIntervalMaintenance('platform-feed-maintenance', async () => {
     this.maintenanceRunning = true;
     try {
+      let catalogRefreshed = 0;
       const feeds = await this.prisma.platformFeed.findMany({
         where: { enabled: true },
         include: {
@@ -1401,29 +1478,33 @@ export class PlatformFeedService implements OnModuleInit {
         return cached;
       };
       for (const feed of feeds) {
-        const due = [];
+        const dueTenantIds: string[] = [];
         for (const subscription of feed.subscriptions) {
           if (!isAutoPollingSubscription(subscription)) continue;
           const orgPoll = await orgPollForTenant(subscription.tenantId);
           const settings = resolveTenantFeedSettings(subscription, orgPoll);
           if (isSubscriptionDue(subscription.lastSyncedAt, settings.pollIntervalMinutes)) {
-            due.push({ subscription, pollIntervalMinutes: settings.pollIntervalMinutes });
+            dueTenantIds.push(subscription.tenantId);
           }
         }
-        if (!due.length) continue;
-        const dueTenantIds = due.map(({ subscription }) => subscription.tenantId);
-        const dueIntervals = due.map(({ pollIntervalMinutes }) => pollIntervalMinutes);
-        try {
-          if (shouldRefreshSharedCatalog(feed.lastFetchedAt, dueIntervals)) {
-            await this.fetch(feed.id, { tenantIds: dueTenantIds });
-          } else {
-            await this.syncTenants(feed.id, dueTenantIds);
-            await this.queueSharedPreparation(feed.id, 10, dueTenantIds[0]);
+        const catalogDue = isSubscriptionDue(feed.lastFetchedAt, feed.pollIntervalMinutes || DEFAULT_PLATFORM_POLL_MINUTES);
+        if (catalogDue && catalogRefreshed < CATALOG_FETCH_PER_TICK) {
+          try {
+            await this.fetch(feed.id, dueTenantIds.length ? { tenantIds: dueTenantIds } : undefined);
+            catalogRefreshed += 1;
+          } catch (error) {
+            this.logger.warn(`Platform feed fetch failed for ${feed.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
           }
+          continue;
+        }
+        if (!dueTenantIds.length) continue;
+        try {
+          await this.syncTenants(feed.id, dueTenantIds);
         } catch (error) {
           this.logger.warn(`Platform feed fetch failed for ${feed.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
         }
       }
+      await this.pruneCatalogCache();
     } catch (error) {
       this.logger.error(`Platform feed maintenance failed: ${error instanceof Error ? error.message : 'unknown error'}`);
     } finally {

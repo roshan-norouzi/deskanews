@@ -36,7 +36,7 @@ interface OrganizationUsagePanelProps {
 
 export function OrganizationUsagePanel({
   tenantId,
-  title = 'مصرف سازمان',
+  title = 'مصرف میز خبر',
   showCard = true,
   summary,
   summaryLoading,
@@ -65,7 +65,7 @@ export function OrganizationUsagePanel({
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
-              <p className="text-sm text-slate-600">توکن باقیمانده</p>
+              <p className="text-sm text-slate-600">توکن باقی‌مانده</p>
               <p className="mt-1 text-2xl font-bold text-slate-900">
                 {formatPersianDigits(String(data?.availableTokens ?? 0))}
                 <span className="mr-2 text-sm font-medium text-slate-500">{USAGE_UNIT_LABEL}</span>

@@ -111,22 +111,22 @@ export function PlatformSourceFetchSettingsPanel() {
       ) : (
         <Card className="space-y-6 p-5 sm:p-6">
           <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 text-sm leading-7 text-slate-700">
-            <p className="font-semibold text-slate-900">سرور داخل ایران و رسانهٔ فیلترشده</p>
+            <p className="font-semibold text-slate-900">انتخاب مسیر دریافت منابع</p>
             <ul className="mt-2 list-disc space-y-1 pr-5">
-              <li>آزمایش منبع روی <strong>لپ‌تاپ با فیلترشکن</strong> فقط مرورگر شما را نشان می‌دهد؛ <strong>سرور آنلاین</strong> همان VPN را ندارد.</li>
-              <li><strong>خبرگزاری‌های .ir و سایت‌های باز از ایران</strong> معمولاً مستقیم از سرور گرفته می‌شوند (گزینهٔ پایین خاموش).</li>
-              <li><strong>رسانهٔ بین‌المللی فیلترشده</strong> (مثل Euronews، BBC، …) باید از <strong>سرویس دریافت</strong> بیاید: آدرس زیر را ثبت کنید و «منابع خبری هم از این سرویس» را <strong>روشن</strong> کنید. این سرویس روی Cloudflare است، نه روی سرور ایران.</li>
-              <li><strong>تلگرام و توییتر</strong> همیشه از همین سرویس می‌آیند.</li>
+              <li>بازشدن یک منبع روی <strong>رایانهٔ شما با فیلترشکن</strong> به معنی دسترسی <strong>سرور دسکا</strong> به آن منبع نیست.</li>
+              <li><strong>منابع در دسترس سرور</strong> معمولاً به‌صورت مستقیم دریافت می‌شوند و به فعال‌کردن گزینهٔ زیر نیاز ندارند.</li>
+              <li><strong>منابع مسدود یا خارج از دسترس سرور</strong> را از طریق <strong>سرویس دریافت</strong> بخوانید. آدرس سرویس را ثبت کنید و «دریافت منابع خبری از طریق سرویس واسط» را <strong>فعال</strong> کنید. این سرویس روی Cloudflare اجرا می‌شود.</li>
+              <li><strong>تلگرام و X (توییتر)</strong> از طریق همین سرویس دریافت می‌شوند.</li>
             </ul>
             <p className="mt-3 text-xs text-slate-600">
-              اگر با روشن بودن گزینهٔ خبر، خطای «فقط تلگرام و توییتر» دیدید، نسخهٔ سرویس روی Cloudflare قدیمی است و باید یک‌بار اسکریپت Worker به‌روز شود (از پنل Cloudflare یا توسط پشتیبانی) — بدون تغییر آدرس در این فرم.
+              اگر پس از فعال‌کردن دریافت منابع خبری، پیام «فقط تلگرام و توییتر» نمایش داده شد، نسخهٔ Worker را در Cloudflare به‌روزرسانی کنید یا از پشتیبانی کمک بگیرید. برای این به‌روزرسانی نیازی به تغییر آدرس سرویس نیست.
             </p>
           </div>
 
           <div>
             <h2 className="text-lg font-bold text-slate-900">دریافت منبع</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              یک آدرس سرویس برای شبکه‌های اجتماعی و — در صورت نیاز — برای RSS و وب‌سایت‌هایی که از شبکهٔ سرور ایران باز نمی‌شوند.
+              آدرس و رمز سرویس واسط را برای دریافت از تلگرام، X و منابع خبری خارج از دسترس سرور تنظیم کنید.
             </p>
           </div>
 
@@ -167,9 +167,9 @@ export function PlatformSourceFetchSettingsPanel() {
                 onChange={(event) => set('source_fetch_news_via_bridge', event.target.checked ? 'true' : 'false')}
               />
               <span>
-                <span className="block text-sm font-semibold text-slate-900">منابع خبری هم از این سرویس (رسانهٔ فیلترشده / بین‌المللی)</span>
+                <span className="block text-sm font-semibold text-slate-900">دریافت منابع خبری از طریق سرویس واسط</span>
                 <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
-                  <strong>روشن:</strong> RSS و وب‌سایت از Cloudflare (مناسب سرور ایران + سایت فیلترشده). <strong>خاموش:</strong> فقط دریافت مستقیم از سرور — برای خبرگزاری‌های داخلی و سایت‌های بدون فیلتر. اگر هر دو مسیر خطا دادند، آدرس فید را در مرورگر بدون لاگین چک کنید.
+                  <strong>فعال:</strong> فیدها و وب‌سایت‌ها از طریق سرویس Cloudflare دریافت می‌شوند. <strong>غیرفعال:</strong> دریافت مستقیماً از سرور دسکا انجام می‌شود. اگر هیچ‌کدام پاسخ ندادند، بررسی کنید که آدرس منبع بدون ورود به حساب کاربری باز شود.
                 </span>
               </span>
             </label>
@@ -178,7 +178,7 @@ export function PlatformSourceFetchSettingsPanel() {
           <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-5">
             <Button variant="outline" isLoading={busy === 'test'} onClick={() => void testSettings()}>
               <TestTube2 className="h-4 w-4" />
-              تست اتصال
+              بررسی اتصال
             </Button>
             <Button isLoading={busy === 'save'} onClick={() => void saveSettings()}>
               <Save className="h-4 w-4" />

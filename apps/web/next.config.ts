@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
     // Next.js may truncate proxied multipart bodies without this (Excel bulk import).
     proxyClientMaxBodySize: '15mb',
   } as NextConfig['experimental'],
+  // /api/* is proxied by apps/web/src/app/api/[...path]/route.ts (retries + timeouts).
+  // Do not add rewrites here; they bypass that handler and fail silently on API restarts.
   async headers() {
     const production = process.env.NODE_ENV === 'production';
     const contentSecurityPolicy = [
@@ -50,21 +52,6 @@ const nextConfig: NextConfig = {
           : []),
       ],
     }];
-  },
-  async rewrites() {
-    // Next.js performs this rewrite from inside the web container, so Docker
-    // must use the Compose service name instead of the host's localhost.
-    // A prebuilt image always talks to the Compose service, never localhost.
-    // This keeps Registry-based deployments independent from build-time cache.
-    const apiUrl = process.env.DOCKER_BUILD === 'true'
-      ? 'http://api:3001'
-      : (process.env.API_URL ?? 'http://localhost:3101');
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${apiUrl}/api/:path*`,
-      },
-    ];
   },
 };
 

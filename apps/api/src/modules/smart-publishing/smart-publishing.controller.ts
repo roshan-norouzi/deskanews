@@ -9,7 +9,7 @@ import type { AuthUser, TenantContext } from '../../common/decorators/params.dec
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
-import { CreateFeedDto, UpdateFeedDto, TogglePlatformFeedDto, ProbeFeedDto, UpdateTenantPlatformFeedDto } from './dto/feed.dto';
+import { CreateFeedDto, UpdateFeedDto, TogglePlatformFeedDto, ProbeFeedDto, UpdateTenantPlatformFeedDto, BulkSetFeedsEnabledDto } from './dto/feed.dto';
 import { UpdateNewsArticleDto, PublishNewsArticleDto } from './dto/news-article.dto';
 import { TestWordPressConnectionDto, UpdatePublishingSettingsDto } from './dto/publishing-settings.dto';
 import { NewsroomService } from './newsroom.service';
@@ -147,6 +147,9 @@ export class SmartPublishingController {
     return this.newsroom.updatePlatformFeedSubscription(tenant.tenantId, id, body);
   }
   @Post('feeds') @RequirePermission('publishing.feeds') addFeed(@TenantCtx() tenant: TenantContext, @Body() body: CreateFeedDto) { return this.newsroom.addFeed(tenant.tenantId, body); }
+  @Post('feeds/bulk-enabled') @RequirePermission('publishing.feeds') bulkSetFeedsEnabled(@TenantCtx() tenant: TenantContext, @Body() body: BulkSetFeedsEnabledDto) {
+    return this.newsroom.bulkSetFeedsEnabled(tenant.tenantId, body);
+  }
   @Patch('feeds/:id') @RequirePermission('publishing.feeds') updateFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string, @Body() body: UpdateFeedDto) { return this.newsroom.updateFeed(tenant.tenantId, id, body); }
   @Post('feeds/:id/toggle') @RequirePermission('publishing.feeds') toggleFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.toggleFeed(tenant.tenantId, id); }
   @Delete('feeds/:id') @RequirePermission('publishing.feeds') deleteFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.deleteFeed(tenant.tenantId, id); }
@@ -184,16 +187,34 @@ export class SmartPublishingController {
   @Post('news/feeds/:id/test') @RequirePermission('publishing.feeds') testNewsFeed(@TenantCtx() tenant: TenantContext, @Param('id') id: string) { return this.newsroom.testFeed(tenant.tenantId, id); }
   @Post('news/feeds/probe') @RequirePermission('publishing.feeds') probeNewsFeed(@Body() body: ProbeFeedDto) { return this.newsroom.probeFeed(body); }
   @Post('news/sync') @RequirePermission('publishing.news') syncNews(@TenantCtx() tenant: TenantContext) { return this.newsroom.sync(tenant.tenantId); }
+  @Get('news/stats') @RequirePermission('publishing.news') newsStats(
+    @TenantCtx() tenant: TenantContext,
+    @User() user: AuthUser,
+    @Query('categoryId') categoryId?: string,
+    @Query('generalOnly') generalOnly?: string,
+    @Query('feedId') feedId?: string,
+  ) {
+    return this.newsroom.articleStats(tenant.tenantId, {
+      categoryId,
+      generalOnly: generalOnly === 'true',
+      feedId,
+      access: { permissions: user.permissions, newsroomServiceIds: tenant.newsroomServiceIds },
+    });
+  }
   @Get('news/articles') @RequirePermission('publishing.news') newsArticles(
     @TenantCtx() tenant: TenantContext,
     @User() user: AuthUser,
     @Query('status') status?: string,
+    @Query('view') view?: string,
+    @Query('feedId') feedId?: string,
     @Query('categoryId') categoryId?: string,
     @Query('generalOnly') generalOnly?: string,
     @Query('cursor') cursor?: string,
   ) {
     return this.newsroom.articles(tenant.tenantId, {
       status,
+      view: view as 'action' | 'processing' | 'archive' | 'rejected' | 'all' | undefined,
+      feedId,
       categoryId,
       generalOnly: generalOnly === 'true',
       access: { permissions: user.permissions, newsroomServiceIds: tenant.newsroomServiceIds },

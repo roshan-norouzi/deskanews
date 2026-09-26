@@ -1,4 +1,7 @@
 export const DEFAULT_PLATFORM_POLL_MINUTES = 240;
+/** Original-language catalog retention. Tenant windows longer than this are filled from the source. */
+export const PLATFORM_CATALOG_MAX_AGE_DAYS = 3;
+export const DEFAULT_NEWS_MAX_AGE_DAYS = 2;
 
 /** Effective org default from publishing settings (`news_poll_interval_minutes`). */
 export function resolveOrganizationPollMinutes(raw?: string | number | null): number {

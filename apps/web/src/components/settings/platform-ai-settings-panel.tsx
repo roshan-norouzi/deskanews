@@ -166,23 +166,23 @@ export function PlatformAiSettingsPanel() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" isLoading={busy === 'gapgpt-models'} onClick={() => void loadGapGptModels()}><Bot className="h-4 w-4" /> دریافت فهرست مدل‌ها</Button>
-            <Button variant="outline" isLoading={busy === 'gapgpt'} onClick={() => run('gapgpt', () => apiFetch('/platform/ai-settings/test-gapgpt', { method: 'POST', skipTenant: true, body: editableSettings(Object.fromEntries(['gapgpt_base_url', 'gapgpt_api_key'].map((key) => [key, values[key] ?? '']))) }), 'اتصال GapGPT با موفقیت تأیید شد.')}><TestTube2 className="h-4 w-4" /> تست اتصال GapGPT</Button>
+            <Button variant="outline" isLoading={busy === 'gapgpt'} onClick={() => run('gapgpt', () => apiFetch('/platform/ai-settings/test-gapgpt', { method: 'POST', skipTenant: true, body: editableSettings(Object.fromEntries(['gapgpt_base_url', 'gapgpt_api_key'].map((key) => [key, values[key] ?? '']))) }), 'اتصال GapGPT با موفقیت تأیید شد.')}><TestTube2 className="h-4 w-4" /> بررسی اتصال GapGPT</Button>
           </div>
 
           <div className="border-t border-slate-100 pt-6">
-            <h2 className="text-lg font-bold text-slate-900">پرامپت‌های پردازش خبر</h2>
+            <h2 className="text-lg font-bold text-slate-900">دستورهای پردازش خبر</h2>
             <p className="mt-1 text-sm text-slate-500">این دستورها برای همه سازمان‌ها یکسان اعمال می‌شوند.</p>
             <div className="mt-5 grid gap-5">
-              <Field label="پرامپت تیتر و خلاصهٔ خبر خارجی" hint="برای ترجمه و خلاصه‌سازی خبرهای غیرفارسی.">
+              <Field label="دستور تیتر و خلاصهٔ خبر خارجی" hint="برای ترجمه و خلاصه‌سازی خبرهای غیرفارسی.">
                 <textarea className="min-h-36 rounded-xl border px-3 py-3 leading-7" placeholder="لحن، دقت، واژگان و قواعد ترجمه..." value={values.news_summary_prompt || ''} onChange={(e) => set('news_summary_prompt', e.target.value)} />
               </Field>
-              <Field label="پرامپت متن کامل خبر خارجی" hint="هنگام انتشار در سایت، متن کامل خبر غیرفارسی با این دستور ترجمه می‌شود.">
+              <Field label="دستور متن کامل خبر خارجی" hint="هنگام انتشار در سایت، متن کامل خبر غیرفارسی با این دستور ترجمه می‌شود.">
                 <textarea className="min-h-36 rounded-xl border px-3 py-3 leading-7" placeholder="قواعد ترجمهٔ کامل..." value={values.news_full_translation_prompt || ''} onChange={(e) => set('news_full_translation_prompt', e.target.value)} />
               </Field>
-              <Field label="پرامپت تیتر و خلاصهٔ خبر فارسی" hint="برای بازنویسی تیتر و خلاصه خبرهای فارسی.">
+              <Field label="دستور تیتر و خلاصهٔ خبر فارسی" hint="برای بازنویسی تیتر و خلاصه خبرهای فارسی.">
                 <textarea className="min-h-36 rounded-xl border px-3 py-3 leading-7" placeholder="قواعد بازنویسی خبر فارسی..." value={values.news_persian_rewrite_prompt || ''} onChange={(e) => set('news_persian_rewrite_prompt', e.target.value)} />
               </Field>
-              <Field label="پرامپت متن کامل خبر فارسی" hint="هنگام انتشار، متن کامل خبر فارسی با این دستور بازنویسی می‌شود.">
+              <Field label="دستور متن کامل خبر فارسی" hint="هنگام انتشار، متن کامل خبر فارسی با این دستور بازنویسی می‌شود.">
                 <textarea className="min-h-36 rounded-xl border px-3 py-3 leading-7" placeholder="قواعد بازنویسی کامل متن فارسی..." value={values.news_persian_full_rewrite_prompt || ''} onChange={(e) => set('news_persian_full_rewrite_prompt', e.target.value)} />
               </Field>
             </div>

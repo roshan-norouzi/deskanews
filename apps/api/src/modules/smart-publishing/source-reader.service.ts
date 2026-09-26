@@ -372,6 +372,16 @@ function contentTypeIsAccepted(contentType: string, acceptedTypes: string[]): bo
   return acceptedTypes.some((type) => contentType.includes(type));
 }
 
+function sniffRemoteImageContentType(buffer: Buffer): string {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+  if (buffer.length >= 6 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'image/gif';
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') {
+    return 'image/webp';
+  }
+  return '';
+}
+
 @Injectable()
 export class SourceReaderService {
   private readonly logger = new Logger(SourceReaderService.name);
@@ -466,7 +476,7 @@ export class SourceReaderService {
       entries = array<Record<string, unknown>>((rssItems ?? atomItems ?? rdfItems) as Record<string, unknown> | Record<string, unknown>[] | undefined);
     }
 
-    return entries.slice(0, 50).map((entry) => {
+    return entries.slice(0, 120).map((entry) => {
       const linkValue = array(entry.link as unknown[]).map((candidate) => {
         if (typeof candidate === 'string') return candidate;
         const record = candidate && typeof candidate === 'object' ? candidate as Record<string, unknown> : {};
@@ -1922,6 +1932,7 @@ export class SourceReaderService {
       headers,
       body: JSON.stringify({
         url: imageUrl,
+        mode: 'image',
         accept: allowedTypes.join(', '),
         user_agent: BROWSER_FETCH_USER_AGENT,
       }),
@@ -1935,23 +1946,30 @@ export class SourceReaderService {
       ok?: boolean;
       error?: string;
       body_base64?: string;
+      body?: string;
       content_type?: string;
     }>();
     if (!response.ok || !payload.ok) {
       const code = String(payload.error || '');
+      if (code === 'image_empty' || code === 'not_an_image') {
+        throw new BadRequestException('Worker نتوانست تصویر شاخص را به‌صورت فایل تصویری دریافت کند');
+      }
       if (code.startsWith('upstream_http_')) {
         throw new BadRequestException(`دریافت تصویر از طریق Worker ناموفق بود: ${code}`);
       }
       throw new BadRequestException(describeWorkerFetchFailure(code || `Worker منبع با خطای HTTP ${response.status} پاسخ داد`));
     }
 
-    const encoded = String(payload.body_base64 || '').trim();
-    if (!encoded) throw new BadRequestException('Worker منبع پاسخ تصویر خالی برگرداند');
+    const encoded = String(payload.body_base64 || '').replace(/^data:image\/[a-zA-Z+]+;base64,/u, '').trim()
+      || (typeof payload.body === 'string' && /^[A-Za-z0-9+/=\s]+$/u.test(payload.body.slice(0, 80)) ? payload.body.trim() : '');
+    if (!encoded) throw new BadRequestException('Worker نتوانست تصویر شاخص را به‌صورت فایل تصویری دریافت کند');
     const buffer = Buffer.from(encoded, 'base64');
     if (!buffer.length || buffer.length > maxBytes) {
       throw new BadRequestException('حجم تصویر دریافتی از Worker بیش از حد مجاز است');
     }
-    const contentType = String(payload.content_type || '').split(';')[0].trim().toLowerCase();
+    const sniffed = sniffRemoteImageContentType(buffer);
+    const contentType = sniffed
+      || String(payload.content_type || '').split(';')[0].trim().toLowerCase();
     if (!allowedTypes.includes(contentType)) {
       throw new BadRequestException('نوع تصویر دریافتی از Worker قابل قبول نیست');
     }

@@ -30,7 +30,7 @@ export function UsageSnapshot({
   loading?: boolean;
 }) {
   const cells = [
-    { label: 'باقیمانده', value: usage?.availableTokens ?? 0, emphasize: true },
+    { label: 'باقی‌مانده', value: usage?.availableTokens ?? 0, emphasize: true },
     { label: 'امروز', value: usage?.consumedDay ?? 0 },
     { label: 'این هفته', value: usage?.consumedWeek ?? 0 },
     { label: 'این ماه', value: usage?.consumedMonth ?? 0 },
@@ -97,7 +97,7 @@ export function UsageProcessTable({
       </TableHeader>
       <TableBody>
         {metrics.length === 0 ? (
-          <TableEmpty colSpan={5} message="هنوز مصرفی برای این سازمان ثبت نشده است." />
+          <TableEmpty colSpan={5} message="هنوز مصرفی برای این میز خبر ثبت نشده است." />
         ) : (
           metrics.map((metric) => {
             const idle = metric.quantity === 0;

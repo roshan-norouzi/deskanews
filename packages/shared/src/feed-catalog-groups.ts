@@ -19,12 +19,12 @@ export const FEED_CATALOG_GROUPS: Record<
   },
   'media-international': {
     label: 'رسانه‌های بین‌المللی',
-    description: 'رسانه‌های بومی‌زبان جهان؛ زبان‌های تازه‌شناسایی‌شده به دانش سیستم اضافه می‌شوند',
+    description: 'رسانه‌های بین‌المللی به زبان‌های مختلف',
     sourceTypes: ['rss', 'website', 'blog'],
   },
   'orgs-companies': {
     label: 'سازمان‌ها و شرکت‌ها',
-    description: 'میز خبر رسمی نهادها و شرکت‌ها برای منبع اولیه و روابط عمومی',
+    description: 'خبرها و اطلاعیه‌های رسمی نهادها و شرکت‌ها',
     sourceTypes: ['website', 'rss'],
   },
   telegram: {

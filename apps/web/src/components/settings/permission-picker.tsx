@@ -66,7 +66,7 @@ export function PermissionPicker({
       <section className="rounded-xl border border-slate-200 p-4">
         <h4 className="text-sm font-semibold text-slate-900">دسترسی به منو</h4>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          هر مورد همان بخشی از منوی کناری است که کاربر می‌تواند ببیند. «حساب کاربری» برای همه اعضا باز است و اینجا انتخاب نمی‌شود.
+          بخش‌هایی را انتخاب کنید که این عضو می‌تواند به آن‌ها دسترسی داشته باشد. «حساب کاربری» برای همهٔ اعضا در دسترس است.
         </p>
         <div className="mt-4 space-y-4">
           {menuGroups.map((group) => (
@@ -89,7 +89,7 @@ export function PermissionPicker({
                       <span className="block font-medium text-slate-800">{item.label}</span>
                       <span className="mt-0.5 block text-[11px] text-slate-500" dir="ltr">{item.href}</span>
                       {item.key === 'settings.manage' ? (
-                        <span className="mt-1 block text-[10px] text-slate-500">شامل تب‌های سازمان و مدیریت کاربران در /settings</span>
+                        <span className="mt-1 block text-[10px] text-slate-500">دسترسی به اطلاعات میز خبر و مدیریت اعضا در بخش تنظیمات</span>
                       ) : null}
                     </span>
                   </label>

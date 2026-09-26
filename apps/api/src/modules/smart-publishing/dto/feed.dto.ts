@@ -161,6 +161,21 @@ export class TogglePlatformFeedDto {
   enabled?: boolean;
 }
 
+export class BulkSetFeedsEnabledDto {
+  @IsBoolean()
+  enabled!: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  newsFeedIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  platformFeedIds?: string[];
+}
+
 export class ProbeFeedDto {
   @IsOptional()
   @IsString()

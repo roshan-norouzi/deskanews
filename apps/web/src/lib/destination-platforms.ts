@@ -37,7 +37,7 @@ export const DESTINATION_PLATFORMS: Record<DestinationPlatformId, DestinationPla
           { value: 'pending', label: 'در انتظار بازبینی' },
         ],
       },
-      { key: 'wp_category_id', label: 'شناسه دسته پیش‌فرض', hint: 'در صورت ناموفق بودن انتخاب هوشمند دسته.' },
+      { key: 'wp_category_id', label: 'شناسه دسته پیش‌فرض', hint: 'اگر انتخاب خودکار دسته انجام نشود، خبر در این دسته قرار می‌گیرد.' },
     ],
   },
   iransamaneh: {

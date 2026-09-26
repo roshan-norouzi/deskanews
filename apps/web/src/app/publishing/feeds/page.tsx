@@ -11,11 +11,18 @@ import {
   Pencil,
   Plus,
   Power,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { ProtectedLayout } from '@/components/layout/protected-layout';
 import { FeedSourceFilters, matchesFeedCatalogFilters, normalizeFeedTopicKey } from '@/components/publishing/feed-source-filters';
-import { PlatformFeedsSection } from '@/components/publishing/platform-feeds-section';
+import { PlatformFeedsSection, matchesFeedNameSearch } from '@/components/publishing/platform-feeds-section';
 import { FeedBulkActions } from '@/components/publishing/feed-bulk-actions';
+import {
+  buildNewsFeedSettingsPatch,
+  buildPlatformFeedSettingsPatch,
+  FeedMonitoringSettingsForm,
+  type FeedMonitoringSettingsValues,
+} from '@/components/publishing/feed-monitoring-settings-form';
 import { FeedSourceCard, FeedSourceCardGrid, feedTogglePowerClass } from '@/components/publishing/feed-source-card';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-provider';
@@ -25,6 +32,8 @@ import { PageContainer } from '@/components/ui/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/ui/modal';
 import { useApi } from '@/hooks/use-api';
+import { useAuth } from '@/lib/auth-context';
+import { useTenant } from '@/lib/tenant-context';
 import { ApiError, apiFetch, cn } from '@/lib/utils';
 import { formatPersianDigits, mergeSourceLanguageCatalog, sourceLanguageLabel, type SourceLanguage } from '@deska/shared';
 import { FeedChannelFields, channelsForFeed, groupFeedsBySourceTopic, type FeedChannelDraft } from '@/components/publishing/feed-channel-fields';
@@ -101,6 +110,18 @@ interface HealthResult {
   items: HealthItem[];
 }
 
+interface PlatformFeedMember {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  sourceType?: FeedSourceType;
+  catalogGroup?: FeedCatalogGroup;
+  topicLabel?: string | null;
+  sourceLanguage?: SourceLanguage;
+  platformEnabled?: boolean;
+}
+
 function filledChannels(channels: FeedChannelDraft[]) {
   return channels.map((channel) => ({ url: channel.url.trim(), topicLabel: channel.topicLabel })).filter((channel) => channel.url);
 }
@@ -139,7 +160,11 @@ function createModalTitle(group: FeedCatalogGroup, editing: boolean) {
 
 export default function FeedsPage() {
   const confirm = useConfirm();
+  const { isSuperAdmin } = useAuth();
+  const { activeTenant } = useTenant();
+  const canManagePlatformFeeds = isSuperAdmin || ['owner', 'admin', 'manager', 'senior_specialist'].includes(activeTenant?.memberRole || '');
   const { data, error: loadError, isLoading, refetch } = useApi<Feed[]>('/publishing/news/feeds');
+  const { data: platformFeedsData } = useApi<PlatformFeedMember[]>('/publishing/platform-feeds');
   const { data: orgSettings } = useApi<Record<string, string>>('/publishing/settings');
   const languagesApi = useApi<Array<{ code: string; label: string }>>('/publishing/source-languages');
   const orgAutomation = useMemo(() => newsOrganizationAutomation(orgSettings || {}), [orgSettings]);
@@ -157,9 +182,11 @@ export default function FeedsPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [healthOpen, setHealthOpen] = useState(false);
   const [health, setHealth] = useState<HealthResult | null>(null);
+  const [platformFeedsRevision, setPlatformFeedsRevision] = useState(0);
   const editingIdRef = useRef<string | null>(null);
 
   const catalogBrowseActive = selectedCatalogGroups.size > 0 || selectedTopics.size > 0;
+  const filterBulkActive = catalogBrowseActive || query.trim().length > 0;
   const visibleCustomBuckets = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('fa');
     const matched = feeds.filter((feed) => {
@@ -171,6 +198,47 @@ export default function FeedsPage() {
     });
     return groupFeedsBySourceTopic(matched, (feed) => normalizeFeedTopicKey(feed.topicLabel, labelOptions));
   }, [catalogBrowseActive, feeds, labelOptions, query, selectedCatalogGroups, selectedTopics]);
+
+  const filteredPlatformMembers = useMemo(() => {
+    const catalogFeeds = Array.isArray(platformFeedsData)
+      ? platformFeedsData.filter((feed) => feed.platformEnabled !== false)
+      : [];
+    return catalogFeeds.filter((feed) => {
+      if (!catalogBrowseActive && !feed.enabled) return false;
+      if (!matchesFeedCatalogFilters(feed, selectedCatalogGroups, selectedTopics, labelOptions)) return false;
+      return matchesFeedNameSearch(feed, query);
+    });
+  }, [catalogBrowseActive, labelOptions, platformFeedsData, query, selectedCatalogGroups, selectedTopics]);
+
+  const filteredCustomMembers = useMemo(
+    () => visibleCustomBuckets.flatMap((bucket) => bucket.members),
+    [visibleCustomBuckets],
+  );
+
+  const bulkToggleTargetCount = filteredCustomMembers.length + (canManagePlatformFeeds ? filteredPlatformMembers.length : 0);
+
+  const bulkEditEnabledCustomMembers = useMemo(
+    () => filteredCustomMembers.filter((member) => member.enabled),
+    [filteredCustomMembers],
+  );
+  const bulkEditEnabledPlatformMembers = useMemo(
+    () => (canManagePlatformFeeds ? filteredPlatformMembers.filter((member) => member.enabled) : []),
+    [canManagePlatformFeeds, filteredPlatformMembers],
+  );
+  const bulkEditEnabledCount = bulkEditEnabledCustomMembers.length + bulkEditEnabledPlatformMembers.length;
+
+  const orgPollMinutes = orgAutomation.pollIntervalMinutes;
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditForm, setBulkEditForm] = useState<FeedMonitoringSettingsValues>(() => ({
+    settingsMode: 'custom',
+    includeWords: '',
+    excludeWords: '',
+    pollIntervalMinutes: orgPollMinutes,
+    autoPoll: orgAutomation.autoPoll,
+    autoPrepare: orgAutomation.autoPrepare,
+    autoPublish: orgAutomation.autoPublish,
+    autoSendSocial: orgAutomation.autoSendSocial,
+  }));
 
   const modalSourceTypes = FEED_CATALOG_GROUPS[modalGroup].sourceTypes;
   const showSourceTypePicker = modalSourceTypes.length > 1;
@@ -291,6 +359,97 @@ export default function FeedsPage() {
     }
   }
 
+  async function bulkSetFilteredEnabled(enabled: boolean) {
+    await run('bulk-filter-toggle', async () => {
+      const newsFeedIds = filteredCustomMembers.filter((member) => member.enabled !== enabled).map((member) => member.id);
+      const platformFeedIds = canManagePlatformFeeds
+        ? filteredPlatformMembers.filter((member) => member.enabled !== enabled).map((member) => member.id)
+        : [];
+      if (!newsFeedIds.length && !platformFeedIds.length) {
+        setNotice({ type: 'success', text: enabled ? 'همه منابع این فیلتر از قبل روشن بودند.' : 'همه منابع این فیلتر از قبل خاموش بودند.' });
+        return;
+      }
+      const result = await apiFetch<{
+        newsUpdated: number;
+        platformUpdated: number;
+        platformSkipped?: number;
+      }>('/publishing/feeds/bulk-enabled', {
+        method: 'POST',
+        body: { enabled, newsFeedIds, platformFeedIds },
+      });
+      const updated = (result.newsUpdated ?? 0) + (result.platformUpdated ?? 0);
+      const skipped = result.platformSkipped ?? 0;
+      setNotice({
+        type: 'success',
+        text: enabled
+          ? `روشن شد: ${formatPersianDigits(updated)} منبع${skipped ? ` (${formatPersianDigits(skipped)} منبع توسط پلتفرم غیرفعال شده بود)` : ''}. دریافت خبرها در پایش بعدی یا با «دریافت خبرهای جدید» انجام می‌شود.`
+          : `خاموش شد: ${formatPersianDigits(updated)} منبع.`,
+      });
+      await refetch();
+      setPlatformFeedsRevision((value) => value + 1);
+    });
+  }
+
+  function openBulkGroupEdit() {
+    setBulkEditForm({
+      settingsMode: 'custom',
+      includeWords: '',
+      excludeWords: '',
+      pollIntervalMinutes: orgPollMinutes,
+      autoPoll: orgAutomation.autoPoll,
+      autoPrepare: orgAutomation.autoPrepare,
+      autoPublish: orgAutomation.autoPublish,
+      autoSendSocial: orgAutomation.autoSendSocial,
+    });
+    setBulkEditOpen(true);
+  }
+
+  async function saveBulkGroupEdit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!bulkEditEnabledCount) return;
+
+    const platformPatch = buildPlatformFeedSettingsPatch(bulkEditForm);
+    const newsPatch = buildNewsFeedSettingsPatch(bulkEditForm);
+    const validationError = platformPatch.error || newsPatch.error;
+    if (validationError) {
+      setNotice({ type: 'error', text: validationError });
+      return;
+    }
+
+    const scopeLabel = filterBulkActive ? 'منابع فعال این فیلتر' : 'همه منابع فعال';
+    const ok = await confirm({
+      title: 'اعمال تنظیمات گروهی؟',
+      description: `تنظیمات پایش و خودکارسازی روی ${formatPersianDigits(bulkEditEnabledCount)} ${scopeLabel} (کاتالوگ و اختصاصی) اعمال می‌شود.`,
+      confirmLabel: 'اعمال روی همه',
+    });
+    if (!ok) return;
+
+    await run('bulk-group-edit', async () => {
+      const updates: Promise<unknown>[] = [];
+      if (platformPatch.body) {
+        for (const member of bulkEditEnabledPlatformMembers) {
+          updates.push(apiFetch(`/publishing/platform-feeds/${member.id}`, {
+            method: 'PATCH',
+            body: platformPatch.body,
+          }));
+        }
+      }
+      if (newsPatch.body) {
+        for (const member of bulkEditEnabledCustomMembers) {
+          updates.push(apiFetch(`/publishing/news/feeds/${member.id}`, {
+            method: 'PATCH',
+            body: newsPatch.body,
+          }));
+        }
+      }
+      await Promise.all(updates);
+      setBulkEditOpen(false);
+      setNotice({ type: 'success', text: `تنظیمات روی ${formatPersianDigits(bulkEditEnabledCount)} منبع فعال اعمال شد.` });
+      await refetch();
+      setPlatformFeedsRevision((value) => value + 1);
+    });
+  }
+
   async function saveFeed(event: React.FormEvent) {
     event.preventDefault();
     const validationError = validateForm(form);
@@ -336,7 +495,7 @@ export default function FeedsPage() {
       <PageContainer className="space-y-8">
         <PageHeader
           title="منابع خبری"
-          description="هر کارت یک منبع و یک موضوع است. چند فید با موضوع یکسان، مثلاً سه فید اجتماعی، با هم نمایش داده می‌شوند و با یک دکمه روشن یا خاموش می‌شوند."
+          description="از منابع آمادهٔ داخلی و بین‌المللی انتخاب کنید یا منبع اختصاصی اضافه کنید. با فعال‌کردن منبع، خبرهای آن در میز خبر دریافت می‌شوند. فیدهای هم‌موضوع هر منبع با هم فعال یا غیرفعال می‌شوند."
           icon={Rss}
           actions={
             <Button className="shrink-0" onClick={() => openCreate()}>
@@ -363,15 +522,71 @@ export default function FeedsPage() {
             onTopicsChange={setSelectedTopics}
             topicOptions={labelOptions}
           />
+          {bulkEditEnabledCount > 0 || (filterBulkActive && bulkToggleTargetCount > 0) ? (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              {bulkEditEnabledCount > 0 ? (
+                <>
+                  <Button type="button" variant="outline" size="sm" onClick={openBulkGroupEdit}>
+                    <SlidersHorizontal className="h-4 w-4" />
+                    ویرایش گروهی
+                  </Button>
+                  <span className="text-xs text-slate-500">
+                    {formatPersianDigits(bulkEditEnabledCount)} منبع فعال
+                    {filterBulkActive ? ' در این فیلتر' : ''}
+                  </span>
+                </>
+              ) : null}
+              {filterBulkActive && bulkToggleTargetCount > 0 ? (
+                <>
+                  {bulkEditEnabledCount > 0 ? <span className="hidden h-4 w-px bg-slate-200 sm:inline" aria-hidden /> : null}
+                  <span className="text-xs text-slate-500">
+                    {formatPersianDigits(bulkToggleTargetCount)} منبع در فیلتر (فعال و غیرفعال)
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    isLoading={busy === 'bulk-filter-toggle'}
+                    onClick={() => void bulkSetFilteredEnabled(true)}
+                  >
+                    <Power className="h-4 w-4 text-emerald-600" />
+                    روشن کردن همه
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    isLoading={busy === 'bulk-filter-toggle'}
+                    onClick={() => void bulkSetFilteredEnabled(false)}
+                  >
+                    <Power className="h-4 w-4 text-slate-400" />
+                    خاموش کردن همه
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex items-center gap-2 border-t border-slate-100 pt-3 text-sm text-slate-500">
             <Radio className="h-4 w-4 shrink-0" />
             <span>
               {catalogBrowseActive
-                ? 'فیدهای کاتالوگ مطابق فیلتر (شامل خاموش برای روشن کردن)'
-                : 'فقط منابع روشن نمایش داده می‌شوند — نوع رسانه یا موضوع را تیک بزنید تا کاتالوگ را مرور کنید'}
+                ? 'منابع مطابق با فیلتر شما، شامل منابع غیرفعال'
+                : 'منابع فعال نمایش داده می‌شوند. برای دیدن سایر منابع، نوع رسانه یا موضوع را انتخاب کنید.'}
             </span>
           </div>
         </Card>
+
+        {notice && (
+          <div
+            role="status"
+            className={cn(
+              'rounded-xl border px-4 py-3 text-sm',
+              notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700',
+            )}
+          >
+            {notice.text}
+          </div>
+        )}
 
         <PlatformFeedsSection
           selectedCatalogGroups={selectedCatalogGroups}
@@ -379,13 +594,14 @@ export default function FeedsPage() {
           labelOptions={labelOptions}
           searchQuery={query}
           includeDisabled={catalogBrowseActive}
+          feedsRevision={platformFeedsRevision}
         />
 
         <section className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">فیدهای اختصاصی سازمان</h2>
-              <p className="mt-1 text-sm text-slate-500">همان فیلتر نوع رسانه و موضوع روی فیدهایی که خود سازمان ساخته اعمال می‌شود.</p>
+              <h2 className="text-lg font-bold text-slate-900">فیدهای اختصاصی میز خبر</h2>
+              <p className="mt-1 text-sm text-slate-500">فیلترهای نوع رسانه و موضوع، روی منابع اختصاصی میز خبر هم اعمال می‌شوند.</p>
             </div>
             <FeedBulkActions
               exportPath="/publishing/news/feeds/export"
@@ -394,7 +610,6 @@ export default function FeedsPage() {
             />
           </div>
 
-        {notice && <div role="status" className={cn('rounded-xl border px-4 py-3 text-sm', notice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700')}>{notice.text}</div>}
         {loadError && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">بارگذاری منابع خبری انجام نشد: {loadError}</div>}
 
         <Card className="overflow-hidden">
@@ -409,7 +624,7 @@ export default function FeedsPage() {
           {isLoading ? (
             <div className="grid min-h-56 place-items-center"><span className="h-9 w-9 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" /></div>
           ) : visibleCustomBuckets.length === 0 ? (
-            <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">فیدی با این فیلتر نیست</h2><p className="mt-2 text-sm text-slate-500">نوع رسانه یا موضوع را عوض کنید، یا منبعی با فیدهای موضوعی اضافه کنید.</p><Button className="mt-5" onClick={() => openCreate()}><Plus className="h-4 w-4" /> افزودن منبع</Button></div>
+            <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center"><span className="grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-slate-400"><Rss className="h-8 w-8" /></span><h2 className="mt-4 font-semibold text-slate-900">فیدی با این فیلتر نیست</h2><p className="mt-2 text-sm text-slate-500">با این فیلترها منبعی پیدا نشد. فیلترها را تغییر دهید یا منبع جدیدی اضافه کنید.</p><Button className="mt-5" onClick={() => openCreate()}><Plus className="h-4 w-4" /> افزودن منبع</Button></div>
           ) : (
             <FeedSourceCardGrid>
               {visibleCustomBuckets.map((bucket) => {
@@ -572,17 +787,17 @@ export default function FeedsPage() {
                     className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600"
                   />
                   <span>
-                    <span className="block text-sm font-semibold text-slate-900">استفاده از پیش‌فرض پایش و اتوماسیون سازمان</span>
+                    <span className="block text-sm font-semibold text-slate-900">استفاده از پیش‌فرض پایش و خودکارسازی میز خبر</span>
                     <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">با تغییر تنظیمات در «تنظیمات انتشار → پایش خبر»، همین منبع هم به‌روز می‌شود.</span>
                   </span>
                 </label>
                 <label className="grid gap-1.5 text-sm font-medium text-slate-700">فاصله پایش (دقیقه)<input type="number" min="5" max="1440" required dir="ltr" disabled={form.useOrganizationDefaults} className="rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 disabled:bg-slate-100 disabled:text-slate-500" value={form.pollIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, pollIntervalMinutes: event.target.value, useOrganizationDefaults: false }))} /><span className="text-xs font-normal text-slate-500">بین ۵ دقیقه تا ۲۴ ساعت</span></label>
-                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">اتوماسیون این منبع</legend><div className="grid gap-3 sm:grid-cols-2">{[
+                <fieldset><legend className="mb-3 text-sm font-medium text-slate-700">خودکارسازی این منبع</legend><div className="grid gap-3 sm:grid-cols-2">{[
                   ['autoPoll', 'پایش خودکار', 'منبع طبق فاصله زمانی بالا به‌صورت خودکار بررسی شود.'],
                   ['autoPrepare', 'آماده‌سازی خودکار', 'مطالب جدید بدون دخالت کاربر آماده شوند.'],
                   ['autoPublish', 'انتشار خودکار', 'خبر آماده در سایت منتشر شود.'],
-                  ['autoSendSocial', 'ارسال خودکار به استودیوی اجتماعی', 'خبر آماده برای انتشار در شبکه‌های اجتماعی ارسال شود.'],
-                ].map(([key, label, description]) => { const field = key as keyof Pick<FeedForm, 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial'>; return <label key={key} className={cn('flex items-start gap-3 rounded-2xl border border-slate-200 p-4', form.useOrganizationDefaults ? 'bg-slate-50 opacity-90' : 'cursor-pointer hover:border-primary-300')}><input type="checkbox" disabled={form.useOrganizationDefaults} checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked, useOrganizationDefaults: false }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" /><span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{description}</span></span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">اگر «پیش‌فرض سازمان» فعال باشد، مقادیر از تنظیمات انتشار خوانده می‌شوند. برای تنظیم اختصاصی، تیک پیش‌فرض را بردارید یا یکی از گزینه‌ها را تغییر دهید.</p></fieldset>
+                  ['autoSendSocial', 'ارسال خودکار به استودیوی اجتماعی', 'خبر بررسی و انتشار در شبکه‌های اجتماعی ارسال شود.'],
+                ].map(([key, label, description]) => { const field = key as keyof Pick<FeedForm, 'autoPoll' | 'autoPrepare' | 'autoPublish' | 'autoSendSocial'>; return <label key={key} className={cn('flex items-start gap-3 rounded-2xl border border-slate-200 p-4', form.useOrganizationDefaults ? 'bg-slate-50 opacity-90' : 'cursor-pointer hover:border-primary-300')}><input type="checkbox" disabled={form.useOrganizationDefaults} checked={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.checked, useOrganizationDefaults: false }))} className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600" /><span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-1 block text-xs font-normal leading-5 text-slate-500">{description}</span></span></label>; })}</div><p className="mt-3 text-xs leading-5 text-slate-500">اگر «پیش‌فرض میز خبر» فعال باشد، مقادیر از تنظیمات انتشار خوانده می‌شوند. برای تنظیم اختصاصی، تیک پیش‌فرض را بردارید یا یکی از گزینه‌ها را تغییر دهید.</p></fieldset>
               </ModalBody>
               <ModalFooter className="flex items-center justify-between gap-2">
                 <Button type="button" variant="outline" isLoading={busy === 'probe'} onClick={() => void probeSource()}><HeartPulse className="h-4 w-4" /> آزمایش منبع</Button>
@@ -633,6 +848,32 @@ export default function FeedsPage() {
               </ModalFooter>
             </div>
           )}
+        </Modal>
+
+        <Modal open={bulkEditOpen} onClose={() => setBulkEditOpen(false)} size="md" closeOnBackdrop={busy !== 'bulk-group-edit'}>
+          <form onSubmit={(event) => void saveBulkGroupEdit(event)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ModalHeader
+              title="ویرایش گروهی پایش و خودکارسازی"
+              description={
+                filterBulkActive
+                  ? `تنظیمات زیر روی ${formatPersianDigits(bulkEditEnabledCount)} منبع فعال در فیلتر فعلی (کاتالوگ${canManagePlatformFeeds ? '' : ' — فقط اختصاصی'} و اختصاصی) اعمال می‌شود.`
+                  : `تنظیمات زیر روی ${formatPersianDigits(bulkEditEnabledCount)} منبع فعال فعلی اعمال می‌شود.`
+              }
+              onClose={() => setBulkEditOpen(false)}
+            />
+            <ModalBody className="max-h-[min(70vh,640px)] overflow-y-auto p-6">
+              <FeedMonitoringSettingsForm
+                values={bulkEditForm}
+                orgPollMinutes={orgPollMinutes}
+                settingsModeName="bulkSettingsMode"
+                onChange={(patch) => setBulkEditForm((current) => ({ ...current, ...patch }))}
+              />
+            </ModalBody>
+            <ModalFooter className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setBulkEditOpen(false)}>انصراف</Button>
+              <Button type="submit" isLoading={busy === 'bulk-group-edit'}>اعمال روی همه</Button>
+            </ModalFooter>
+          </form>
         </Modal>
       </PageContainer>
     </ProtectedLayout>

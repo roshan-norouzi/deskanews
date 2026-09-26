@@ -149,7 +149,7 @@ export function FeedChannelFields({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-700">آدرس‌های RSS</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">هر آدرس لیبل موضوعی خودش را دارد. چند آدرس می‌توانند یک موضوع مشترک داشته باشند.</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">هر آدرس برچسب موضوعی خودش را دارد. چند آدرس می‌توانند یک موضوع مشترک داشته باشند.</p>
         </div>
         <Button type="button" size="sm" variant="secondary" onClick={() => onChange([...channels, { url: '', topicLabel: '' }])}>
           <Plus className="h-4 w-4" />
@@ -166,13 +166,13 @@ export function FeedChannelFields({
             value={channel.url}
             onChange={(event) => onChange(channels.map((row, rowIndex) => rowIndex === index ? { ...row, url: event.target.value } : row))}
           />
-          <label className="grid gap-1.5 text-sm font-medium text-slate-700">لیبل موضوعی
+          <label className="grid gap-1.5 text-sm font-medium text-slate-700">برچسب موضوعی
             <select
               value={channel.topicLabel}
               onChange={(event) => onChange(channels.map((row, rowIndex) => rowIndex === index ? { ...row, topicLabel: event.target.value } : row))}
               className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-primary-500"
             >
-              <option value="">بدون لیبل</option>
+              <option value="">بدون برچسب</option>
               {labelOptions.map((label) => <option key={label} value={label}>{label}</option>)}
             </select>
           </label>

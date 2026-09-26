@@ -3,627 +3,192 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>دسکا | میز خبر هوشمند</title>
-  <meta name="description" content="دسکا به خبرنگاران و سردبیران کمک می‌کند منبع را ببینند، خبر را آماده کنند و در سایت یا شبکه‌های اجتماعی منتشر کنند — بدون آشفتگی ابزارهای پراکنده.">
-  <meta name="theme-color" content="#4f46e5">
+  <meta name="theme-color" content="#f5f8ff">
+  <title>دسکا | میز خبر هوشمند — از پایش تا انتشار</title>
+  <meta name="description" content="میز خبر بسازید، منابع دلخواهتان را فعال کنید و خبرها را برای سایت و شبکه‌های اجتماعی آماده و منتشر کنید؛ خودتان پیش بروید یا مسیر را خودکار کنید.">
+  <meta property="og:title" content="دسکا؛ میز خبر هوشمند — از پایش تا انتشار">
+  <meta property="og:image" content="assets/deska-symbol.png">
   <link rel="canonical" href="https://deska.ir/">
-  <meta property="og:title" content="دسکا | میز خبر هوشمند">
-  <meta property="og:description" content="راه‌حل دسکا برای چالش‌های روزمره تحریریه‌های ایران: پایش، آماده‌سازی و انتشار.">
+  <meta property="og:description" content="منابع خبری دلخواهتان را فعال کنید تا خبرهایشان وارد میز خبر شود؛ ترجمه، بازنویسی و انتشار را در یک جا انجام دهید.">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="fa_IR">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="assets/deska-symbol.png" type="image/png">
+  <link rel="preload" href="assets/vazirmatn-arabic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=20260926-hero">
 </head>
 <body>
-  <a class="skip-link" href="#main">رفتن به محتوا</a>
-  <div class="page-glow" aria-hidden="true"></div>
+  <div id="top" class="page-top-anchor" tabindex="-1"></div>
+  <a class="skip-link" href="#main">رفتن به محتوای اصلی</a>
+  <!-- Shared symbols: icons remain local and need no library or network. -->
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></symbol>
+    <symbol id="i-diagonal" viewBox="0 0 24 24"><path d="M17 17 7 7m0 10V7h10"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3ZM20 2v4m-2-2h4"/></symbol>
+    <symbol id="i-rss" viewBox="0 0 24 24"><path d="M4 4a16 16 0 0 1 16 16M4 10a10 10 0 0 1 10 10"/><circle cx="5" cy="19" r="1.5"/></symbol>
+    <symbol id="i-news" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h3m3 0h2M8 18h8"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 10 5-10 5L2 8l10-5Zm-10 9 10 5 10-5M2 16l10 5 10-5"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m21 3-6 18-4-8-8-4 18-6ZM11 13 21 3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 5 5 3-3 4 4"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h7m4 0h5M4 17h3m4 0h9"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-instagram" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 10 7-10 7V5Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </defs></svg>
 
-  <header class="site-header" id="header">
-    <div class="container header-inner">
-      <a class="brand" href="#top" aria-label="دسکا">
-        <span class="brand-mark">د</span>
-        <span class="brand-text">دسکا</span>
-      </a>
-      <nav class="nav" id="nav" aria-label="منوی اصلی">
-        <a href="#solutions">راه‌حل‌ها</a>
-        <a href="#benefits">مزیت‌ها</a>
-        <a href="#audience">مخاطبان</a>
-        <a href="#pricing">پلن‌ها</a>
-        <a href="#faq">پرسش‌ها</a>
+  <!-- 01 / Navigation -->
+  <header class="site-header" id="site-header">
+    <div class="container nav-bar">
+      <a class="brand" href="#top" aria-label="دسکا، ابتدای صفحه"><img class="brand-logo" src="assets/deska-wordmark.png" width="186" height="76" alt="Deska.ir؛ میز خبر هوشمند"></a>
+      <nav id="main-nav" class="main-nav" aria-label="فهرست اصلی">
+        <a href="#workflow">چطور کار می‌کند؟</a><a href="#source-catalog">منابع</a><a href="#features">امکانات</a><a href="#audiences">برای چه کسانی است؟</a><a href="#faq">پرسش‌ها</a>
       </nav>
-      <div class="header-actions">
-        <button class="icon-btn" id="themeToggle" type="button" aria-label="تغییر حالت تاریک">
-          <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-          <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
-        </button>
-        <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="mobileNav" aria-label="باز کردن منو">
-          <span></span><span></span><span></span>
-        </button>
-        <a class="btn btn-primary" href="https://app.deska.ir">ورود به دسکا</a>
-      </div>
-    </div>
-    <div class="mobile-nav" id="mobileNav" hidden>
-      <a href="#solutions">راه‌حل‌ها</a>
-      <a href="#benefits">مزیت‌ها</a>
-      <a href="#audience">مخاطبان</a>
-      <a href="#pricing">پلن‌ها</a>
-      <a href="#faq">پرسش‌ها</a>
-      <a href="https://app.deska.ir">ورود به دسکا</a>
+      <div class="nav-actions"><a class="nav-login" href="https://app.deska.ir/login" data-app-link>ورود به دسکا <svg class="icon"><use href="#i-diagonal"/></svg></a><button id="menu-toggle" class="menu-toggle" aria-label="باز کردن فهرست" aria-expanded="false" aria-controls="main-nav"><span></span><span></span></button></div>
     </div>
   </header>
 
   <main id="main">
-    <section class="hero" id="top">
-      <div class="hero-bg" aria-hidden="true">
-        <div class="orb orb-a"></div>
-        <div class="orb orb-b"></div>
-        <div class="grid-fade"></div>
+    <!-- 02 / Hero -->
+    <section class="hero container" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="status-dot"></span> دسکا؛ میز خبر هوشمند <span class="eyebrow-line"></span></div>
+        <h1 id="hero-title" class="hero-title"><span class="hero-title-line">از پایش خبر تا انتشار،</span><span class="hero-title-line">همه‌چیز در یک <span class="emphasis">میز خبر<svg viewBox="0 0 220 14" aria-hidden="true"><path d="M3 10Q98-4 217 7"/></svg></span></span></h1>
+        <p class="hero-description">منابع خبری دلخواهتان را فعال کنید تا خبرهایشان وارد میز خبر شود؛ تیتر و خلاصه را فارسی می‌خوانید و برای سایت و شبکه‌های اجتماعی آماده می‌کنید. می‌توانید خودتان پیش بروید یا مسیر را خودکار کنید.</p>
+        <div class="hero-actions"><a class="button button-primary" href="https://app.deska.ir/login" data-app-link>ورود به میز خبر <svg class="icon"><use href="#i-arrow"/></svg></a><a class="button button-text" href="#workflow"><span class="play-circle"><svg class="icon"><use href="#i-play"/></svg></span> ببینید دسکا چطور کار می‌کند</a></div>
+        <div class="hero-footnote"><span><svg class="icon"><use href="#i-check"/></svg> مناسب تحریریه و تیم ارتباطات</span><span><svg class="icon"><use href="#i-check"/></svg> انتشار خودکار در صورت نیاز</span></div>
       </div>
-      <div class="container hero-grid">
-        <div class="hero-copy reveal">
-          <p class="eyebrow"><span class="live-dot"></span> دسکا · راه‌حل روزنامه‌نگاری دیجیتال</p>
-          <h1>میز خبر هوشمند<br><span class="grad">برای رسانه‌های ایران</span></h1>
-          <p class="lead">خبرنگار و سردبیر با دسکا منبع را می‌بیند، متن را آماده می‌کند و در سایت خبری منتشر می‌کند — یا در استودیوی اجتماعی دسکا برای شبکه‌های اجتماعی کپشن و تصویر می‌سازد. کمتر رونوشت دستی، کمتر عقب ماندن از خبر.</p>
-          <div class="hero-cta">
-            <a class="btn btn-primary btn-lg" href="https://app.deska.ir">شروع با دسکا</a>
-            <button class="btn btn-ghost btn-lg" id="demoBtn" type="button">مشاهده دموی میز خبر</button>
-          </div>
-          <ul class="hero-pills">
-            <li>میز خبر برای سایت</li>
-            <li>استودیوی اجتماعی مستقل</li>
-            <li>فارسی و راست‌چین</li>
-          </ul>
+      <div class="hero-art" aria-label="نمایش مفهومی جریان خبر از منابع مختلف به میز خبر دسکا">
+        <div class="art-grid" aria-hidden="true"></div>
+        <div class="orbital-ring ring-one" aria-hidden="true"></div><div class="orbital-ring ring-two" aria-hidden="true"></div>
+        <canvas id="news-globe" aria-hidden="true"></canvas>
+        <div class="globe-label" aria-hidden="true"><span class="status-dot"></span><span dir="ltr">CONNECTED NEWSROOM</span></div>
+        <div class="floating-card source-card"><span class="tile-icon"><svg class="icon"><use href="#i-rss"/></svg></span><div><small>خبرگزاری، وب‌سایت، تلگرام و X</small><strong>حدود ۲۵۰ منبع آماده</strong><span class="source-tags"><b>RSS</b><b>وب‌سایت</b><b>تلگرام</b><b>X</b></span></div><span class="tiny-plus">+</span></div>
+        <div class="floating-card ai-card"><span class="ai-spark"><svg class="icon"><use href="#i-spark"/></svg></span><div><small>در میز خبر</small><strong>ترجمه، خلاصه و بازنویسی فارسی</strong><div class="processing-lines" aria-hidden="true"><i></i><i></i><i></i></div></div><span class="mini-badge">آمادهٔ بررسی</span></div>
+        <div class="floating-card publish-card"><span class="success-icon"><svg class="icon"><use href="#i-check"/></svg></span><div><strong>انتشار در سایت یا شبکهٔ اجتماعی</strong><small>مقصد را خودتان انتخاب می‌کنید</small></div></div>
+        <span class="art-coordinate coordinate-one" aria-hidden="true">DESKA / INTELLIGENCE</span><span class="art-coordinate coordinate-two" aria-hidden="true">SOURCE → STORY → AUDIENCE</span>
+        <span class="sample-label">تصویر مفهومی گردش کار</span>
+      </div>
+    </section>
+
+    <!-- 03 / Audience introduction, not customer endorsements -->
+    <section class="audience-strip container" aria-label="مخاطبان دسکا"><p>برای کار روزانهٔ<br><strong>رسانه‌ها و تیم‌های ارتباطات</strong> ساخته شده است</p><div class="audience-names"><span>روزنامه‌ها</span><span>خبرگزاری‌ها</span><span>خبرنگاران</span><span>آژانس‌های خبری</span><span>روابط عمومی‌ها</span><span>تیم‌های ارتباطات</span></div></section>
+
+    <!-- 03 / Interactive product tour; content is illustrative, not a live account -->
+    <section class="workflow section-space" id="workflow" aria-labelledby="workflow-title">
+      <div class="container">
+        <div class="section-heading centered reveal"><span class="eyebrow">چطور کار می‌کند؟</span><h2 id="workflow-title">خبر را در میز خبر می‌گیرید،<br><span class="text-muted">آماده می‌کنید و منتشر می‌کنید</span></h2><p>منبع را فعال کنید تا خبرها وارد میز خبر شوند؛ بعد می‌توانید به سایت بفرستید یا برای شبکه‌های اجتماعی در استودیو آماده کنید.</p></div>
+        <div class="workflow-tabs" role="tablist" aria-label="مراحل کار با دسکا">
+          <button role="tab" id="step-sources" aria-selected="true" aria-controls="workflow-panel" data-step="sources"><span>۰۱</span><svg class="icon"><use href="#i-rss"/></svg> پایش منابع</button>
+          <button role="tab" id="step-prepare" aria-selected="false" aria-controls="workflow-panel" data-step="prepare" tabindex="-1"><span>۰۲</span><svg class="icon"><use href="#i-spark"/></svg> آماده‌سازی</button>
+          <button role="tab" id="step-studio" aria-selected="false" aria-controls="workflow-panel" data-step="studio" tabindex="-1"><span>۰۳</span><svg class="icon"><use href="#i-layers"/></svg> استودیوی اجتماعی</button>
+          <button role="tab" id="step-publish" aria-selected="false" aria-controls="workflow-panel" data-step="publish" tabindex="-1"><span>۰۴</span><svg class="icon"><use href="#i-send"/></svg> انتشار</button>
         </div>
-        <div class="hero-visual reveal" id="productVisual">
-          <div class="float-chip chip-1"><span class="chip-dot green"></span> آماده بررسی سردبیر</div>
-          <div class="float-chip chip-2"><span class="chip-dot violet"></span> آماده‌سازی خبر</div>
-          <div class="float-chip chip-3"><span class="chip-dot blue"></span> سایت مقصد متصل</div>
-          <div class="device" id="heroDevice">
-            <div class="device-bar">
-              <span></span><span></span><span></span>
-              <p>دسکا · میز خبر</p>
-            </div>
-            <div class="app-shell">
-              <aside class="app-side">
-                <div class="side-logo">د</div>
-                <span class="side-item"></span>
-                <span class="side-item on"></span>
-                <span class="side-item"></span>
-              </aside>
-              <div class="app-main">
-                <div class="app-head">
-                  <strong>میز خبر دسکا</strong>
-                  <span>منبع → آماده‌سازی → انتشار در سایت</span>
-                </div>
-                <div class="filters">
-                  <span class="pill on">آماده اقدام</span>
-                  <span class="pill">در پردازش</span>
-                  <span class="pill">منتشرشده</span>
-                </div>
-                <article class="story live">
-                  <div class="thumb t1"></div>
-                  <div>
-                    <h3>تیم ملی در بازی دوستانه پیروز شد</h3>
-                    <p>منبع خبرگزاری · چند دقیقه پیش</p>
-                    <b class="tag ok">آماده بررسی</b>
-                  </div>
-                </article>
-                <article class="story">
-                  <div class="thumb t2"></div>
-                  <div>
-                    <h3>خبر بین‌المللی در صف ترجمه</h3>
-                    <p>منبع خارجی · در حال آماده‌سازی</p>
-                    <b class="tag wait">آماده‌سازی</b>
-                  </div>
-                </article>
-              </div>
+        <div class="product-window reveal">
+          <div class="window-bar"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><span dir="ltr">DESKA WORKSPACE</span><span class="demo-label">پیش‌نمایش تعاملی · نمونه از خبرهای واقعی فید عمومی</span></div>
+          <div class="product-body">
+            <aside class="product-sidebar" aria-hidden="true"><div class="workspace-brand"><img src="assets/deska-symbol.png" alt="" width="29" height="29"><b>دسکا</b></div><span class="workspace-label">میز خبر</span><div class="sidebar-item" data-sidebar="sources"><svg class="icon"><use href="#i-rss"/></svg> منابع خبری</div><div class="sidebar-item" data-sidebar="prepare"><svg class="icon"><use href="#i-news"/></svg> میز خبر</div><div class="sidebar-item" data-sidebar="studio"><svg class="icon"><use href="#i-layers"/></svg> استودیوی اجتماعی</div><div class="sidebar-item" data-sidebar="publish"><svg class="icon"><use href="#i-send"/></svg> انتشار</div><div class="sidebar-bottom"><span class="avatar">ت</span><div>تیم تحریریه<small>میز خبر تیم</small></div></div></aside>
+            <div class="workspace-content" id="workflow-panel" role="tabpanel" aria-labelledby="step-sources" tabindex="0">
+              <div class="workspace-top"><div><span class="workspace-overline">منابعی که فعال کرده‌اید، اینجا دیده می‌شوند</span><h3>تیتر و خلاصهٔ فارسی را همین‌جا بخوانید</h3></div><span class="workspace-chip"><span class="status-dot"></span> پایش منابع</span></div>
+              <div class="mock-search"><svg class="icon"><use href="#i-search"/></svg> در خبرها، منابع و موضوعات جست‌وجو کنید <span>⌘ K</span></div>
+              <div class="news-table"><div class="table-header"><span>آخرین خبرهای دریافتی</span><span>منبع / زبان</span></div><article class="news-row"><span class="news-source-icon"><img src="assets/source-logos/theguardian-com.png?v=20260926-1" alt="" loading="lazy" decoding="async" onerror="this.remove();this.nextElementSibling.hidden=false"><span hidden>گ</span></span><div><small><b class="news-source-name">گاردین (بریتانیا)</b> · EN · بین‌الملل</small><h4>بزرگسالان برای فاصله‌گرفتن از پیمایش مداوم، به لگو، ماشین‌های کنترلی و خیاطی روی می‌آورند</h4><p>تیتر و خلاصهٔ فارسی در میز خبر آمادهٔ بررسی است</p></div><span class="row-badge">EN</span></article><article class="news-row"><span class="news-source-icon orange"><img src="assets/source-logos/spiegel-de.png?v=20260926-1" alt="" loading="lazy" decoding="async" onerror="this.remove();this.nextElementSibling.hidden=false"><span hidden>ا</span></span><div><small><b class="news-source-name">اشپیگل (آلمان)</b> · DE · جامعه</small><h4>ویسبادن: باکتری کشف شد؛ از مردم خواسته شد آب لوله‌کشی را بجوشانند</h4><p>تیتر و خلاصهٔ فارسی در میز خبر آمادهٔ بررسی است</p></div><span class="row-badge">DE</span></article><article class="news-row"><span class="news-source-icon blue"><img src="assets/source-logos/annahar-com.png?v=20260926-1" alt="" loading="lazy" decoding="async" onerror="this.remove();this.nextElementSibling.hidden=false"><span hidden>ن</span></span><div><small><b class="news-source-name">النهار (لبنان)</b> · AR · اقتصاد</small><h4>نفت بر دلار فشار می‌آورد؛ انتظار می‌رود نرخ‌های بهره افزایش یابد</h4><p>تیتر و خلاصهٔ فارسی در میز خبر آمادهٔ بررسی است</p></div><span class="row-badge">AR</span></article><article class="news-row"><span class="news-source-icon"><img src="assets/source-logos/france24-com.png?v=20260926-1" alt="" loading="lazy" decoding="async" onerror="this.remove();this.nextElementSibling.hidden=false"><span hidden>ف</span></span><div><small><b class="news-source-name">فرانس ۲۴ (فرانسه)</b> · FR · جهان</small><h4>اورور لالوک: «حذف نابرابری‌های غیرقابل‌قبول»، راه مقابله با رشد پوپولیسم‌هاست</h4><p>تیتر و خلاصهٔ فارسی در میز خبر آمادهٔ بررسی است</p></div><span class="row-badge">FR</span></article><article class="news-row"><span class="news-source-icon blue"><img src="assets/source-logos/isna-ir.png?v=20260926-1" alt="" loading="lazy" decoding="async" onerror="this.remove();this.nextElementSibling.hidden=false"><span hidden>ا</span></span><div><small><b class="news-source-name">ایسنا</b> · FA · ایران</small><h4>صدای مطالبه پسته‌کاران رفسنجان درباره رفع تعهد ارزی را به وزیر اقتصاد می‌رسانم</h4><p>تیتر و خلاصهٔ فارسی در میز خبر آمادهٔ بررسی است</p></div><span class="row-badge">FA</span></article></div>
+              <div class="workspace-note"><svg class="icon"><use href="#i-sliders"/></svg> این‌ها نمونه از خبرهای واقعی فیدهای عمومی است؛ منابع را بر اساس زبان و موضوع موردنظرتان انتخاب کنید.</div>
             </div>
           </div>
         </div>
+        <div class="tour-caption"><span><span class="status-dot"></span> هر مرحله را انتخاب کنید تا ببینید در میز خبر چه می‌گذرد.</span><span>از منبع تا انتشار <svg class="icon"><use href="#i-arrow"/></svg></span></div>
       </div>
     </section>
 
-    <section class="section" id="solutions">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">دو راه‌حل دسکا</p>
-          <h2>میز خبر و استودیوی اجتماعی — دو مسیر جدا برای دو نیاز تحریریه</h2>
-          <p>دسکا یک ابزار فنی عمومی نیست؛ برای دو کار روزمره خبرنگاران ساخته شده: انتشار روی سایت خبری، و تولید محتوا برای شبکه‌های اجتماعی.</p>
-        </header>
-        <div class="solution-duo">
-          <article class="solution-card reveal">
-            <div class="solution-icon indigo">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16M6 18V8l6-4 6 4v10"/></svg>
-            </div>
-            <h3>میز خبر دسکا</h3>
-            <p class="solution-lead">برای سردبیر و خبرنگارانی که خبر را روی سایت منتشر می‌کنند.</p>
-            <ol class="solution-flow">
-              <li><span>۱</span> منبع را می‌دهید — فید، سایت، تلگرام یا ایکس</li>
-              <li><span>۲</span> خبر وارد میز خبر دسکا می‌شود</li>
-              <li><span>۳</span> آماده‌سازی، ویرایش و تأیید سردبیر</li>
-              <li><span>۴</span> انتشار در سایت مقصد — ایران‌سامانه، نستوه یا وردپرس</li>
-            </ol>
-          </article>
-          <article class="solution-card reveal">
-            <div class="solution-icon pink">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
-            </div>
-            <h3>استودیوی اجتماعی دسکا</h3>
-            <p class="solution-lead">برای تیم دیجیتال و خبرنگارانی که محتوای شبکه اجتماعی می‌سازند.</p>
-            <ol class="solution-flow">
-              <li><span>۱</span> منبع مستقل می‌دهید — جدا از میز خبر</li>
-              <li><span>۲</span> مطالب برای شبکه‌های اجتماعی دریافت می‌شود</li>
-              <li><span>۳</span> کپشن نوشته می‌شود و قالب تصویری فوتویر برای کاور ساخته می‌شود</li>
-              <li><span>۴</span> انتشار در تلگرام، اینستاگرام، لینکدین یا فیسبوک</li>
-            </ol>
-          </article>
-        </div>
+    <section class="source-catalog container section-space reveal" id="source-catalog" aria-labelledby="source-catalog-title">
+      <div class="source-catalog-heading">
+        <div class="section-heading"><span class="eyebrow">منابع آماده</span><h2 id="source-catalog-title">حدود ۲۵۰ منبع برای<br><span class="text-muted">شروع سریع میز خبر</span></h2></div>
+        <p>منابع خبری دلخواهتان را فعال کنید تا خبرهایشان وارد میز خبر شود. منابع اختصاصی خودتان را هم اضافه کنید.</p>
+      </div>
+      <div class="source-catalog-meta"><strong>حدود ۲۵۰ منبع آماده</strong><span>داخلی · بین‌المللی · نهاد و شرکت · تلگرام · X</span><span class="source-catalog-live"><span class="status-dot"></span> نمونه‌ها هر چند ثانیه عوض می‌شوند</span></div>
+      <div class="source-logo-grid" id="source-grid" aria-live="polite" aria-label="نمونه‌ای از منابع آماده">
+        <article class="source-logo-card"><span class="source-logo-fallback">ب</span><span>بی‌بی‌سی نیوز</span></article>
+        <article class="source-logo-card"><span class="source-logo-fallback">ا</span><span>ایرنا</span></article>
+        <article class="source-logo-card"><span class="source-logo-fallback">ر</span><span>رویترز</span></article>
+        <article class="source-logo-card"><span class="source-logo-fallback">ج</span><span>الجزیره</span></article>
+        <article class="source-logo-card"><span class="source-logo-fallback">م</span><span>مهر</span></article>
+        <article class="source-logo-card"><span class="source-logo-fallback">ا</span><span>آسوشیتدپرس</span></article>
+      </div>
+      <p class="source-catalog-note">این بخش نمونه‌ای از فهرست منابع دسکا را نشان می‌دهد؛ هر بار چیدمان دیگری از منابع را می‌بینید.</p>
+    </section>
+
+    <!-- 04b / Organization and team onboarding -->
+    <section class="organization-section container section-space" id="organization" aria-labelledby="organization-title">
+      <div class="section-heading reveal">
+        <span class="eyebrow">میز خبرتان را بسازید</span>
+        <h2 id="organization-title">میز خبر خودتان را بسازید<br><span class="text-muted">یا به میز خبر تیم دیگری بپیوندید</span></h2>
+        <p>با ثبت‌نام میز خبر جدید می‌سازید یا به میزی که دعوت شده‌اید می‌روید؛ همان‌جا با تیم کار می‌کنید.</p>
+      </div>
+      <ol class="organization-steps reveal">
+        <li><span class="step-number">۰۱</span><div><h3>میز خبر بسازید یا به میز خبر دیگری بپیوندید</h3><p>با یک حساب به همهٔ میزهای خبری که عضو هستید دسترسی دارید و هر وقت بخواهید بین آن‌ها جابه‌جا می‌شوید.</p></div></li>
+        <li><span class="step-number">۰۲</span><div><h3>همکاران را اضافه کنید و دسترسی هر نفر را مشخص کنید</h3><p>مدیر میز خبر تعیین می‌کند هر کس به کدام بخش‌ها — از منابع تا انتشار — دسترسی داشته باشد.</p></div></li>
+        <li><span class="step-number">۰۳</span><div><h3>منابع و مقصد انتشار را برای میز خبر تنظیم کنید</h3><p>منابع آماده را فعال کنید، منبع اختصاصی اضافه کنید و سایت یا شبکهٔ اجتماعی را برای انتشار وصل کنید.</p></div></li>
+      </ol>
+    </section>
+
+    <!-- 05 / Feature cards -->
+    <section id="features" class="features section-space container" aria-labelledby="features-title">
+      <div class="section-heading split-heading reveal"><div><span class="eyebrow">امکانات دسکا</span><h2 id="features-title">کار روزانهٔ تحریریه<br><span class="text-muted">در یک میز خبر</span></h2></div><p>منابع، آماده‌سازی متن، کاور و انتشار را در یک جا انجام می‌دهید.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card feature-ai reveal"><div class="card-topline"><span class="tile-icon"><svg class="icon"><use href="#i-spark"/></svg></span><span class="small-label">دستیار تحریریه</span></div><h3>خبر هر زبانی را<br>در میز خبر فارسی بخوانید</h3><p>تیتر و خلاصهٔ فارسی را می‌بینید و متن کامل را برای انتشار آماده می‌کنید. برای خبر فارسی هم می‌توانید نسخه‌ای با نگارش تازه بسازید و همان اطلاعات خبر را حفظ کنید.</p><p class="language-list">انگلیسی، عربی، فرانسوی، ژاپنی، آلمانی، چینی، ترکی و هر زبان دیگر</p><div class="rewrite-demo"><div class="rewrite-before"><span class="language-tag">EN</span><p dir="ltr">A new chapter for digital journalism.</p></div><div class="rewrite-connector"><span></span><svg class="icon"><use href="#i-spark"/></svg><span></span></div><div class="rewrite-after"><span class="language-tag">فا</span><p>فصلی تازه برای روزنامه‌نگاری دیجیتال</p><svg class="icon"><use href="#i-check"/></svg></div><span class="mini-caption">نمونهٔ نمایشی · بازبینی نهایی با شماست</span></div></article>
+        <article class="feature-card feature-sources reveal"><div class="card-topline"><span class="tile-icon"><svg class="icon"><use href="#i-globe"/></svg></span><span class="small-label">پایش هدفمند</span></div><h3>حدود ۲۵۰ منبع آماده<br>برای شروع سریع</h3><p>منابع خبری دلخواهتان را فعال کنید تا خبرهایشان وارد میز خبر شود. منابع اختصاصی خودتان را هم اضافه کنید.</p><div class="filter-visual"><span class="filter-label"><svg class="icon"><use href="#i-sliders"/></svg> فیلتر منابع</span><div><span class="filter-chip">+ فناوری</span><span class="filter-chip">+ رسانه</span><span class="filter-chip excluded">− تبلیغات</span></div><div class="filter-result"><span class="status-dot"></span> فقط خبرهایی که فیلتر کرده‌اید می‌آیند</div></div></article>
+        <article class="feature-card feature-studio reveal"><div class="card-topline"><span class="tile-icon"><svg class="icon"><use href="#i-image"/></svg></span><span class="small-label">استودیوی اجتماعی</span></div><h3>کپشن و کاور<br>برای شبکه‌های اجتماعی</h3><p>خبر را از میز خبر به استودیو بفرستید یا منبع اختصاصی برای استودیو اضافه کنید. قالب کپشن و تصویر را یک‌بار تنظیم می‌کنید تا خروجی با ظاهر رسانهٔ شما آماده شود.</p><div class="cover-stack" aria-hidden="true"><div class="cover-back"></div><div class="cover-front"><span>دسکا / نمونهٔ کاور</span><div class="cover-sculpture"><i></i><i></i><i></i></div><strong>هوش مصنوعی<br>در تحریریه‌های امروز</strong><span class="cover-bottom">رسانه · فناوری · خبر <b>↖</b></span></div></div></article>
+        <article class="feature-card compact-card reveal"><span class="tile-icon"><svg class="icon"><use href="#i-sliders"/></svg></span><h3>می‌توانید مسیر را خودکار کنید</h3><p>پس از اتصال مقصدها، پایش منبع، ترجمه یا بازنویسی و انتشار در سایت یا شبکهٔ اجتماعی را خودکار فعال می‌کنید و برای هر خبر لازم نیست دوباره همان کارها را تکرار کنید.</p><div class="setting-illustration" aria-hidden="true"><span>آماده‌سازی خودکار</span><span class="illustrated-toggle"></span></div></article>
+        <article class="feature-card compact-card reveal"><span class="tile-icon"><svg class="icon"><use href="#i-shield"/></svg></span><h3>تیم را به میز خبر اضافه کنید</h3><p>میز خبر بسازید یا به میز خبر دیگری بپیوندید؛ مدیر میز خبر همکاران را اضافه می‌کند و مشخص می‌کند هر نفر به کدام بخش‌ها دسترسی داشته باشد.</p><div class="team-illustration" aria-hidden="true"><span>د</span><span>خ</span><span>و</span><small>یک تیم، یک میز خبر</small></div></article>
+        <article class="feature-card compact-card reveal"><span class="tile-icon"><svg class="icon"><use href="#i-activity"/></svg></span><h3>وضعیت کارها را یک‌جا می‌بینید</h3><p>در مرکز عملیات می‌بینید کدام خبر در صف است، اتصال منابع سالم است یا نه، و چه فعالیت‌هایی انجام شده است.</p><div class="activity-illustration" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></article>
       </div>
     </section>
 
-    <section class="section muted" id="benefits">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">چرا دسکا</p>
-          <h2>نیازهای واقعی تحریریه، نه ویژگی‌های اضافی</h2>
-        </header>
-        <div class="bento">
-          <article class="card reveal">
-            <div class="icon-wrap indigo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a8 8 0 0 1 8-8M12 19a8 8 0 0 1-8-8"/><circle cx="12" cy="12" r="3"/></svg></div>
-            <h3>منبع را از دست نمی‌دهید</h3>
-            <p>دیگر لازم نیست بین تلگرام، فید و سایت رقبا جابه‌جا شوید؛ دسکا منبع را می‌بیند و به شما می‌آورد.</p>
-          </article>
-          <article class="card reveal">
-            <div class="icon-wrap violet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M8 7h8M6 12h12"/></svg></div>
-            <h3>زمان ویراستار آزاد می‌شود</h3>
-            <p>خلاصه، ترجمه و بازنویسی اولیه با مدل هوش مصنوعی انجام می‌شود؛ شما روی تأیید و لحن کار می‌کنید.</p>
-          </article>
-          <article class="card reveal">
-            <div class="icon-wrap cyan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/></svg></div>
-            <h3>انتشار سایت یک‌جا می‌شود</h3>
-            <p>میز خبر دسکا مستقیم به سایت خبری شما می‌فرستد — بدون کپی دستی در پنل دیگر.</p>
-          </article>
-          <article class="card reveal">
-            <div class="icon-wrap pink"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg></div>
-            <h3>شبکه اجتماعی جریان خودش را دارد</h3>
-            <p>استودیوی اجتماعی دسکا منبع، کپشن و کاور را یک‌جا می‌گیرد — جدا از میز خبر سایت.</p>
-          </article>
-          <article class="card reveal">
-            <div class="icon-wrap amber"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-            <h3>سردبیر کنترل دارد</h3>
-            <p>نقش مالک، مدیر و کارشناس؛ هر کس فقط همان بخشی را می‌بیند که باید.</p>
-          </article>
-          <article class="card reveal">
-            <div class="icon-wrap green"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-            <h3>گیرکردن کار معلوم می‌شود</h3>
-            <p>مرکز عملیات دسکا نشان می‌دهد کدام خبر در صف است، کدام منتشر شده و کدام متوقف مانده.</p>
-          </article>
-        </div>
+    <!-- 05b / The two independently configurable publishing paths -->
+    <section class="automation-section container reveal" id="automation" aria-labelledby="automation-title">
+      <div class="section-heading split-heading">
+        <div><span class="eyebrow">دو مسیر انتشار</span><h2 id="automation-title">مسیر را یک‌بار تنظیم کنید<br><span class="text-muted">و در صورت نیاز خودکار پیش بروید</span></h2></div>
+        <p>برای سایت یا شبکهٔ اجتماعی مقصد را وصل می‌کنید و مشخص می‌کنید کدام مرحله خودکار باشد؛ بعد از آن خبرها همان مسیر را می‌روند.</p>
       </div>
+      <div class="automation-paths">
+        <article><span class="path-label"><svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg> مسیر انتشار در سایت</span><h3>از منبع خبری تا سایت شما</h3><ol class="automation-steps"><li>دریافت خبر</li><li>ترجمه یا بازنویسی</li><li>آماده‌سازی متن کامل</li><li>انتشار در سایت</li></ol><p>منابعی که فعال کرده‌اید خبر می‌فرستند؛ پس از آماده‌سازی، می‌توانید انتشار در سایت را خودکار کنید.</p></article>
+        <article><span class="path-label"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg> مسیر انتشار در شبکه‌های اجتماعی</span><h3>از میز خبر یا منبع اختصاصی تا شبکهٔ اجتماعی</h3><ol class="automation-steps"><li>ورود مطلب به استودیو</li><li>ساخت کپشن</li><li>ساخت تصویر از قالب</li><li>انتشار اجتماعی</li></ol><p>با قالب کپشن و تصویر میز خبر، برای تلگرام، اینستاگرام، لینکدین و فیسبوک آماده می‌کنید و در صورت تمایل انتشار را خودکار می‌کنید.</p></article>
+      </div>
+      <p class="automation-note"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg> هر مرحله جدا تنظیم می‌شود؛ می‌توانید فقط بخشی از مسیر را خودکار کنید و بقیه را خودتان یا با تیم انجام دهید.</p>
     </section>
 
-    <section class="section" id="features">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">امکانات</p>
-          <h2>آنچه در دسکا برای روزنامه‌نگار آماده است</h2>
-        </header>
-        <div class="feature-list">
-          <article class="feature reveal"><div class="icon-wrap indigo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></div><div><h3>داشبورد تحریریه</h3><p>ورودی میز خبر و استودیو، صف کارها و وضعیت اتصال‌ها در یک نگاه.</p></div></article>
-          <article class="feature reveal"><div class="icon-wrap violet"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a8 8 0 0 1 8-8"/><path d="M4 4v7h7"/></svg></div><div><h3>منابع خبری</h3><p>کاتالوگ ۱۰۰ منبع پیش‌تعریف دسکا به‌علاوه منبع اختصاصی رسانه شما.</p></div></article>
-          <article class="feature reveal"><div class="icon-wrap cyan"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16M6 18V8l6-4 6 4v10"/></svg></div><div><h3>میز خبر</h3><p>مسیر ورودی تا منتشرشده روی سایت — با ویرایش و تأیید سردبیر.</p></div></article>
-          <article class="feature reveal"><div class="icon-wrap pink"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div><div><h3>استودیوی اجتماعی</h3><p>کپشن، قالب تصویری فوتویر و انتشار در چهار شبکه اجتماعی.</p></div></article>
-          <article class="feature reveal"><div class="icon-wrap amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42"/></svg></div><div><h3>تنظیمات انتشار</h3><p>اتصال سایت، شبکه‌ها، دستور آماده‌سازی مدل و اتوماسیون برای هر منبع یا کل سازمان.</p></div></article>
-          <article class="feature reveal"><div class="icon-wrap green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><div><h3>چندرسانه‌ای و نقش‌ها</h3><p>هر رسانه فضای جدا؛ مالک، مدیر و کارشناس با دسترسی متفاوت.</p></div></article>
-        </div>
-      </div>
-    </section>
+    <!-- 06 / Audience-specific stories -->
+    <section class="audiences section-space" id="audiences" aria-labelledby="audiences-title"><div class="container audience-layout">
+      <div class="audience-intro reveal"><span class="eyebrow">کاربرد دسکا برای تیم شما</span><h2 id="audiences-title">برای تحریریه و تیم ارتباطات<br><span>کاربردهای جداگانه دارد</span></h2><p>نوع تیم خود را انتخاب کنید تا ببینید دسکا در کار روزانهٔ شما چه می‌کند.</p><div class="audience-tabs" role="tablist" aria-label="انتخاب نوع تیم" aria-orientation="vertical"><button role="tab" id="audience-media" aria-selected="true" aria-controls="audience-panel" data-audience="media">روزنامه‌ها و خبرگزاری‌ها <svg class="icon"><use href="#i-arrow"/></svg></button><button role="tab" id="audience-reporter" aria-selected="false" aria-controls="audience-panel" data-audience="reporter" tabindex="-1">خبرنگاران و آژانس‌های خبری <svg class="icon"><use href="#i-arrow"/></svg></button><button role="tab" id="audience-pr" aria-selected="false" aria-controls="audience-panel" data-audience="pr" tabindex="-1">روابط عمومی و شرکت‌ها <svg class="icon"><use href="#i-arrow"/></svg></button></div></div>
+      <div class="audience-panel reveal" id="audience-panel" role="tabpanel" aria-labelledby="audience-media" tabindex="0"><span class="panel-index">۰۱ / تحریریه</span><div class="editorial-art" aria-hidden="true"><div class="paper paper-back"></div><div class="paper paper-front"><div class="paper-masthead">روایت امروز <span>نمونهٔ صفحهٔ خبر</span></div><div class="paper-rule"></div><b>خبرها را در میز خبر<br>با هم می‌بینید</b><div class="paper-columns"><i></i><i></i><i></i></div></div><div class="editorial-stamp"><svg class="icon"><use href="#i-check"/></svg> آمادهٔ انتشار</div></div><h3>از پایش منبع تا انتشار در یک میز خبر</h3><p>منابع دلخواهتان را فعال می‌کنید، تیتر و خلاصهٔ فارسی را در میز خبر می‌بینید و خبر را برای سایت یا استودیو آماده می‌کنید. می‌توانید خودتان پیش بروید یا بخشی از مسیر را خودکار کنید.</p><ul class="check-list"><li>انتخاب منابع و موضوعات برای هر تیم</li><li>ترجمهٔ خبر خارجی و بازنویسی خبر فارسی</li><li>انتشار در سایت متصل به میز خبر</li></ul></div>
+    </div></section>
 
-    <section class="section muted" id="audience">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">مخاطب دسکا</p>
-          <h2>مناسب چه کسانی است؟</h2>
-          <p>از میز خبر خبرگزاری تا خبرنگار مستقل — هر کسی که هر روز با «رسیدن خبر» و «رسیدن به انتشار» درگیر است.</p>
-        </header>
-        <div class="audience-grid">
-          <article class="audience-card reveal" style="--accent:#4f46e5">
-            <div class="audience-art a1" aria-hidden="true">
-              <div class="audience-scene">
-                <span class="scene-card c1"></span>
-                <span class="scene-card c2"></span>
-                <span class="scene-card c3"></span>
-              </div>
-              <span class="audience-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16M6 18V8l6-4 6 4v10"/></svg>
-              </span>
-            </div>
-            <div class="audience-body">
-              <span class="audience-tag">تحریریه سازمانی</span>
-              <h3>خبرگزاری و روزنامه</h3>
-              <p>میز خبر دسکا چند منبع را یک‌جا می‌آورد؛ سردبیر قبل از انتشار روی سایت تأیید می‌کند.</p>
-              <ul class="audience-points">
-                <li>چند منبع در یک صف</li>
-                <li>تأیید سردبیر قبل از انتشار</li>
-              </ul>
-            </div>
-          </article>
-          <article class="audience-card reveal" style="--accent:#0891b2">
-            <div class="audience-art a2" aria-hidden="true">
-              <div class="audience-scene scene-globe">
-                <span class="globe-ring"></span>
-                <span class="globe-core"></span>
-              </div>
-              <span class="audience-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
-              </span>
-            </div>
-            <div class="audience-body">
-              <span class="audience-tag">رسانه دیجیتال</span>
-              <h3>پایگاه خبری آنلاین</h3>
-              <p>رصد رقبا و منابع خارجی، ترجمه به فارسی، انتشار در سایت مقصد رسانه.</p>
-              <ul class="audience-points">
-                <li>۲۶ زبان منبع</li>
-                <li>سه سامانه انتشار سایت</li>
-              </ul>
-            </div>
-          </article>
-          <article class="audience-card reveal" style="--accent:#db2777">
-            <div class="audience-art a3" aria-hidden="true">
-              <div class="audience-scene scene-solo">
-                <span class="solo-avatar"></span>
-                <span class="solo-line l1"></span>
-                <span class="solo-line l2"></span>
-              </div>
-              <span class="audience-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              </span>
-            </div>
-            <div class="audience-body">
-              <span class="audience-tag">خبرنگار مستقل</span>
-              <h3>روزنامه‌نگار تک‌نفره</h3>
-              <p>منبع را می‌بینید، متن آماده می‌شود، خودتان ویرایش می‌کنید و روی سایت یا شبکه منتشر می‌کنید — بدون تیم فنی.</p>
-              <ul class="audience-points">
-                <li>پلن آغازین تا ۵ کاربر</li>
-                <li>بدون نیاز به پشتیبانی فنی</li>
-              </ul>
-            </div>
-          </article>
-          <article class="audience-card reveal" style="--accent:#d97706">
-            <div class="audience-art a4" aria-hidden="true">
-              <div class="audience-scene scene-pr">
-                <span class="pr-bubble b1"></span>
-                <span class="pr-bubble b2"></span>
-                <span class="pr-bubble b3"></span>
-              </div>
-              <span class="audience-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
-              </span>
-            </div>
-            <div class="audience-body">
-              <span class="audience-tag">ارتباطات</span>
-              <h3>روابط‌عمومی سازمان</h3>
-              <p>رصد رسانه‌ها و کانال‌ها، آماده‌سازی پیام و انتشار هماهنگ در شبکه‌های اجتماعی.</p>
-              <ul class="audience-points">
-                <li>استودیوی اجتماعی مستقل</li>
-                <li>چهار شبکه انتشار</li>
-              </ul>
-            </div>
-          </article>
-          <article class="audience-card reveal wide" style="--accent:#7c3aed">
-            <div class="audience-art a5" aria-hidden="true">
-              <div class="audience-scene scene-studio">
-                <span class="studio-phone"></span>
-                <span class="studio-cover"></span>
-                <span class="studio-caption"></span>
-              </div>
-              <span class="audience-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-              </span>
-            </div>
-            <div class="audience-body">
-              <span class="audience-tag">تیم دیجیتال</span>
-              <h3>استودیوی شبکه اجتماعی رسانه</h3>
-              <p>استودیوی اجتماعی دسکا منبع، کپشن و قالب تصویری فوتویر را جدا از میز خبر سایت مدیریت می‌کند — برای تیم‌هایی که هر روز چند پست می‌زنند.</p>
-              <ul class="audience-points">
-                <li>کپشن و کاور در یک مسیر</li>
-                <li>جدا از جریان انتشار سایت</li>
-              </ul>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
+    <!-- 07 / Integrations -->
+    <section class="integrations container section-space" id="integrations" aria-labelledby="integrations-title"><div class="section-heading centered reveal"><span class="eyebrow">اتصال به سایت و شبکه‌های اجتماعی</span><h2 id="integrations-title">میز خبر را به سایت و شبکهٔ اجتماعی<br><span class="text-muted">وصل می‌کنید و منتشر می‌کنید</span></h2><p>سایت را متصل کنید تا خبرهای آماده در میز خبر در آن منتشر شوند؛ برای شبکه‌های اجتماعی کپشن و تصویر را در استودیو آماده می‌کنید.</p></div><div class="integration-flow reveal"><div class="integration-origin"><img src="assets/deska-symbol.png" width="52" height="52" alt=""><span>میز خبر دسکا</span></div><div class="flow-connector" aria-hidden="true"><span></span></div><div class="integration-destinations"><div class="destination-group"><span class="group-label">سامانه‌های انتشار</span><div class="integration-items"><span><b class="platform-letter wordpress">W</b>وردپرس</span><span><svg class="icon"><use href="#i-globe"/></svg>ایران‌سامانه</span><span><svg class="icon"><use href="#i-news"/></svg>نستوه</span></div></div><div class="destination-group"><span class="group-label">شبکه‌های اجتماعی</span><div class="integration-items"><span><svg class="icon"><use href="#i-send"/></svg>تلگرام</span><span><svg class="icon"><use href="#i-instagram"/></svg>اینستاگرام</span><span><b class="platform-letter">in</b>لینکدین</span><span><b class="platform-letter">f</b>فیسبوک</span></div></div></div></div><p class="integration-note">پس از تنظیم اتصال و دسترسی حسابتان، می‌توانید در هر مقصد منتشر کنید.</p></section>
 
-    <section class="section flow-section" id="compare">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">قبل و بعد دسکا</p>
-          <h2>آشفتگی وارد می‌شود، خبر پخته خارج می‌شود</h2>
-          <p>همان چیزی که خبرنگار احساس می‌کند — فقط این‌بار در یک جریان دیداری.</p>
-        </header>
-        <div class="flow-stage reveal" id="flowStage" aria-hidden="true">
-          <svg class="flow-lines" viewBox="0 0 800 200" preserveAspectRatio="none" aria-hidden="true">
-            <path class="flow-path flow-path-in" d="M 760 100 C 620 100, 520 100, 400 100" />
-            <path class="flow-path flow-path-out" d="M 400 100 C 280 100, 180 100, 40 100" />
-          </svg>
-          <div class="flow-zone flow-in">
-            <p class="flow-label">ورودی خام</p>
-            <div class="flow-track" id="flowIn"></div>
-          </div>
-          <div class="flow-hub">
-            <div class="flow-hub-ring"></div>
-            <div class="flow-hub-ring flow-hub-ring-2"></div>
-            <div class="flow-hub-logo">د</div>
-            <strong>دسکا</strong>
-            <span class="flow-hub-caption">آماده‌سازی · تأیید · انتشار</span>
-          </div>
-          <div class="flow-zone flow-out">
-            <p class="flow-label">خروجی آماده</p>
-            <div class="flow-track" id="flowOut"></div>
-          </div>
-        </div>
-        <ul class="flow-legend reveal">
-          <li>فید پراکنده و کانال تلگرام → کارت منظم در میز خبر</li>
-          <li>متن ناقص و ترجمهٔ سنگین → متن آماده برای ویرایش سردبیر</li>
-          <li>کاور دستی در ابزار جدا → قالب تصویری فوتویر در استودیوی اجتماعی دسکا</li>
-        </ul>
-      </div>
-    </section>
+    <!-- 08 / FAQs -->
+    <section id="faq" class="faq-section container section-space" aria-labelledby="faq-title"><div class="section-heading reveal"><span class="eyebrow">پیش از شروع</span><h2 id="faq-title">پرسش‌های متداول</h2><p>پاسخ کوتاه به پرسش‌های رایج قبل از ورود به دسکا</p></div><div class="faq-list reveal">
+      <details><summary>دسکا برای تیم ما چه می‌کند؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>میز خبر می‌سازید و منابع آماده یا اختصاصی را فعال می‌کنید تا خبرها وارد میز خبر شوند. دسکا خبر خارجی را ترجمه می‌کند و برای خبر فارسی بازنویسی می‌کند؛ بعد می‌توانید به سایت بفرستید یا در استودیو برای شبکه‌های اجتماعی آماده کنید. هر مرحله را خودتان انجام می‌دهید یا خودکار می‌کنید.</p></details>
+      <details><summary>آیا می‌توانم از دریافت خبر تا انتشار را خودکار کنم؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>بله. منابع و مقصد را که تنظیم کردید، می‌توانید پایش، ترجمه یا بازنویسی و انتشار در سایت را خودکار کنید. در استودیو هم دریافت مطلب، کپشن، تصویر از قالب و انتشار را می‌توانید جداگانه خودکار کنید؛ لازم نیست همهٔ مراحل یک‌جا فعال باشند.</p></details>
+      <details><summary>منابع آماده چیست و آیا می‌توانم منبع اختصاصی هم داشته باشم؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>حدود ۲۵۰ منبع آماده دارید: خبرگزاری داخلی و خارجی، نهاد و شرکت، کانال تلگرام و حساب X، در موضوع‌هایی مثل سیاست، اقتصاد، فرهنگ و ورزش. علاوه بر این فهرست، مدیر میز خبر می‌تواند با فید، وب‌سایت یا حساب اجتماعی پشتیبانی‌شده منبع اختصاصی اضافه کند.</p></details>
+      <details><summary>آیا باید سایت خبری‌مان را عوض کنیم؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>نه؛ اگر از وردپرس، ایران‌سامانه یا نستوه استفاده می‌کنید، همان سامانه را در دسکا برای انتشار وصل می‌کنید. به آدرس سرویس و دسترسی معتبر نیاز دارید؛ برای ایران‌سامانه و نستوه معمولاً اطلاعات وب‌سرویس را از پشتیبانی سامانهٔ خود می‌گیرید.</p></details>
+      <details><summary>برای روابط عمومی و تیم کوچک هم مناسب است؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>بله. منابع مرتبط با برند یا صنعتتان را فعال می‌کنید، با کلمات کلیدی خبرهای موردنظرتان را جدا می‌کنید و برای سایت و شبکهٔ اجتماعی آماده می‌کنید. دسترسی اعضا را هم در تنظیمات میز خبر مدیریت می‌کنید.</p></details>
+      <details><summary>چطور وارد میز خبر می‌شوم؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>از app.deska.ir وارد می‌شوید. می‌توانید میز خبر جدید بسازید یا به میزی که دعوت شده‌اید بپیوندید. مدیر میز خبر همکاران را اضافه می‌کند و دسترسی هر نفر را مشخص می‌کند. یک حساب می‌تواند عضو چند میز خبر باشد و بین آن‌ها جابه‌جا شود.</p></details>
+      <details><summary>ترجمه به چه زبان‌هایی محدود است؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>به فهرست کوتاهی از زبان‌ها محدود نیست. منابع انگلیسی، آلمانی، فرانسوی، ژاپنی، چینی، ترکی، عربی و دیگر زبان‌ها را فعال می‌کنید و تیتر و خلاصهٔ فارسی را در میز خبر می‌بینید؛ متن کامل هم برای انتشار آماده می‌شود.</p></details>
+      <details><summary>خبر فارسی چطور بازنویسی می‌شود؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>دسکا می‌تواند تیتر، خلاصه و متن خبر فارسی را با نگارش تازه بازنویسی کند تا همان جمله‌های منبع را تکرار نکنید؛ نام‌ها، اعداد و معنای خبر حفظ می‌شود.</p></details>
+      <details><summary>محتوا چطور به استودیوی اجتماعی می‌رسد؟<svg class="icon"><use href="#i-plus"/></svg></summary><p>خبر را از میز خبر به استودیو می‌فرستید یا برای استودیو منبع اختصاصی تعریف می‌کنید. مدیر میز خبر قالب کپشن و تصویر را تنظیم می‌کند؛ دریافت، آماده‌سازی و انتشار را هم می‌توانید خودکار کنید.</p></details>
+    </div></section>
 
-    <section class="section muted" id="stats">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">ظرفیت دسکا</p>
-          <h2>آنچه امروز در سامانه تعریف شده است</h2>
-          <p>این اعداد از تنظیمات و کاتالوگ فعلی دسکا گرفته شده‌اند — نه ادعای بازاری.</p>
-        </header>
-        <div class="stats">
-          <article class="stat-card reveal"><span class="stat-num" data-count="100">۰</span><p>منبع در کاتالوگ پیش‌تعریف</p></article>
-          <article class="stat-card reveal"><span class="stat-num" data-count="5">۰</span><p>نوع منبع قابل اتصال</p></article>
-          <article class="stat-card reveal"><span class="stat-num" data-count="26">۰</span><p>زبان منبع پشتیبانی‌شده</p></article>
-          <article class="stat-card reveal"><span class="stat-num" data-count="3">۰</span><p>سامانه انتشار سایت</p></article>
-          <article class="stat-card reveal"><span class="stat-num" data-count="4">۰</span><p>شبکه اجتماعی برای استودیو</p></article>
-          <article class="stat-card reveal"><span class="stat-num" data-count="10">۰</span><p>فرایند قابل ردیابی مصرف</p></article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="quotes">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">تجربه تحریریه‌ها</p>
-          <h2>روزنامه‌نگاران درباره دسکا چه می‌گویند</h2>
-        </header>
-        <div class="quotes">
-          <blockquote class="quote-card reveal">
-            <div class="quote-mark" aria-hidden="true">"</div>
-            <p>قبل از دسکا هر خبر مسیر خودش را داشت؛ حالا می‌دانیم کدام منبع آمده، کدام در صف سردبیر است و کدام روی سایت رفته. برای میز خبر شلوغ، همین شفافیت نجات‌بخش است.</p>
-            <footer><strong>سردبیر میز خبر</strong><span>خبرگزاری استانی</span></footer>
-          </blockquote>
-          <blockquote class="quote-card reveal">
-            <div class="quote-mark" aria-hidden="true">"</div>
-            <p>به‌عنوان خبرنگار مستقل، دغدغه‌ام این بود که منبع خارجی را سریع به فارسی برسانم. دسکا متن اولیه را می‌آورد؛ من روی لحن و تیتر کار می‌کنم و مستقیم منتشر می‌کنم.</p>
-            <footer><strong>خبرنگار مستقل</strong><span>حوزه اقتصاد و انرژی</span></footer>
-          </blockquote>
-          <blockquote class="quote-card reveal">
-            <div class="quote-mark" aria-hidden="true">"</div>
-            <p>استودیوی اجتماعی دسکا برای ما جدا از سایت است. کپشن و کاور یک‌جا ساخته می‌شود و به چند شبکه می‌رود — دیگر بین پیام‌رسان تیم و ابزار طراحی جداگانه جابه‌جا نمی‌شویم.</p>
-            <footer><strong>مدیر استودیوی دیجیتال</strong><span>پایگاه خبری تخصصی</span></footer>
-          </blockquote>
-        </div>
-      </div>
-    </section>
-
-    <section class="section muted" id="pricing">
-      <div class="container">
-        <header class="section-head reveal">
-          <p class="eyebrow">پلن‌های دسکا</p>
-          <h2>برای اندازه تحریریه شما</h2>
-          <p>سقف کاربر و فضای فایل از تعریف پلن در دسکا است. برای فعال‌سازی و قیمت با تیم دسکا هماهنگ کنید.</p>
-        </header>
-        <div class="plans">
-          <article class="plan reveal">
-            <h3>آغازین</h3>
-            <p class="plan-limit">تا ۵ کاربر · ۱ گیگابایت فایل</p>
-            <p class="price"><span>هماهنگی با دسکا</span><small>فعال‌سازی سازمان</small></p>
-            <ul>
-              <li>میز خبر و منابع</li>
-              <li>اتصال سایت مقصد</li>
-              <li>اتوماسیون پایه</li>
-            </ul>
-            <a class="btn btn-ghost" href="#cta">درخواست پلن آغازین</a>
-          </article>
-          <article class="plan featured reveal">
-            <p class="plan-badge">پیشنهاد دسکا</p>
-            <h3>حرفه‌ای</h3>
-            <p class="plan-limit">تا ۲۵ کاربر · ۱۰ گیگابایت فایل</p>
-            <p class="price"><span>هماهنگی با دسکا</span><small>فعال‌سازی سازمان</small></p>
-            <ul>
-              <li>استودیوی اجتماعی</li>
-              <li>مرکز عملیات</li>
-              <li>دسترسی نقش‌محور</li>
-            </ul>
-            <a class="btn btn-primary" href="#cta">درخواست پلن حرفه‌ای</a>
-          </article>
-          <article class="plan reveal">
-            <h3>سازمانی</h3>
-            <p class="plan-limit">تا ۹۹۹ کاربر · ۱۰۰ گیگابایت فایل</p>
-            <p class="price"><span>توافقی</span><small>چندرسانه‌ای و راه‌اندازی</small></p>
-            <ul>
-              <li>چند سازمان در یک حساب</li>
-              <li>تنظیمات اختصاصی</li>
-              <li>همراهی راه‌اندازی</li>
-            </ul>
-            <a class="btn btn-ghost" href="#cta">درخواست پلن سازمانی</a>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="faq">
-      <div class="container narrow">
-        <header class="section-head reveal">
-          <p class="eyebrow">پرسش‌های متداول</p>
-          <h2>پیش از شروع با دسکا</h2>
-        </header>
-        <div class="faq">
-          <details class="reveal" open>
-            <summary>دسکا برای چه کسی ساخته شده؟</summary>
-            <p>برای خبرنگاران، سردبیران و تیم‌های دیجیتال رسانه‌های ایران که هر روز با دریافت خبر، آماده‌سازی و انتشار درگیرند — از خبرگزاری تا خبرنگار مستقل.</p>
-          </details>
-          <details class="reveal">
-            <summary>میز خبر و استودیوی اجتماعی چه تفاوتی دارند؟</summary>
-            <p>میز خبر دسکا برای انتشار روی سایت خبری است: منبع → آماده‌سازی → سایت مقصد. استودیوی اجتماعی مسیر جدا دارد: منبع → کپشن و کاور → شبکه‌های اجتماعی. هر کدام منبع و تنظیمات خود را دارند.</p>
-          </details>
-          <details class="reveal">
-            <summary>دسکا خودش هوش مصنوعی دارد؟</summary>
-            <p>دسکا به سرویس هوش مصنوعی سازگار با استاندارد رایج متصل می‌شود. پردازش با مدلی که سازمان انتخاب می‌کند انجام می‌شود؛ دسکا جریان کار خبری را مدیریت می‌کند.</p>
-          </details>
-          <details class="reveal">
-            <summary>چه سایت‌هایی برای انتشار پشتیبانی می‌شوند؟</summary>
-            <p>ایران‌سامانه، نستوه و وردپرس — از طریق میز خبر دسکا.</p>
-          </details>
-          <details class="reveal">
-            <summary>کدام شبکه‌های اجتماعی در استودیو پشتیبانی می‌شوند؟</summary>
-            <p>تلگرام، اینستاگرام، لینکدین و فیسبوک.</p>
-          </details>
-          <details class="reveal">
-            <summary>منبع خبری را خودمان اضافه می‌کنیم؟</summary>
-            <p>بله. علاوه بر کاتالوگ ۱۰۰ منبع پیش‌تعریف دسکا، هر رسانه می‌تواند منبع اختصاصی فید، سایت، وبلاگ، تلگرام یا ایکس بسازد.</p>
-          </details>
-          <details class="reveal">
-            <summary>آیا انتشار می‌تواند خودکار باشد؟</summary>
-            <p>بله، برای هر منبع یا کل سازمان قابل تنظیم است. بسیاری از تحریریه‌ها آماده‌سازی را خودکار و انتشار را دستی نگه می‌دارند تا سردبیر آخرین کلمه را بزند.</p>
-          </details>
-          <details class="reveal">
-            <summary>خبرنگار مستقل هم می‌تواند استفاده کند؟</summary>
-            <p>بله. اگر تنها کار می‌کنید، دسکا همان مسیر منبع تا انتشار را بدون نیاز به تیم فنی برای شما فراهم می‌کند.</p>
-          </details>
-          <details class="reveal">
-            <summary>چند نفر هم‌زمان روی یک رسانه کار می‌کنند؟</summary>
-            <p>بسته به پلن: آغازین تا ۵ کاربر، حرفه‌ای تا ۲۵ کاربر، سازمانی برای رسانه‌های بزرگ‌تر. نقش مالک، مدیر و کارشناس دسترسی را محدود می‌کند.</p>
-          </details>
-          <details class="reveal">
-            <summary>اگر کار در صف گیر کند چه می‌شود؟</summary>
-            <p>مرکز عملیات دسکا صف را نشان می‌دهد؛ می‌توانید کار را دوباره اجرا کنید یا لغو کنید و تاریخچه گردش محتوا را ببینید.</p>
-          </details>
-          <details class="reveal">
-            <summary>قالب تصویری فوتویر چیست؟</summary>
-            <p>در استودیوی اجتماعی دسکا، برای هر مطلب می‌توانید قالب تصویری فوتویر تعریف کنید تا کاور شبکه اجتماعی با هویت بصری رسانه ساخته شود — بدون باز کردن ابزار طراحی جداگانه.</p>
-          </details>
-          <details class="reveal">
-            <summary>آیا می‌توان هم‌زمان چند رسانه داشت؟</summary>
-            <p>در پلن سازمانی دسکا، چند سازمان در یک حساب مدیریت می‌شود. هر رسانه فضای جدا، منابع جدا و تنظیمات انتشار خود را دارد.</p>
-          </details>
-          <details class="reveal">
-            <summary>راه‌اندازی دسکا چقدر زمان می‌برد؟</summary>
-            <p>برای تحریریه‌های کوچک، اتصال منبع و سایت مقصد معمولاً در همان روز اول انجام می‌شود. برای سازمان‌های بزرگ‌تر، تیم دسکا در پلن سازمانی همراهی راه‌اندازی دارد.</p>
-          </details>
-          <details class="reveal">
-            <summary>آیا داده‌های تحریریه امن نگه داشته می‌شود؟</summary>
-            <p>توکن‌های شبکه اجتماعی و رمزهای اتصال سایت در سرور دسکا به‌صورت رمزنگاری‌شده نگهداری می‌شوند. هر کاربر فقط به بخشی از سامانه دسترسی دارد که نقشش اجازه می‌دهد.</p>
-          </details>
-          <details class="reveal">
-            <summary>تفاوت دسکا با ابزارهای عمومی هوش مصنوعی چیست؟</summary>
-            <p>ابزارهای عمومی متن می‌سازند؛ دسکا برای روزنامه‌نگاری ساخته شده: منبع می‌آید، در میز خبر یا استودیو آماده می‌شود، سردبیر تأیید می‌کند و در مقصد درست منتشر می‌شود.</p>
-          </details>
-        </div>
-      </div>
-    </section>
-
-    <section class="cta-band" id="cta">
-      <div class="container cta-grid">
-        <div class="reveal">
-          <p class="eyebrow light">شروع با دسکا</p>
-          <h2>میز خبر را در عمل ببینید</h2>
-          <p>اگر رسانه یا خبرنگار مستقل هستید، درخواست دهید تا دسترسی سازمان در دسکا بررسی شود. اگر حساب دارید، مستقیم وارد شوید.</p>
-          <a class="btn btn-on-dark" href="https://app.deska.ir">ورود به دسکا</a>
-        </div>
-        <form class="lead-form reveal" id="leadForm" novalidate>
-          <p class="form-kicker">درخواست دسترسی به دسکا</p>
-          <label>نام و نام خانوادگی
-            <input name="name" type="text" autocomplete="name" required minlength="2">
-          </label>
-          <label>ایمیل سازمانی
-            <input name="email" type="email" autocomplete="email" required dir="ltr">
-          </label>
-          <label>نام رسانه یا سازمان
-            <input name="org" type="text" required minlength="2">
-          </label>
-          <label>تلفن
-            <input name="phone" type="tel" autocomplete="tel" dir="ltr" inputmode="tel">
-          </label>
-          <label>توضیح نیاز تحریریه
-            <textarea name="message" rows="3" maxlength="800" placeholder="مثلاً: خبرگزاری استانی، میز خبر هشت‌نفره، انتشار در سایت مقصد"></textarea>
-          </label>
-          <p class="form-error" id="formError" role="alert" hidden></p>
-          <p class="form-ok" id="formOk" hidden>درخواست شما ثبت شد. تیم دسکا با شما تماس می‌گیرد.</p>
-          <button class="btn btn-primary btn-lg" type="submit">ارسال درخواست</button>
-        </form>
-      </div>
-    </section>
+    <!-- 09 / Final call to action -->
+    <section class="final-cta container reveal"><div class="cta-orbits" aria-hidden="true"><i></i><i></i><i></i></div><span class="eyebrow">شروع با دسکا</span><h2>میز خبر بسازید<br>و کار را از همان‌جا پیش ببرید</h2><p>همکاران را اضافه کنید و منابع خبری دلخواهتان را فعال کنید تا خبرها وارد میز خبر شوند.</p><a class="button button-primary" href="https://app.deska.ir/login" data-app-link>ورود به دسکا <svg class="icon"><use href="#i-arrow"/></svg></a><span class="cta-small">دعوت به میز خبر تیم دیگری دارید؟ با همان حساب می‌توانید بپیوندید.</span></section>
   </main>
 
-  <footer class="site-footer">
-    <div class="container footer-grid">
-      <div>
-        <a class="brand" href="#top"><span class="brand-mark">د</span><span class="brand-text">دسکا</span></a>
-        <p>دسکا · میز خبر هوشمند برای خبرگزاری‌ها و رسانه‌های ایران.</p>
-      </div>
-      <div>
-        <h3>دسکا</h3>
-        <a href="#solutions">راه‌حل‌ها</a>
-        <a href="#features">امکانات</a>
-        <a href="#pricing">پلن‌ها</a>
-        <a href="https://app.deska.ir">ورود</a>
-      </div>
-      <div>
-        <h3>تماس</h3>
-        <p><a href="mailto:info@deska.ir">ارسال ایمیل به دسکا</a></p>
-        <p>تهران · ایران</p>
-      </div>
-      <div>
-        <h3>شبکه‌ها</h3>
-        <p>تلگرام · لینکدین · ایکس</p>
-        <p class="footer-note">پیگیری اخبار و راه‌اندازی دسکا</p>
-      </div>
-    </div>
-    <div class="container footer-bottom">
-      <p>© ۱۴۰۴ دسکا. همه حقوق محفوظ است.</p>
-      <div>
-        <a href="#">قوانین استفاده</a>
-        <a href="#">حریم خصوصی</a>
-      </div>
-    </div>
-  </footer>
-
-  <dialog class="demo-dialog" id="demoDialog" aria-labelledby="demoTitle">
-    <div class="demo-head">
-      <h2 id="demoTitle">دموی میز خبر دسکا</h2>
-      <button type="button" class="icon-btn" id="demoClose" aria-label="بستن">×</button>
-    </div>
-    <p class="demo-note">بازسازی رابط میز خبر برای آشنایی با جریان کار — نه تصویر زنده سرور.</p>
-    <div class="device demo-device">
-      <div class="device-bar"><span></span><span></span><span></span><p>دسکا · میز خبر</p></div>
-      <div class="app-shell tall">
-        <aside class="app-side wide">
-          <div class="side-brand"><span class="side-logo">د</span> دسکا</div>
-          <p class="side-link">داشبورد</p>
-          <p class="side-link on">میز خبر</p>
-          <p class="side-link">استودیوی اجتماعی</p>
-        </aside>
-        <div class="app-main">
-          <div class="app-head"><strong>میز خبر</strong><span>آماده اقدام · در پردازش · منتشرشده</span></div>
-          <article class="story"><div class="thumb t1"></div><div><h3>خبر آماده بررسی سردبیر</h3><p>منبع داخلی</p></div></article>
-          <article class="story"><div class="thumb t2"></div><div><h3>ترجمه خبر خارجی</h3><p>در صف آماده‌سازی</p></div></article>
-        </div>
-      </div>
-    </div>
-  </dialog>
-
-  <script src="script.js" defer></script>
+  <!-- 10 / Footer -->
+  <footer class="container site-footer"><div class="footer-main"><div class="footer-brand"><a class="brand" href="#top" aria-label="دسکا، ابتدای صفحه"><img class="brand-logo" src="assets/deska-wordmark.png" width="150" height="61" alt="Deska.ir؛ میز خبر هوشمند"></a></div><a href="#top" class="back-top">بازگشت به بالا <span>↑</span></a><a class="partner-mark" dir="ltr" href="https://mosavvar.agency/" target="_blank" rel="noopener noreferrer" aria-label="A Project by Mosavvar Agency"><span>A Project by</span><img src="assets/mosavvar-logo.png" width="68" height="34" alt="Mosavvar Agency"><strong>Mosavvar Agency</strong></a></div><div class="footer-bottom"><span class="footer-copyright">© <span id="year">۱۴۰۵</span> دسکا و آژانس ارتباطات مصور؛ تمامی حقوق محفوظ است.</span><button id="motion-toggle" aria-pressed="false"><span class="motion-symbol" aria-hidden="true">Ⅱ</span><span class="motion-label">توقف حرکت‌ها</span></button><span dir="ltr">Made With Love in IRAN</span></div></footer>
+  <script src="assets/source-catalog.js?v=20260926-2" defer></script>
+  <script src="script.js?v=20260926-2" defer></script>
 </body>
 </html>

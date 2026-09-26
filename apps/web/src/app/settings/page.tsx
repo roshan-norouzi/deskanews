@@ -19,7 +19,7 @@ const TAB_DEFINITIONS: Array<{
   icon: typeof Building2;
   ownerOnly?: boolean;
 }> = [
-  { id: 'organization', label: 'سازمان', icon: Building2, ownerOnly: true },
+  { id: 'organization', label: 'میز خبر', icon: Building2, ownerOnly: true },
   { id: 'users', label: 'کاربران', icon: Users, ownerOnly: true },
   { id: 'wallet', label: 'کیف پول', icon: Coins, ownerOnly: true },
 ];
@@ -77,7 +77,7 @@ function SettingsPageContent() {
 
   if (availableTabs.length === 0) {
     return (
-      <ProtectedLayout title="تنظیمات سازمان" tenantRequired={false}>
+      <ProtectedLayout title="تنظیمات میز خبر" tenantRequired={false}>
         <div className="flex min-h-[30vh] items-center justify-center">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
         </div>
@@ -86,7 +86,7 @@ function SettingsPageContent() {
   }
 
   return (
-    <ProtectedLayout title="تنظیمات سازمان" tenantRequired={tenantRequired}>
+    <ProtectedLayout title="تنظیمات میز خبر" tenantRequired={tenantRequired}>
       <div className="mx-auto w-full max-w-7xl space-y-6" dir="rtl">
         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
           {availableTabs.map((tab) => {

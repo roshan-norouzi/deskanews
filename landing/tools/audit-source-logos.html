@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>Deska source logo audit</title>
+  <style>
+    body { margin: 20px; font-family: Tahoma, sans-serif; background: #f4f7fb; color: #102a4c; }
+    output { display: block; margin-bottom: 18px; direction: ltr; text-align: left; }
+    #grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 8px; }
+    article { min-width: 0; padding: 8px; border: 1px solid #dbe5f1; border-radius: 10px; background: #fff; text-align: center; }
+    article img { display: block; width: 52px; height: 52px; margin: 0 auto 6px; object-fit: contain; }
+    article span { display: block; overflow: hidden; font-size: 11px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
+  </style>
+</head>
+<body data-complete="false">
+  <output id="result">در حال بررسی…</output>
+  <main id="grid"></main>
+  <script>
+    (async () => {
+      const catalog = await fetch('../assets/source-catalog.json').then((response) => response.json());
+      const results = await Promise.all(catalog.map((source) => new Promise((resolve) => {
+        const image = new Image();
+        const finish = () => resolve({
+          slug: source.slug,
+          name: source.name,
+          loaded: image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+        image.onload = finish;
+        image.onerror = finish;
+        image.src = `../assets/source-logos/${source.slug}.png?audit=1`;
+      })));
+      const broken = results.filter((item) => !item.loaded);
+      const report = { total: results.length, loaded: results.length - broken.length, broken };
+      document.querySelector('#result').textContent = JSON.stringify(report);
+      document.querySelector('#grid').replaceChildren(...catalog.map((source) => {
+        const card = document.createElement('article');
+        const image = document.createElement('img');
+        const label = document.createElement('span');
+        image.src = `../assets/source-logos/${source.slug}.png?audit=1`;
+        image.alt = '';
+        label.textContent = source.name;
+        card.append(image, label);
+        return card;
+      }));
+      document.body.dataset.complete = 'true';
+      document.body.dataset.passed = String(broken.length === 0);
+    })().catch((error) => {
+      document.querySelector('#result').textContent = JSON.stringify({ error: error.message });
+      document.body.dataset.complete = 'true';
+      document.body.dataset.passed = 'false';
+    });
+  </script>
+</body>
+</html>

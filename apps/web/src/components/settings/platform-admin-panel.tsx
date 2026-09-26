@@ -245,7 +245,7 @@ export function PlatformAdminPanel({ embedded = false, initialTab = 'users' }: {
       {!embedded && (
         <section className="rounded-3xl bg-slate-950 p-6 text-white">
           <h2 className="text-2xl font-bold">کاربران و سازمان‌ها</h2>
-          <p className="mt-2 text-sm text-slate-300">مدیریت کاربران مستقل، عضویت‌ها، سازمان‌ها و مالکیت‌ها</p>
+          <p className="mt-2 text-sm text-slate-300">مدیریت حساب کاربران، عضویت‌ها و مالکیت سازمان‌ها</p>
         </section>
       )}
       {overview && (
@@ -286,7 +286,7 @@ export function PlatformAdminPanel({ embedded = false, initialTab = 'users' }: {
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               {tab !== 'credits' && <div className="relative min-w-56 flex-1 sm:w-80">
                 <Search className="absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                <Input className="pr-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="جستجو..." />
+                <Input className="pr-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="جست‌وجو..." />
               </div>}
               {isSuperAdmin && tab === 'users' && (
                 <Button type="button" onClick={() => setShowCreateUser((visible) => !visible)}>

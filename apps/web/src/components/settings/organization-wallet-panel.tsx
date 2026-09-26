@@ -83,7 +83,7 @@ export function OrganizationWalletPanel({ tenantId }: { tenantId: string | null 
   }, [refetch, tenantId]);
 
   if (!tenantId) {
-    return <p className="text-sm text-slate-500">سازمان فعال انتخاب نشده است.</p>;
+    return <p className="text-sm text-slate-500">میز خبر فعالی انتخاب نشده است.</p>;
   }
 
   if (isLoading && !data) {
@@ -101,12 +101,12 @@ export function OrganizationWalletPanel({ tenantId }: { tenantId: string | null 
     <div className="space-y-6">
       <PageHeader
         title="کیف پول و توکن"
-        description="موجودی مصرفی سازمان برای آماده‌سازی، انتشار و کارهای هوش مصنوعی. دریافت خوراک رایگان است."
+        description="موجودی اعتبار، مصرف توکن و پرداخت‌های میز خبر را ببینید. هزینهٔ هر عملیات بر اساس تعرفهٔ پلتفرم محاسبه می‌شود."
         icon={Coins}
         actions={
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
             <RefreshCw className="h-4 w-4" />
-            بروزرسانی
+            به‌روزرسانی
           </Button>
         }
       />
@@ -143,7 +143,7 @@ export function OrganizationWalletPanel({ tenantId }: { tenantId: string | null 
 
       {wallet.enforcement && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          وقتی توکن کافی نباشد، کارهای گران‌قیمت وارد صف نمی‌شوند.
+          اگر موجودی توکن برای یک عملیات کافی نباشد، آن عملیات شروع نمی‌شود. برای ادامه، کیف پول میز خبر را شارژ کنید.
         </p>
       )}
 
@@ -211,7 +211,7 @@ export function OrganizationWalletPanel({ tenantId }: { tenantId: string | null 
           </CardHeader>
           <CardContent className="space-y-2">
             {wallet.recentLedger.length === 0 ? (
-              <p className="text-sm text-slate-500">هنوز گردشی ثبت نشده است.</p>
+              <p className="text-sm text-slate-500">هنوز تراکنشی برای این کیف پول ثبت نشده است.</p>
             ) : (
               wallet.recentLedger.map((row) => (
                 <div key={row.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
